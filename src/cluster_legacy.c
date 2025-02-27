@@ -2197,12 +2197,6 @@ static int clusterStartHandshake(char *ip, int port, int cport) {
         return 0;
     }
 
-    /* Port sanity check */
-    if (port <= 0 || port > 65535 || cport <= 0 || cport > 65535) {
-        errno = EINVAL;
-        return 0;
-    }
-
     /* Set norm_ip as the normalized string representation of the node
      * IP address. */
     memset(norm_ip, 0, NET_IP_STR_LEN);
@@ -6901,6 +6895,10 @@ int clusterCommandSpecial(client *c) {
             addReplyErrorFormat(c, "Invalid base port specified: %s", (char *)c->argv[3]->ptr);
             return 1;
         }
+        if (port <= 0 || port > 65535) {
+            addReplyErrorFormat(c, "Port number is out of range");
+            return 1;
+        }
 
         if (c->argc == 5) {
             if (getLongLongFromObject(c->argv[4], &cport) != C_OK) {
@@ -6909,6 +6907,11 @@ int clusterCommandSpecial(client *c) {
             }
         } else {
             cport = port + CLUSTER_PORT_INCR;
+        }
+
+        if (cport <= 0 || cport > 65535) {
+            addReplyErrorFormat(c, "Cluster bus port number is out of range");
+            return 1;
         }
 
         if (clusterStartHandshake(c->argv[2]->ptr, port, cport) == 0 && errno == EINVAL) {
