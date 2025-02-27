@@ -30,6 +30,9 @@
 
 #include "server.h"
 #ifdef HAVE_AVX2
+/* Define __MM_MALLOC_H to prevent importing the memory aligned
+ * allocation functions, which we don't use. */
+#define __MM_MALLOC_H
 #include <immintrin.h>
 #endif
 /* -----------------------------------------------------------------------------
