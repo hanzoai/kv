@@ -2356,6 +2356,9 @@ static int cliSendCommand(int argc, char **argv, long repeat) {
         output_raw = 1;
     }
 
+    /* In a multi block, commands will return status strings instead of verbatim strings. */
+    if (config.in_multi) output_raw = 0;
+
     if (!strcasecmp(command, "shutdown")) config.shutdown = 1;
     if (!strcasecmp(command, "monitor")) config.monitor_mode = 1;
     int is_subscribe =
