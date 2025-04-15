@@ -920,6 +920,7 @@ start_server {tags {"introspection"}} {
             rdbchecksum
             daemonize
             tcp-backlog
+            mptcp
             always-show-logo
             syslog-enabled
             cluster-enabled
