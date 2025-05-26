@@ -2144,11 +2144,12 @@ void clusterBlacklistAddNode(clusterNode *node) {
 /* Return non-zero if the specified node ID exists in the blacklist.
  * You don't need to pass an sds string here, any pointer to 40 bytes
  * will work. */
-int clusterBlacklistExists(char *nodeid) {
-    sds id = sdsnewlen(nodeid, CLUSTER_NAMELEN);
+int clusterBlacklistExists(char *nodeid, size_t len) {
+    sds id = sdsnewlen(nodeid, len);
     int retval;
 
     clusterBlacklistCleanup();
+
     retval = dictFind(server.cluster->nodes_black_list, id) != NULL;
     sdsfree(id);
     return retval;
@@ -2484,7 +2485,7 @@ void clusterProcessGossipSection(clusterMsg *hdr, clusterLink *link) {
              * Note that we require that the sender of this gossip message
              * is a well known node in our cluster, otherwise we risk
              * joining another cluster. */
-            if (sender && !(flags & CLUSTER_NODE_NOADDR) && !clusterBlacklistExists(g->nodename)) {
+            if (sender && !(flags & CLUSTER_NODE_NOADDR) && !clusterBlacklistExists(g->nodename, CLUSTER_NAMELEN)) {
                 clusterNode *node;
                 node = createClusterNode(g->nodename, flags);
                 memcpy(node->ip, g->ip, NET_IP_STR_LEN);
@@ -7131,7 +7132,7 @@ int clusterCommandSpecial(client *c) {
         /* CLUSTER FORGET <NODE ID> */
         clusterNode *n = clusterLookupNode(c->argv[2]->ptr, sdslen(c->argv[2]->ptr));
         if (!n) {
-            if (clusterBlacklistExists((char *)c->argv[2]->ptr))
+            if (clusterBlacklistExists((char *)c->argv[2]->ptr, sdslen(c->argv[2]->ptr)))
                 /* Already forgotten. The deletion may have been gossipped by
                  * another node, so we pretend it succeeded. */
                 addReply(c, shared.ok);
