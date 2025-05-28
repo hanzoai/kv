@@ -122,11 +122,17 @@ int extractLongLatOrReply(client *c, robj **argv, double *xy) {
 /* Input Argument Helper */
 /* Decode lat/long from a zset member's score.
  * Returns C_OK on successful decoding, otherwise C_ERR is returned. */
-int longLatFromMember(robj *zobj, robj *member, double *xy) {
+int longLatFromMemberOrReply(client *c, robj *zobj, robj *member, double *xy) {
     double score = 0;
 
-    if (zsetScore(zobj, member->ptr, &score) == C_ERR) return C_ERR;
-    if (!decodeGeohash(score, xy)) return C_ERR;
+    if (zsetScore(zobj, member->ptr, &score) == C_ERR) {
+        addReplyErrorFormat(c, "member %s does not exist", (char *)member->ptr);
+        return C_ERR;
+    }
+    if (!decodeGeohash(score, xy)) {
+        addReplyErrorFormat(c, "failed to decode, member %s is not a valid geohash", (char *)member->ptr);
+        return C_ERR;
+    }
     return C_OK;
 }
 
@@ -549,8 +555,7 @@ void georadiusGeneric(client *c, int srcKeyIndex, int flags) {
         base_args = 5;
         shape.type = CIRCULAR_TYPE;
         robj *member = c->argv[2];
-        if (longLatFromMember(zobj, member, shape.xy) == C_ERR) {
-            addReplyError(c, "could not decode requested zset member");
+        if (longLatFromMemberOrReply(c, zobj, member, shape.xy) == C_ERR) {
             return;
         }
         if (extractDistanceOrReply(c, c->argv + base_args - 2, &shape.conversion, &shape.t.radius) != C_OK) return;
@@ -614,9 +619,8 @@ void georadiusGeneric(client *c, int srcKeyIndex, int flags) {
                     i++;
                     continue;
                 }
-
-                if (longLatFromMember(zobj, c->argv[base_args + i + 1], shape.xy) == C_ERR) {
-                    addReplyError(c, "could not decode requested zset member");
+                robj *member = c->argv[base_args + i + 1];
+                if (longLatFromMemberOrReply(c, zobj, member, shape.xy) == C_ERR) {
                     return;
                 }
                 frommember = 1;
