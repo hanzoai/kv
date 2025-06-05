@@ -4375,7 +4375,7 @@ int processCommand(client *c) {
 
     /* Exec the command */
     if (c->flag.multi && c->cmd->proc != execCommand && c->cmd->proc != discardCommand &&
-        c->cmd->proc != multiCommand && c->cmd->proc != watchCommand && c->cmd->proc != quitCommand &&
+        c->cmd->proc != quitCommand &&
         c->cmd->proc != resetCommand) {
         queueMultiCommand(c, cmd_flags);
         addReply(c, shared.queued);
