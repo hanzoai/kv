@@ -857,7 +857,7 @@ typedef struct functionsLibCtx functionsLibCtx;
  * For example: dbarray need to be set as main database on
  *              successful loading and dropped on failure. */
 typedef struct rdbLoadingCtx {
-    serverDb *dbarray;
+    serverDb **dbarray;
     functionsLibCtx *functions_lib_ctx;
 } rdbLoadingCtx;
 
@@ -1600,7 +1600,7 @@ struct valkeyServer {
     int hz;                   /* serverCron() calls frequency in hertz */
     int clients_hz;           /* clientsTimeProc() frequency in hertz */
     int in_fork_child;        /* indication that this is a fork child */
-    serverDb *db;
+    serverDb **db;            /* each db created when it's first used */
     hashtable *commands;      /* Command table */
     hashtable *orig_commands; /* Command table before command renaming. */
     aeEventLoop *el;
@@ -3487,11 +3487,11 @@ robj *dbUnshareStringValue(serverDb *db, robj *key, robj *o);
 #define EMPTYDB_ASYNC (1 << 0)       /* Reclaim memory in another thread. */
 #define EMPTYDB_NOFUNCTIONS (1 << 1) /* Indicate not to flush the functions. */
 long long emptyData(int dbnum, int flags, void(callback)(hashtable *));
-long long emptyDbStructure(serverDb *dbarray, int dbnum, int async, void(callback)(hashtable *));
+long long emptyDbStructure(serverDb **dbarray, int dbnum, int async, void(callback)(hashtable *));
 void flushAllDataAndResetRDB(int flags);
 long long dbTotalServerKeyCount(void);
-serverDb *initTempDb(void);
-void discardTempDb(serverDb *tempDb);
+serverDb *initTempDb(int id);
+void discardTempDb(serverDb **tempDb);
 int selectDb(client *c, int id);
 void signalModifiedKey(client *c, serverDb *db, robj *key);
 void signalFlushedDb(int dbid, int async);
@@ -3537,7 +3537,6 @@ int zmpopGetKeys(struct serverCommand *cmd, robj **argv, int argc, getKeysResult
 int bzmpopGetKeys(struct serverCommand *cmd, robj **argv, int argc, getKeysResult *result);
 int setGetKeys(struct serverCommand *cmd, robj **argv, int argc, getKeysResult *result);
 int bitfieldGetKeys(struct serverCommand *cmd, robj **argv, int argc, getKeysResult *result);
-bool dbHasNoKeys(void);
 
 unsigned short crc16(const char *buf, int len);
 
@@ -3962,7 +3961,11 @@ void commandAddSubcommand(struct serverCommand *parent, struct serverCommand *su
 void debugDelay(int usec);
 void killThreads(void);
 void makeThreadKillable(void);
-void swapMainDbWithTempDb(serverDb *tempDb);
+serverDb *createDatabase(int id);
+int dbHasNoKeys(int dbid);
+bool dbsHaveNoKeys(void);
+serverDb *createDatabaseIfNeeded(int id);
+void swapMainDbWithTempDb(serverDb **tempDb);
 sds getVersion(void);
 void debugPauseProcess(void);
 
