@@ -1289,10 +1289,11 @@ void databasesCron(void) {
         if (dbs_per_call > server.dbnum) dbs_per_call = server.dbnum;
 
         for (j = 0; j < dbs_per_call; j++) {
-            serverDb *db = &server.db[resize_db % server.dbnum];
+            serverDb *db = server.db[resize_db % server.dbnum];
+            resize_db++;
+            if (db == NULL) continue;
             kvstoreTryResizeHashtables(db->keys, CRON_DICTS_PER_DB);
             kvstoreTryResizeHashtables(db->expires, CRON_DICTS_PER_DB);
-            resize_db++;
         }
 
         /* Rehash */
@@ -1300,11 +1301,13 @@ void databasesCron(void) {
             uint64_t elapsed_us = 0;
             uint64_t threshold_us = 1 * 1000000 / server.hz / 100;
             for (j = 0; j < dbs_per_call; j++) {
-                serverDb *db = &server.db[rehash_db % server.dbnum];
-                elapsed_us += kvstoreIncrementallyRehash(db->keys, threshold_us - elapsed_us);
-                if (elapsed_us >= threshold_us) break;
-                elapsed_us += kvstoreIncrementallyRehash(db->expires, threshold_us - elapsed_us);
-                if (elapsed_us >= threshold_us) break;
+                serverDb *db = server.db[rehash_db % server.dbnum];
+                if (db != NULL) {
+                    elapsed_us += kvstoreIncrementallyRehash(db->keys, threshold_us - elapsed_us);
+                    if (elapsed_us >= threshold_us) break;
+                    elapsed_us += kvstoreIncrementallyRehash(db->expires, threshold_us - elapsed_us);
+                    if (elapsed_us >= threshold_us) break;
+                }
                 rehash_db++;
             }
         }
@@ -1543,11 +1546,13 @@ long long serverCron(struct aeEventLoop *eventLoop, long long id, void *clientDa
     if (server.verbosity <= LL_VERBOSE) {
         run_with_period(5000) {
             for (j = 0; j < server.dbnum; j++) {
+                serverDb *db = server.db[j];
+                if (db == NULL) continue;
                 long long size, used, vkeys;
 
-                size = kvstoreBuckets(server.db[j].keys) * hashtableEntriesPerBucket();
-                used = kvstoreSize(server.db[j].keys);
-                vkeys = kvstoreSize(server.db[j].expires);
+                size = kvstoreBuckets(server.db[j]->keys) * hashtableEntriesPerBucket();
+                used = kvstoreSize(server.db[j]->keys);
+                vkeys = kvstoreSize(server.db[j]->expires);
                 if (used || vkeys) {
                     serverLog(LL_VERBOSE, "DB %d: %lld keys (%lld volatile) in %lld slots HT.", j, used, vkeys, size);
                 }
@@ -2748,9 +2753,49 @@ void makeThreadKillable(void) {
     pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 }
 
-void initServer(void) {
-    int j;
+/* Return non-zero if the database is empty  */
+int dbHasNoKeys(int dbid) {
+    return dbid < 0 || dbid >= server.dbnum || !server.db[dbid] || kvstoreSize(server.db[dbid]->keys) == 0;
+}
 
+bool dbsHaveNoKeys(void) {
+    for (int i = 0; i < server.dbnum; i++) {
+        if (server.db[i] && kvstoreSize(server.db[i]->keys) != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+serverDb *createDatabase(int id) {
+    int slot_count_bits = 0;
+    int flags = KVSTORE_ALLOCATE_HASHTABLES_ON_DEMAND;
+    if (server.cluster_enabled) {
+        flags |= KVSTORE_FREE_EMPTY_HASHTABLES;
+        slot_count_bits = CLUSTER_SLOT_MASK_BITS;
+    }
+
+    serverDb *db = zmalloc(sizeof(serverDb));
+    db->keys = kvstoreCreate(&kvstoreKeysHashtableType, slot_count_bits, flags);
+    db->expires = kvstoreCreate(&kvstoreExpiresHashtableType, slot_count_bits, flags);
+    db->expires_cursor = 0;
+    db->blocking_keys = dictCreate(&keylistDictType);
+    db->blocking_keys_unblock_on_nokey = dictCreate(&objectKeyPointerValueDictType);
+    db->ready_keys = dictCreate(&objectKeyPointerValueDictType);
+    db->watched_keys = dictCreate(&keylistDictType);
+    db->id = id;
+    db->avg_ttl = 0;
+    return db;
+}
+
+serverDb *createDatabaseIfNeeded(int id) {
+    if (server.db[id] == NULL) {
+        server.db[id] = createDatabase(id);
+    }
+    return server.db[id];
+}
+
+void initServer(void) {
     signal(SIGHUP, SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
     setupSignalHandlers();
@@ -2823,33 +2868,16 @@ void initServer(void) {
     }
 
     server.dbnum = server.cluster_enabled ? server.config_databases_cluster : server.config_databases;
-    server.db = zmalloc(sizeof(serverDb) * server.dbnum);
+    server.db = zcalloc(sizeof(serverDb *) * server.dbnum);
+    createDatabaseIfNeeded(0); /* The default database should always exist */
 
-    /* Create the databases, and initialize other internal state. */
-    int slot_count_bits = 0;
-    int flags = KVSTORE_ALLOCATE_HASHTABLES_ON_DEMAND;
-    if (server.cluster_enabled) {
-        slot_count_bits = CLUSTER_SLOT_MASK_BITS;
-        flags |= KVSTORE_FREE_EMPTY_HASHTABLES;
-    }
-    for (j = 0; j < server.dbnum; j++) {
-        server.db[j].keys = kvstoreCreate(&kvstoreKeysHashtableType, slot_count_bits, flags);
-        server.db[j].expires = kvstoreCreate(&kvstoreExpiresHashtableType, slot_count_bits, flags);
-        server.db[j].expires_cursor = 0;
-        server.db[j].blocking_keys = dictCreate(&keylistDictType);
-        server.db[j].blocking_keys_unblock_on_nokey = dictCreate(&objectKeyPointerValueDictType);
-        server.db[j].ready_keys = dictCreate(&objectKeyPointerValueDictType);
-        server.db[j].watched_keys = dictCreate(&keylistDictType);
-        server.db[j].id = j;
-        server.db[j].avg_ttl = 0;
-    }
     evictionPoolAlloc(); /* Initialize the LRU keys pool. */
     /* Note that server.pubsub_channels was chosen to be a kvstore (with only one dict, which
      * seems odd) just to make the code cleaner by making it be the same type as server.pubsubshard_channels
      * (which has to be kvstore), see pubsubtype.serverPubSubChannels */
     server.pubsub_channels = kvstoreCreate(&kvstoreChannelHashtableType, 0, KVSTORE_ALLOCATE_HASHTABLES_ON_DEMAND);
     server.pubsub_patterns = dictCreate(&objToHashtableDictType);
-    server.pubsubshard_channels = kvstoreCreate(&kvstoreChannelHashtableType, slot_count_bits,
+    server.pubsubshard_channels = kvstoreCreate(&kvstoreChannelHashtableType, server.cluster_enabled ? CLUSTER_SLOT_MASK_BITS : 0,
                                                 KVSTORE_ALLOCATE_HASHTABLES_ON_DEMAND | KVSTORE_FREE_EMPTY_HASHTABLES);
     server.pubsub_clients = 0;
     server.watching_clients = 0;
@@ -5650,9 +5678,10 @@ void totalNumberOfStatefulKeys(unsigned long *blocking_keys,
                                unsigned long *watched_keys) {
     unsigned long bkeys = 0, bkeys_on_nokey = 0, wkeys = 0;
     for (int j = 0; j < server.dbnum; j++) {
-        bkeys += dictSize(server.db[j].blocking_keys);
-        bkeys_on_nokey += dictSize(server.db[j].blocking_keys_unblock_on_nokey);
-        wkeys += dictSize(server.db[j].watched_keys);
+        if (server.db[j] == NULL) continue;
+        bkeys += dictSize(server.db[j]->blocking_keys);
+        bkeys_on_nokey += dictSize(server.db[j]->blocking_keys_unblock_on_nokey);
+        wkeys += dictSize(server.db[j]->watched_keys);
     }
     if (blocking_keys) *blocking_keys = bkeys;
     if (blocking_keys_on_nokey) *blocking_keys_on_nokey = bkeys_on_nokey;
@@ -6252,13 +6281,15 @@ sds genValkeyInfoString(dict *section_dict, int all_sections, int everything) {
         if (sections++) info = sdscat(info, "\r\n");
         info = sdscatprintf(info, "# Keyspace\r\n");
         for (j = 0; j < server.dbnum; j++) {
+            serverDb *db = server.db[j];
+            if (db == NULL) continue;
             long long keys, vkeys;
 
-            keys = kvstoreSize(server.db[j].keys);
-            vkeys = kvstoreSize(server.db[j].expires);
+            keys = kvstoreSize(db->keys);
+            vkeys = kvstoreSize(db->expires);
             if (keys || vkeys) {
                 info = sdscatprintf(info, "db%d:keys=%lld,expires=%lld,avg_ttl=%lld\r\n", j, keys, vkeys,
-                                    server.db[j].avg_ttl);
+                                    db->avg_ttl);
             }
         }
     }
