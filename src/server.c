@@ -4493,6 +4493,12 @@ void closeListeningSockets(int unlink_unix_socket) {
  * - SHUTDOWN_FORCE: Ignore errors writing AOF and RDB files on disk, which
  *   would normally prevent a shutdown.
  *
+ * - SHUTDOWN_SAFE: Shut down only when safe. Note that safe cannot prevent force,
+ *   in the case of force, safe will print the relevant logs. The definition of
+ *   safe may be different in different modes. Here are the definitions:
+ *   * In cluster mode, it is unsafe to shut down a primary with slots, and may
+ *     cause the cluster to go down.
+ *
  * Unless SHUTDOWN_NOW is set and if any replicas are lagging behind, C_ERR is
  * returned and server.shutdown_mstime is set to a timestamp to allow a grace
  * period for the replicas to catch up. This is checked and handled by
@@ -4590,6 +4596,7 @@ int finishShutdown(void) {
     int save = server.shutdown_flags & SHUTDOWN_SAVE;
     int nosave = server.shutdown_flags & SHUTDOWN_NOSAVE;
     int force = server.shutdown_flags & SHUTDOWN_FORCE;
+    int safe = server.shutdown_flags & SHUTDOWN_SAFE;
 
     /* Log a warning for each replica that is lagging. */
     listIter replicas_iter;
@@ -4610,6 +4617,17 @@ int finishShutdown(void) {
     if (num_replicas > 0) {
         serverLog(LL_NOTICE, "%d of %d replicas are in sync when shutting down.", num_replicas - num_lagging_replicas,
                   num_replicas);
+    }
+
+    if (safe && server.cluster_enabled && clusterNodeIsVotingPrimary(getMyClusterNode())) {
+        if (force) {
+            serverLog(LL_WARNING, "This is a voting primary. Shutting down may cause the cluster to go down. Exit anyway.");
+        } else {
+            serverLog(LL_WARNING, "This is a voting primary. Shutting down may cause the cluster to go down. Can't exit.");
+            if (server.supervised_mode == SUPERVISED_SYSTEMD)
+                serverCommunicateSystemd("This is a voting primary. Shutting down may cause the cluster to go down. Can't exit.\n");
+            goto error;
+        }
     }
 
     /* Kill all the Lua debugger forked sessions. */
