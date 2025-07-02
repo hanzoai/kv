@@ -112,6 +112,7 @@ static struct config {
     long long totlatency;
     const char *title;
     list *clients;
+    list *paused_clients;
     int quiet;
     int csv;
     int loop;
@@ -138,6 +139,10 @@ static struct config {
     pthread_mutex_t liveclients_mutex;
     pthread_mutex_t is_updating_slots_mutex;
     int resp3; /* use RESP3 */
+    int rps;
+    atomic_uint_fast64_t last_time_ns;
+    uint64_t time_per_token;
+    uint64_t time_per_burst;
 } config;
 
 typedef struct _client {
@@ -161,6 +166,8 @@ typedef struct _client {
     int thread_id;
     struct clusterNode *cluster_node;
     int slots_last_update;
+    uint64_t paused : 1;
+    uint64_t reuse : 1;
 } *client;
 
 /* Threads. */
@@ -169,6 +176,7 @@ typedef struct benchmarkThread {
     int index;
     pthread_t thread;
     aeEventLoop *el;
+    list *paused_clients;
 } benchmarkThread;
 
 /* Cluster. */
@@ -223,6 +231,12 @@ static long long ustime(void) {
 
 static long long mstime(void) {
     return ustime() / 1000;
+}
+
+static long long nstime(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec;
 }
 
 static uint64_t dictSdsHash(const void *key) {
@@ -352,6 +366,21 @@ static void freeServerConfig(serverConfig *cfg) {
     zfree(cfg);
 }
 
+static void releasePausedClient(client c) {
+    if (c->thread_id >= 0) {
+        benchmarkThread *thread = config.threads[c->thread_id];
+        listNode *ln = listSearchKey(thread->paused_clients, c);
+        if (ln != NULL) {
+            listDelNode(thread->paused_clients, ln);
+        }
+    } else {
+        listNode *ln = listSearchKey(config.paused_clients, c);
+        if (ln != NULL) {
+            listDelNode(config.paused_clients, ln);
+        }
+    }
+}
+
 static void freeClient(client c) {
     aeEventLoop *el = CLIENT_GET_EVENTLOOP(c);
     listNode *ln;
@@ -364,6 +393,7 @@ static void freeClient(client c) {
         }
     }
     valkeyFree(c->context);
+    if (c->paused) releasePausedClient(c);
     sdsfree(c->obuf);
     zfree(c->randptr);
     zfree(c->stagptr);
@@ -443,6 +473,64 @@ static void setClusterKeyHashTag(client c) {
         p[1] = (taglen >= 2 ? tag[1] : '}');
         p[2] = (taglen == 3 ? tag[2] : '}');
     }
+}
+
+/* Acquires the specified number of tokens from the token bucket or calculates the wait time if tokens are not available.
+ * This function implements a token bucket rate limiting algorithm to control access to a resource.
+ *
+ * The tokens parameter is the number of tokens to acquire.
+ *
+ * Returns the delay time in milliseconds that the caller should wait before proceeding, or 0 if tokens are immediately available.
+ *
+ * Token Bucket Algorithm Explanation:
+ * - The token bucket algorithm allows a certain number of tokens to be accumulated over time, which can then be used to control the rate of requests.
+ * - Due to the time event only allowing a delay of 1ms, a request for the next 1ms is issued.
+ *
+ * The function is thread-safe. */
+static long long acquireTokenOrWait(int tokens) {
+    uint64_t time_per_token = config.time_per_token;
+    uint64_t time_per_burst = config.time_per_burst;
+    uint64_t new_time = 0;
+    uint64_t now_epoch, next_epoch, min_time, delay_time;
+    uint64_t last_time_ns, old_last_time_ns;
+
+    while (1) {
+        old_last_time_ns = atomic_load_explicit(&config.last_time_ns, memory_order_relaxed);
+        last_time_ns = old_last_time_ns;
+        now_epoch = nstime();
+
+        // If the last_time_ns is 0, it means this is the first request, so we set it to now_epoch.
+        if (last_time_ns == 0) {
+            last_time_ns = now_epoch;
+        }
+
+        next_epoch = now_epoch + 1000000;
+        min_time = next_epoch - time_per_burst;
+
+        if (min_time > last_time_ns) { // if the last time is too old, reset it
+            new_time = min_time + (time_per_token * tokens);
+        } else {
+            new_time = last_time_ns + (time_per_token * tokens);
+        }
+
+        delay_time = 0;
+        if (new_time > next_epoch) { // if the new time is in the next epoch, we need to wait
+            delay_time = new_time - now_epoch;
+        } else {
+            last_time_ns = new_time;
+        }
+
+        if (atomic_compare_exchange_weak_explicit(
+                &config.last_time_ns,
+                &old_last_time_ns,
+                last_time_ns,
+                memory_order_release,
+                memory_order_relaxed)) {
+            break;
+        }
+    }
+
+    return delay_time / 1000000;
 }
 
 static void clientDone(client c) {
@@ -574,11 +662,84 @@ static void readHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     }
 }
 
+/*
+ * When a client is paused, the function is called by the event loop to
+ * awaken the client.
+ *
+ * Return the number of milliseconds to wait before calling the function again.
+ *
+ * If the function returns AE_NOMORE, the event is removed.
+ */
+static long long awakenPausedClient(struct aeEventLoop *eventLoop, long long id, void *clientData) {
+    UNUSED(id);
+    benchmarkThread *thread = (benchmarkThread *)clientData;
+
+    list *paused_clients = NULL;
+    if (thread == NULL) {
+        paused_clients = config.paused_clients;
+    } else {
+        paused_clients = thread->paused_clients;
+    }
+
+    listIter li;
+    listNode *ln;
+    long long delay = 0;
+    listRewind(paused_clients, &li);
+    while ((ln = listNext(&li)) != NULL) {
+        client c = ln->value;
+        delay = acquireTokenOrWait(config.pipeline);
+        if (delay) {
+            break;
+        }
+        // When client acquires a token, try to write with `reuse`.
+        c->paused = 0;
+        c->reuse = 1;
+        writeHandler(eventLoop, c->context->fd, c, AE_WRITABLE);
+        listDelNode(paused_clients, ln);
+    }
+
+    // If there are no more paused clients, remove the event.
+    if (delay == 0) {
+        return AE_NOMORE;
+    }
+    return delay;
+}
+
 static void writeHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     client c = privdata;
     UNUSED(el);
     UNUSED(fd);
     UNUSED(mask);
+
+    // When benchmark with rps control, and client is not reuse, try to acquire a token.
+    if (config.rps > 0 && c->reuse == 0) {
+        /* Acquire a token from the token bucket. */
+        long long delay = acquireTokenOrWait(config.pipeline);
+
+        if (delay) {
+            int thread_id = c->thread_id;
+            int paused_clients_count = 0;
+
+            c->paused = 1;
+            aeDeleteFileEvent(el, c->context->fd, AE_WRITABLE);
+
+            benchmarkThread *thread = NULL;
+            if (thread_id < 0) {
+                paused_clients_count = listLength(config.paused_clients);
+                listAddNodeTail(config.paused_clients, c);
+            } else {
+                thread = config.threads[thread_id];
+                paused_clients_count = listLength(thread->paused_clients);
+                listAddNodeTail(thread->paused_clients, c);
+            }
+            if (paused_clients_count == 0) {
+                /* Create a time event to awaken the client. */
+                aeCreateTimeEvent(el, delay, awakenPausedClient, (void *)thread, NULL);
+            }
+            return;
+        }
+    }
+    c->reuse = 0;
 
     /* Initialize request when nothing was written. */
     if (c->written == 0) {
@@ -686,6 +847,8 @@ static client createClient(char *cmd, int len, int seqlen, client from, int thre
             exit(1);
         }
     }
+    c->paused = 0;
+    c->reuse = 0;
     c->thread_id = thread_id;
     /* Suppress libvalkey cleanup of unused buffers for max speed. */
     c->context->reader->maxbuf = 0;
@@ -995,6 +1158,12 @@ static void benchmarkSequence(const char *title, char *cmd, int len, int seqlen)
 
     if (config.num_threads) initBenchmarkThreads();
 
+    if (config.rps > 0) {
+        config.time_per_token = 1000000000 / config.rps;
+        config.time_per_burst = config.time_per_token * config.rps;
+        config.last_time_ns = 0;
+    }
+
     int thread_id = config.num_threads > 0 ? 0 : -1;
     c = createClient(cmd, len, seqlen, NULL, thread_id);
     createMissingClients(c);
@@ -1025,12 +1194,14 @@ static benchmarkThread *createBenchmarkThread(int index) {
     if (thread == NULL) return NULL;
     thread->index = index;
     thread->el = aeCreateEventLoop(1024 * 10);
+    thread->paused_clients = listCreate();
     aeCreateTimeEvent(thread->el, 1, showThroughput, (void *)thread, NULL);
     return thread;
 }
 
 static void freeBenchmarkThread(benchmarkThread *thread) {
     if (thread->el) aeDeleteEventLoop(thread->el);
+    listRelease(thread->paused_clients);
     zfree(thread);
 }
 
@@ -1368,6 +1539,9 @@ int parseOptions(int argc, char **argv) {
         } else if (!strcmp(argv[i], "--user")) {
             if (lastarg) goto invalid;
             config.conn_info.user = sdsnew(argv[++i]);
+        } else if (!strcmp(argv[i], "--rps")) {
+            if (lastarg) goto invalid;
+            config.rps = atoi(argv[++i]);
         } else if (!strcmp(argv[i], "-u") && !lastarg) {
             parseUri(argv[++i], "valkey-benchmark", &config.conn_info, &config.tls);
             if (config.conn_info.hostport < 0 || config.conn_info.hostport > 65535) {
@@ -1632,6 +1806,7 @@ usage:
         "                    on the command line.\n"
         " -I                 Idle mode. Just open N idle connections and wait.\n"
         " -x                 Read last argument from STDIN.\n"
+        " --rps <requests>   Limit the total number of requests per second. Default 0 (no limit)\n"
         " --seed <num>       Set the seed for random number generator. Default seed is based on time.\n"
         " --num-functions <num>\n"
         "                    Sets the number of functions present in the Lua lib that is\n"
@@ -1787,6 +1962,7 @@ int main(int argc, char **argv) {
     config.loop = 0;
     config.idlemode = 0;
     config.clients = listCreate();
+    config.paused_clients = listCreate();
     config.conn_info.hostip = sdsnew("127.0.0.1");
     config.conn_info.hostport = 6379;
     config.tests = NULL;
@@ -1797,6 +1973,7 @@ int main(int argc, char **argv) {
     config.num_threads = 0;
     config.threads = NULL;
     config.cluster_mode = 0;
+    config.rps = 0;
     config.read_from_replica = FROM_PRIMARY_ONLY;
     config.cluster_node_count = 0;
     config.cluster_nodes = NULL;
