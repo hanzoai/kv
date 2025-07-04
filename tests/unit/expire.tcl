@@ -1037,6 +1037,13 @@ start_cluster 1 0 {tags {"expire external:skip cluster"}} {
         # Enable resizing
         r debug dict-resizing 1
 
+        # Wait for ongoing rehashing to complete, if any
+        wait_for_condition 100 50 {
+            [dict get [r memory stats] db.dict.rehashing.count] == 0
+        } else {
+            fail "Active rehashing didn't finish"
+        }
+
         # put some data into slot 12182 and trigger the resize
         # by deleting it to trigger shrink
         r psetex "{foo}0" 500 a
