@@ -4896,7 +4896,6 @@ void clusterLogCantFailover(int reason) {
  * Note that it's up to the caller to be sure that the node got a new
  * configuration epoch already. */
 void clusterFailoverReplaceYourPrimary(void) {
-    int j;
     clusterNode *old_primary = myself->replicaof;
 
     if (clusterNodeIsPrimary(myself) || old_primary == NULL) return;
@@ -4908,11 +4907,17 @@ void clusterFailoverReplaceYourPrimary(void) {
     clusterSetNodeAsPrimary(myself);
     replicationUnsetPrimary();
 
+    int remaining = old_primary->numslots;
     /* 2) Claim all the slots assigned to our primary. */
-    for (j = 0; j < CLUSTER_SLOTS; j++) {
-        if (clusterNodeCoversSlot(old_primary, j)) {
-            clusterDelSlot(j);
-            clusterAddSlot(myself, j);
+    for (unsigned long byte = 0; byte < sizeof(old_primary->slots) && remaining > 0; ++byte) {
+        unsigned char bits = old_primary->slots[byte];
+        while (bits) {
+            unsigned bit = __builtin_ctz(bits);
+            int slot = (byte << 3) | bit;
+            clusterDelSlot(slot);
+            clusterAddSlot(myself, slot);
+            bits &= bits - 1;
+            remaining--;
         }
     }
 
@@ -5767,12 +5772,19 @@ int clusterDelSlot(int slot) {
 /* Delete all the slots associated with the specified node.
  * The number of deleted slots is returned. */
 int clusterDelNodeSlots(clusterNode *node) {
-    int deleted = 0, j;
+    int deleted = 0;
+    if (node->numslots == 0) return 0;
+    int remaining = node->numslots;
 
-    for (j = 0; j < CLUSTER_SLOTS; j++) {
-        if (clusterNodeCoversSlot(node, j)) {
-            clusterDelSlot(j);
+    for (unsigned long byte = 0; byte < sizeof(node->slots) && remaining > 0; ++byte) {
+        unsigned char bits = node->slots[byte];
+        while (bits) {
+            unsigned bit = __builtin_ctz(bits);
+            int slot = (byte << 3) | bit;
+            clusterDelSlot(slot);
+            bits &= bits - 1;
             deleted++;
+            remaining--;
         }
     }
     return deleted;
