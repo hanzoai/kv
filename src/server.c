@@ -32,6 +32,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "server.h"
+#include "connection.h"
 #include "monotonic.h"
 #include "cluster.h"
 #include "cluster_slot_stats.h"
@@ -3017,16 +3018,16 @@ void initServer(void) {
 
 void initListeners(void) {
     /* Setup listeners from server config for TCP/TLS/Unix */
-    int conn_index;
+    ConnectionType *ct;
     connListener *listener;
     if (server.port != 0) {
-        conn_index = connectionIndexByType(CONN_TYPE_SOCKET);
-        if (conn_index < 0) serverPanic("Failed finding connection listener of %s", CONN_TYPE_SOCKET);
-        listener = &server.listeners[conn_index];
+        ct = connectionByType(CONN_TYPE_SOCKET);
+        if (!ct) serverPanic("Failed finding connection listener of %s", getConnectionTypeName(CONN_TYPE_SOCKET));
+        listener = &server.listeners[CONN_TYPE_SOCKET];
         listener->bindaddr = server.bindaddr;
         listener->bindaddr_count = server.bindaddr_count;
         listener->port = server.port;
-        listener->ct = connectionByType(CONN_TYPE_SOCKET);
+        listener->ct = ct;
     }
 
     if (server.tls_port || server.tls_replication || server.tls_cluster) {
@@ -3042,32 +3043,32 @@ void initListeners(void) {
     }
 
     if (server.tls_port != 0) {
-        conn_index = connectionIndexByType(CONN_TYPE_TLS);
-        if (conn_index < 0) serverPanic("Failed finding connection listener of %s", CONN_TYPE_TLS);
-        listener = &server.listeners[conn_index];
+        ct = connectionByType(CONN_TYPE_TLS);
+        if (!ct) serverPanic("Failed finding connection listener of %s", getConnectionTypeName(CONN_TYPE_TLS));
+        listener = &server.listeners[CONN_TYPE_TLS];
         listener->bindaddr = server.bindaddr;
         listener->bindaddr_count = server.bindaddr_count;
         listener->port = server.tls_port;
-        listener->ct = connectionByType(CONN_TYPE_TLS);
+        listener->ct = ct;
     }
     if (server.unixsocket != NULL) {
-        conn_index = connectionIndexByType(CONN_TYPE_UNIX);
-        if (conn_index < 0) serverPanic("Failed finding connection listener of %s", CONN_TYPE_UNIX);
-        listener = &server.listeners[conn_index];
+        ct = connectionByType(CONN_TYPE_UNIX);
+        if (!ct) serverPanic("Failed finding connection listener of %s", getConnectionTypeName(CONN_TYPE_UNIX));
+        listener = &server.listeners[CONN_TYPE_UNIX];
         listener->bindaddr = &server.unixsocket;
         listener->bindaddr_count = 1;
-        listener->ct = connectionByType(CONN_TYPE_UNIX);
+        listener->ct = ct;
         listener->priv = &server.unix_ctx_config; /* Unix socket specified */
     }
 
     if (server.rdma_ctx_config.port != 0) {
-        conn_index = connectionIndexByType(CONN_TYPE_RDMA);
-        if (conn_index < 0) serverPanic("Failed finding connection listener of %s", CONN_TYPE_RDMA);
-        listener = &server.listeners[conn_index];
+        ct = connectionByType(CONN_TYPE_RDMA);
+        if (!ct) serverPanic("Failed finding connection listener of %s", getConnectionTypeName(CONN_TYPE_RDMA));
+        listener = &server.listeners[CONN_TYPE_RDMA];
         listener->bindaddr = server.rdma_ctx_config.bindaddr;
         listener->bindaddr_count = server.rdma_ctx_config.bindaddr_count;
         listener->port = server.rdma_ctx_config.port;
-        listener->ct = connectionByType(CONN_TYPE_RDMA);
+        listener->ct = ct;
         listener->priv = &server.rdma_ctx_config;
     }
 
@@ -3079,12 +3080,12 @@ void initListeners(void) {
 
         if (connListen(listener) == C_ERR) {
             serverLog(LL_WARNING, "Failed listening on port %u (%s), aborting.", listener->port,
-                      listener->ct->get_type(NULL));
+                      getConnectionTypeName(listener->ct->get_type()));
             exit(1);
         }
 
         if (createSocketAcceptHandler(listener, connAcceptHandler(listener->ct)) != C_OK)
-            serverPanic("Unrecoverable error creating %s listener accept handler.", listener->ct->get_type(NULL));
+            serverPanic("Unrecoverable error creating %s listener accept handler.", getConnectionTypeName(listener->ct->get_type()));
 
         listen_fds += listener->count;
     }
@@ -3785,7 +3786,7 @@ void call(client *c, int flags) {
     else
         duration = ustime() - call_timer;
 
-    valkey_commands_trace(valkey_commands, command_call, connGetTypeId(c->conn), getClientPeerId(c), getClientSockname(c), real_cmd->declared_name, duration);
+    valkey_commands_trace(valkey_commands, command_call, connGetType(c->conn), getClientPeerId(c), getClientSockname(c), real_cmd->declared_name, duration);
     c->duration += duration;
     dirty = server.dirty - dirty;
     if (dirty < 0) dirty = 0;
@@ -6522,13 +6523,10 @@ void serverAsciiArt(void) {
 }
 
 /* Get the server listener by type name */
-connListener *listenerByType(const char *typename) {
-    int conn_index;
+connListener *listenerByType(int type) {
+    if (!connectionByType(type)) return NULL;
 
-    conn_index = connectionIndexByType(typename);
-    if (conn_index < 0) return NULL;
-
-    return &server.listeners[conn_index];
+    return &server.listeners[type];
 }
 
 /* Close original listener, re-create a new listener from the updated bind address & port */
@@ -6549,7 +6547,7 @@ int changeListener(connListener *listener) {
 
     /* Create event handlers */
     if (createSocketAcceptHandler(listener, listener->ct->accept_handler) != C_OK) {
-        serverPanic("Unrecoverable error creating %s accept handler.", listener->ct->get_type(NULL));
+        serverPanic("Unrecoverable error creating %s accept handler.", getConnectionTypeName(listener->ct->get_type()));
     }
 
     if (server.set_proc_title) serverSetProcTitle(NULL);
@@ -7285,7 +7283,7 @@ __attribute__((weak)) int main(int argc, char **argv) {
             connListener *listener = &server.listeners[j];
             if (listener->ct == NULL) continue;
 
-            serverLog(LL_NOTICE, "Ready to accept connections %s", listener->ct->get_type(NULL));
+            serverLog(LL_NOTICE, "Ready to accept connections %s", getConnectionTypeName(listener->ct->get_type()));
         }
 
         if (server.supervised_mode == SUPERVISED_SYSTEMD) {
