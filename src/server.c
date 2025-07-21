@@ -4194,7 +4194,7 @@ int processCommand(client *c) {
     const int obey_client = mustObeyClient(c);
 
     if (c->flag.multi && c->cmd->flags & CMD_NO_MULTI) {
-        rejectCommandFormat(c, "Command not allowed inside a transaction");
+        rejectCommandFormat(c, "Command '%s' not allowed inside a transaction", c->cmd->fullname);
         return C_OK;
     }
 
