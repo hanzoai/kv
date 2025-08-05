@@ -149,16 +149,16 @@ void expireScanCallback(void *privdata, void *entry) {
     data->sampled++;
 }
 
-static inline int isExpiryTableValidForSamplingCb(hashtable *ht) {
+static inline int expireShouldSkipTableForSamplingCb(hashtable *ht) {
     long long numkeys = hashtableSize(ht);
     unsigned long buckets = hashtableBuckets(ht);
     /* When there are less than 1% filled buckets, sampling the key
      * space is expensive, so stop here waiting for better times...
      * The dictionary will be resized asap. */
     if (buckets > 0 && (numkeys * 100 / buckets < 1)) {
-        return C_ERR;
+        return 1;
     }
-    return C_OK;
+    return 0;
 }
 
 void activeExpireCycle(int type) {
@@ -295,7 +295,7 @@ void activeExpireCycle(int type) {
 
             while (data.sampled < num && checked_buckets < max_buckets) {
                 db->expires_cursor = kvstoreScan(db->expires, db->expires_cursor, -1, expireScanCallback,
-                                                 isExpiryTableValidForSamplingCb, &data);
+                                                 expireShouldSkipTableForSamplingCb, &data);
                 if (db->expires_cursor == 0) {
                     db_done = 1;
                     break;
