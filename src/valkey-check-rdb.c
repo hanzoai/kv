@@ -615,12 +615,20 @@ int redis_check_rdb(char *rdbfilename, FILE *fp) {
     rdb.update_cksum = rdbLoadProgressCallback;
     if (rioRead(&rdb, buf, 9) == 0) goto eoferr;
     buf[9] = '\0';
-    if (memcmp(buf, "REDIS", 5) != 0) {
+    bool is_valkey_magic = false, is_redis_magic = false;
+    if (memcmp(buf, "REDIS0", 6) == 0) {
+        is_redis_magic = true;
+    } else if (memcmp(buf, "VALKEY", 6) == 0) {
+        is_valkey_magic = true;
+    } else {
         rdbCheckError("Wrong signature trying to load DB from file");
         goto err;
     }
-    rdbver = atoi(buf + 5);
-    if (rdbver < 1 || rdbver > RDB_VERSION) {
+    rdbver = atoi(buf + 6);
+    if (rdbver < 1 || rdbver > RDB_VERSION ||
+        (rdbver < RDB_FOREIGN_VERSION_MIN && !is_redis_magic) ||
+        (rdbver >= RDB_FOREIGN_VERSION_MIN && rdbver <= RDB_FOREIGN_VERSION_MAX) ||
+        (rdbver > RDB_FOREIGN_VERSION_MAX && !is_valkey_magic)) {
         rdbCheckError("Can't handle RDB format version %d", rdbver);
         goto err;
     }
