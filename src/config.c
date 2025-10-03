@@ -2565,6 +2565,15 @@ static int updateOOMScoreAdj(const char **err) {
     return 1;
 }
 
+static int updateLuaEnableInsecureApi(const char **err) {
+    UNUSED(err);
+    if (server.lua_insecure_api_current != server.lua_enable_insecure_api) {
+        scriptingReset(server.lazyfree_lazy_user_flush ? 1 : 0);
+    }
+    server.lua_insecure_api_current = server.lua_enable_insecure_api;
+    return 1;
+}
+
 int updateRequirePass(const char **err) {
     UNUSED(err);
     /* The old "requirepass" directive just translates to setting
@@ -3096,6 +3105,7 @@ standardConfig static_configs[] = {
     createBoolConfig("latency-tracking", NULL, MODIFIABLE_CONFIG, server.latency_tracking_enabled, 1, NULL, NULL),
     createBoolConfig("aof-disable-auto-gc", NULL, MODIFIABLE_CONFIG | HIDDEN_CONFIG, server.aof_disable_auto_gc, 0, NULL, updateAofAutoGCEnabled),
     createBoolConfig("replica-ignore-disk-write-errors", NULL, MODIFIABLE_CONFIG, server.repl_ignore_disk_write_error, 0, NULL, NULL),
+    createBoolConfig("lua-enable-insecure-api", "lua-enable-deprecated-api", MODIFIABLE_CONFIG | HIDDEN_CONFIG | PROTECTED_CONFIG, server.lua_enable_insecure_api, 0, NULL, updateLuaEnableInsecureApi),
 
     /* String Configs */
     createStringConfig("aclfile", NULL, IMMUTABLE_CONFIG, ALLOW_EMPTY_STRING, server.acl_filename, "", NULL, NULL),

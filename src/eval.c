@@ -268,6 +268,9 @@ void scriptingInit(int setup) {
     luaSetTableProtectionRecursively(lua);
     lua_pop(lua, 1);
 
+    /* Set metatables of basic types (string, number, nil etc.) readonly. */
+    luaSetTableProtectionForBasicTypes(lua);
+
     lctx.lua = lua;
 }
 

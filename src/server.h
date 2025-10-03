@@ -2005,6 +2005,8 @@ struct redisServer {
     mstime_t busy_reply_threshold;  /* Script / module timeout in milliseconds */
     int pre_command_oom_state;         /* OOM before command (script?) was started */
     int script_disable_deny_script;    /* Allow running commands marked "no-script" inside a script. */
+    int lua_enable_insecure_api;       /* Config to enable insecure api */
+    int lua_insecure_api_current;      /* Current value of if insecure apis are enabled, used to determine if flush is needed. */
     /* Lazy free */
     int lazyfree_lazy_eviction;
     int lazyfree_lazy_expire;
@@ -3350,6 +3352,7 @@ int ldbPendingChildren(void);
 sds luaCreateFunction(client *c, robj *body);
 void luaLdbLineHook(lua_State *lua, lua_Debug *ar);
 void freeLuaScriptsAsync(dict *lua_scripts);
+void scriptingReset(int async);
 void freeFunctionsAsync(functionsLibCtx *lib_ctx);
 int ldbIsEnabled(void);
 void ldbLog(sds entry);
