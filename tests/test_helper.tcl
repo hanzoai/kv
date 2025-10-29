@@ -375,6 +375,8 @@ proc test_server_main {} {
     array set ::clients_start_time {}
     set ::clients_time_history {}
     set ::failed_tests {}
+    set ::ok_count 0
+    set ::err_count 0
 
     # Enter the event loop to handle clients I/O
     after 100 test_server_cron
@@ -404,6 +406,7 @@ proc test_server_cron {} {
                         set file $::active_clients_file($fd)
                     }
                     lappend ::failed_tests "\[[colorstr red TIMEOUT]\]: $test_name in $file"
+                    incr ::err_count
                 }
             }
         }
@@ -461,6 +464,7 @@ proc read_from_test_client fd {
         if {!$::quiet} {
             puts "\[[colorstr green $status]\]: $data ($elapsed ms)"
         }
+        incr ::ok_count
         set ::active_clients_task($fd) "(OK) $data"
     } elseif {$status eq {skip}} {
         if {!$::quiet} {
@@ -474,6 +478,7 @@ proc read_from_test_client fd {
         set err "\[[colorstr red $status]\]: $data"
         puts $err
         lappend ::failed_tests $err
+        incr ::err_count
         set ::active_clients_task($fd) "(ERR) $data"
         if {$::exit_on_failure} {
             puts "(Fast fail: test will exit now)"
@@ -593,6 +598,10 @@ proc signal_idle_client fd {
 
 # The the_end function gets called when all the test units were already
 # executed, so the test finished.
+proc print_test_summary {} {
+    puts "\nTest Summary: [colorstr bold-green $::ok_count] passed, [colorstr bold-red $::err_count] failed"
+}
+
 proc the_end {} {
     # TODO: print the status, exit with the right exit code.
     puts "\n                   The End\n"
@@ -600,6 +609,7 @@ proc the_end {} {
     foreach {time name} $::clients_time_history {
         puts "  $time seconds - $name"
     }
+    print_test_summary
     if {[llength $::failed_tests]} {
         puts "\n[colorstr bold-red {!!! WARNING}] The following tests failed:\n"
         foreach failed $::failed_tests {
