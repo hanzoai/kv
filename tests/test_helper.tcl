@@ -1002,6 +1002,21 @@ proc close_replication_stream {s} {
     return
 }
 
+# IPv6 detection utilities
+# for this detection: the socket connection on ::1 address
+proc is_ipv6_available {} {
+    if {[catch {
+        set server [socket -server dummy -myaddr ::1 0]
+        set port [lindex [chan configure $server -sockname] 2]
+        set client [socket ::1 $port]
+        close $server
+        close $client
+    }] == 0} {
+        return 1
+    }
+    return 0
+}
+
 # With the parallel test running multiple server instances at the same time
 # we need a fast enough computer, otherwise a lot of tests may generate
 # false positives.
