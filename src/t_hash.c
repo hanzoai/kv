@@ -1190,6 +1190,7 @@ void hsetexCommand(client *c) {
     int changes = 0;
     robj **new_argv = NULL;
     int new_argc = 0;
+    int need_rewrite_argv = 0;
 
     for (; fields_index < c->argc - 1; fields_index++) {
         if (!strcasecmp(c->argv[fields_index]->ptr, "fields")) {
@@ -1208,6 +1209,17 @@ void hsetexCommand(client *c) {
     o = lookupKeyWrite(c->db, c->argv[1]);
     if (checkType(c, o, OBJ_HASH))
         return;
+
+    if (flags & (ARGS_SET_NX | ARGS_SET_XX | ARGS_SET_FNX | ARGS_SET_FXX | ARGS_EX | ARGS_PX | ARGS_EXAT)) {
+        need_rewrite_argv = 1;
+    }
+
+    /* Check NX/XX key-level conditions before creating a new object */
+    if (((flags & ARGS_SET_NX) && o != NULL) ||
+        ((flags & ARGS_SET_XX) && o == NULL)) {
+        addReply(c, shared.czero);
+        return;
+    }
 
     /* Handle parsing and calculating the expiration time. */
     if (flags & ARGS_KEEPTTL)
@@ -1252,13 +1264,37 @@ void hsetexCommand(client *c) {
 
     bool has_volatile_fields = hashTypeHasVolatileFields(o);
 
-    /* In case we are expiring all the elements prepare a new argv since we are going to delete all the expired fields. */
+    /* Prepare a new argv when rewriting the command. If set_expired is true,
+     * all expired fields will be deleted. Otherwise, if rewriting is needed due to NX/XX/FNX/FXX flags,
+     * copy the command, key, and optional arguments, skipping the NX/XX/FNX/FXX flags. */
     if (set_expired) {
         new_argv = zmalloc(sizeof(robj *) * (num_fields + 2));
         new_argv[new_argc++] = shared.hdel;
         incrRefCount(shared.hdel);
         new_argv[new_argc++] = c->argv[1];
         incrRefCount(c->argv[1]);
+    } else if (need_rewrite_argv) {
+        /* We use new_argv for rewrite */
+        new_argv = zmalloc(sizeof(robj *) * c->argc);
+        // Copy optional args (skip NX/XX/FNX/FXX)
+        for (int i = 0; i < fields_index; i++) {
+            if (strcmp(c->argv[i]->ptr, "NX") &&
+                strcmp(c->argv[i]->ptr, "XX") &&
+                strcmp(c->argv[i]->ptr, "FNX") &&
+                strcmp(c->argv[i]->ptr, "FXX")) {
+                /* Propagate as HSETEX Key Value PXAT millisecond-timestamp if there is
+                 * EX/PX/EXAT flag. */
+                if (expire && !(flags & ARGS_PXAT) && c->argv[i + 1] == expire) {
+                    robj *milliseconds_obj = createStringObjectFromLongLong(when);
+                    new_argv[new_argc++] = shared.pxat;
+                    new_argv[new_argc++] = milliseconds_obj;
+                    i++; // skip the original expire argument
+                } else {
+                    new_argv[new_argc++] = c->argv[i];
+                    incrRefCount(c->argv[i]);
+                }
+            }
+        }
     }
 
     for (i = fields_index; i < c->argc; i += 2) {
@@ -1273,6 +1309,12 @@ void hsetexCommand(client *c) {
         } else {
             hashTypeSet(o, c->argv[i]->ptr, c->argv[i + 1]->ptr, when, set_flags);
             changes++;
+            if (need_rewrite_argv) {
+                new_argv[new_argc++] = c->argv[i];
+                incrRefCount(c->argv[i]);
+                new_argv[new_argc++] = c->argv[i + 1];
+                incrRefCount(c->argv[i + 1]);
+            }
         }
     }
 
@@ -1287,20 +1329,10 @@ void hsetexCommand(client *c) {
             notifyKeyspaceEvent(NOTIFY_HASH, "hexpired", c->argv[1], c->db->id);
         } else {
             notifyKeyspaceEvent(NOTIFY_HASH, "hset", c->argv[1], c->db->id);
+            if (need_rewrite_argv) {
+                replaceClientCommandVector(c, new_argc, new_argv);
+            }
             if (expire) {
-                /* Propagate as HSETEX Key Value PXAT millisecond-timestamp if there is
-                 * EX/PX/EXAT flag. */
-                if (!(flags & ARGS_PXAT)) {
-                    for (int i = 2; i < fields_index; i++) {
-                        if (c->argv[i + 1] == expire) {
-                            robj *milliseconds_obj = createStringObjectFromLongLong(when);
-                            rewriteClientCommandArgument(c, i, shared.pxat);
-                            rewriteClientCommandArgument(c, i + 1, milliseconds_obj);
-                            decrRefCount(milliseconds_obj);
-                            break;
-                        }
-                    }
-                }
                 notifyKeyspaceEvent(NOTIFY_HASH, "hexpire", c->argv[1], c->db->id);
             }
         }
