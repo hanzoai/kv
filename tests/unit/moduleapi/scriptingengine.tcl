@@ -131,6 +131,8 @@ start_server {tags {"modules"}} {
     test {Call server command without permission} {
         r acl setuser default -set
 
+        r ACL LOG RESET
+
         assert_error {NOPERM User default has no permissions *} {r set x 5}
 
         assert_error {NOPERM User default has no permissions *} {
@@ -149,6 +151,31 @@ start_server {tags {"modules"}} {
                 return server.call('SET', 'x', 5)
             } 0
         }
+
+        # verify ACL LOG entries
+        set entries [r ACL LOG]
+        assert_equal [llength $entries] 3
+
+        set entry [lindex $entries 0]
+        assert_equal [dict get $entry username] {default}
+        assert_equal [dict get $entry context] {lua}
+        assert_equal [dict get $entry object] {set}
+        assert_equal [dict get $entry reason] {command}
+        assert_match {*cmd=eval*} [dict get $entry client-info]
+
+        set entry [lindex $entries 1]
+        assert_equal [dict get $entry username] {default}
+        assert_equal [dict get $entry context] {script}
+        assert_equal [dict get $entry object] {set}
+        assert_equal [dict get $entry reason] {command}
+        assert_match {*cmd=eval*} [dict get $entry client-info]
+
+        set entry [lindex $entries 2]
+        assert_equal [dict get $entry username] {default}
+        assert_equal [dict get $entry context] {toplevel}
+        assert_equal [dict get $entry object] {set}
+        assert_equal [dict get $entry reason] {command}
+        assert_match {*cmd=set*} [dict get $entry client-info]
 
         r acl setuser default +set
     }
