@@ -11,7 +11,7 @@ RUN apk add --no-cache \
 COPY . /src
 WORKDIR /src
 
-RUN make -j$(nproc) BUILD_TLS=yes && \
+RUN make -j$(nproc) BUILD_TLS=yes MALLOC=libc && \
     make install PREFIX=/opt/kv
 
 # Stage 2: Runtime image
