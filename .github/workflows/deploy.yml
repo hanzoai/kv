@@ -67,59 +67,36 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Log in to Docker Hub
-        id: dockerhub
-        continue-on-error: true
         uses: docker/login-action@v3
+        continue-on-error: true
         with:
           registry: docker.io
           username: ${{ steps.kms.outputs.DOCKERHUB_USERNAME }}
           password: ${{ steps.kms.outputs.DOCKERHUB_TOKEN }}
 
-      - name: Extract metadata (GHCR)
-        id: meta-ghcr
+      - name: Image metadata
+        id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/hanzoai/kv
+          images: |
+            ghcr.io/hanzoai/kv
+            hanzoai/kv
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=9,enable={{is_default_branch}}
             type=sha,prefix=
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
 
-      - name: Extract metadata (Docker Hub)
-        id: meta-dockerhub
-        uses: docker/metadata-action@v5
-        with:
-          images: docker.io/hanzoai/kv
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-
-      - name: Build and push to GHCR
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta-ghcr.outputs.tags }}
-          labels: ${{ steps.meta-ghcr.outputs.labels }}
-          cache-from: type=gha,scope=kv
-          cache-to: type=gha,mode=max,scope=kv
-
-      - name: Push to Docker Hub
-        if: steps.dockerhub.outcome == 'success'
-        continue-on-error: true
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta-dockerhub.outputs.tags }}
-          labels: ${{ steps.meta-dockerhub.outputs.labels }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=kv
           cache-to: type=gha,mode=max,scope=kv
 
