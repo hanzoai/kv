@@ -1,4 +1,4 @@
-ARG KV_VERSION=8.1
+ARG KV_VERSION=9
 
 # Hanzo KV: High-performance key-value store
 FROM valkey/valkey:${KV_VERSION}-alpine AS base
