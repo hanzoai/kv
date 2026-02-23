@@ -165,5 +165,5 @@ jobs:
       - name: Rolling update KV
         run: |
           kubectl -n hanzo set image statefulset/redis-master \
-            redis-master=ghcr.io/hanzoai/kv:latest
+            redis=ghcr.io/hanzoai/kv:latest
           kubectl -n hanzo rollout status statefulset/redis-master --timeout=120s
