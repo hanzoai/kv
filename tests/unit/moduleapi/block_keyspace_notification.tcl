@@ -12,10 +12,10 @@ start_server {tags {"modules"}} {
     test {Blocking keyspace notification two} {
         wait_for_blocked_clients_count 0
         r b_keyspace.clear
-        set rd1 [valkey_deferring_client]
+        set rd1 [kv_deferring_client]
         $rd1 hset b c d
         after 500
-        set rd2 [valkey_deferring_client]
+        set rd2 [kv_deferring_client]
         $rd2 hset c d e
         wait_for_blocked_clients_count 2
         assert_equal "" [r b_keyspace.events]
@@ -27,7 +27,7 @@ start_server {tags {"modules"}} {
     test {Blocking keyspace notification with pipelining hset after hget} {
         wait_for_blocked_clients_count 0
         r b_keyspace.clear
-        set rd1 [valkey_deferring_client]
+        set rd1 [kv_deferring_client]
         $rd1 hset key_10 field_10 value_10
         wait_for_blocked_clients_count 0
         assert_equal "1" [$rd1 read]
@@ -51,7 +51,7 @@ start_server {tags {"modules"}} {
     test {Blocking keyspace notification with pipelining hget after hset} {
         wait_for_blocked_clients_count 0
         r b_keyspace.clear
-        set rd1 [valkey_deferring_client]
+        set rd1 [kv_deferring_client]
         pause_process [srv 0 pid]
         $rd1 hset key_2 field_1 value_1
         $rd1 hget key_2 field_1
@@ -86,7 +86,7 @@ start_server {tags {"modules"}} {
         r hset f g h
         wait_for_blocked_clients_count 0
         assert_equal "OK" [r b_keyspace.clear]
-        set rd1 [valkey_deferring_client]
+        set rd1 [kv_deferring_client]
         $rd1 RENAME f g
         # Only one blocked client
         assert_equal [s 0 blocked_clients] 1

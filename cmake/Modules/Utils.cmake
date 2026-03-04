@@ -1,5 +1,5 @@
 # Return the current host distro name. For example: ubuntu, debian, amzn etc
-function (valkey_get_distro_name DISTRO_NAME)
+function (kv_get_distro_name DISTRO_NAME)
     if (LINUX AND NOT APPLE)
         execute_process(
             COMMAND /bin/bash "-c" "cat /etc/os-release |grep ^ID=|cut -d = -f 2"
@@ -26,20 +26,20 @@ function (valkey_get_distro_name DISTRO_NAME)
     endif ()
 endfunction ()
 
-function (valkey_parse_version OUT_MAJOR OUT_MINOR OUT_PATCH)
+function (kv_parse_version OUT_MAJOR OUT_MINOR OUT_PATCH)
     # Read and parse package version from version.h file
     file(STRINGS ${CMAKE_SOURCE_DIR}/src/version.h VERSION_LINES)
     foreach (LINE ${VERSION_LINES})
-        string(FIND "${LINE}" "#define VALKEY_VERSION " VERSION_STR_POS)
+        string(FIND "${LINE}" "#define KV_VERSION " VERSION_STR_POS)
         if (VERSION_STR_POS GREATER -1)
-            string(REPLACE "#define VALKEY_VERSION " "" LINE "${LINE}")
+            string(REPLACE "#define KV_VERSION " "" LINE "${LINE}")
             string(REPLACE "\"" "" LINE "${LINE}")
             # Change "." to ";" to make it a list
             string(REPLACE "." ";" LINE "${LINE}")
             list(GET LINE 0 _MAJOR)
             list(GET LINE 1 _MINOR)
             list(GET LINE 2 _PATCH)
-            message(STATUS "Valkey version: ${_MAJOR}.${_MINOR}.${_PATCH}")
+            message(STATUS "KV version: ${_MAJOR}.${_MINOR}.${_PATCH}")
             # Set the output variables
             set(${OUT_MAJOR}
                 ${_MAJOR}
@@ -66,7 +66,7 @@ endfunction ()
 # - `yes` | `1` | `on` => return  `1`
 # - `module` => return  `2`
 # ~~~
-function (valkey_parse_build_option OPTION_VALUE OUT_ARG_ENUM)
+function (kv_parse_build_option OPTION_VALUE OUT_ARG_ENUM)
     list(APPEND VALID_OPTIONS "yes")
     list(APPEND VALID_OPTIONS "1")
     list(APPEND VALID_OPTIONS "on")
@@ -101,7 +101,7 @@ function (valkey_parse_build_option OPTION_VALUE OUT_ARG_ENUM)
     endif ()
 endfunction ()
 
-function (valkey_pkg_config PKGNAME OUT_VARIABLE)
+function (kv_pkg_config PKGNAME OUT_VARIABLE)
     if (NOT FOUND_PKGCONFIG)
         # Locate pkg-config once
         find_package(PkgConfig REQUIRED)

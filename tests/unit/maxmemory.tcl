@@ -60,7 +60,7 @@ start_server {tags {"maxmemory external:skip"}} {
             init_test $client_eviction
 
             for {set j 0} {$j < 20} {incr j} {
-                set rr [valkey_deferring_client]
+                set rr [kv_deferring_client]
                 lappend clients $rr
             }
             
@@ -89,7 +89,7 @@ start_server {tags {"maxmemory external:skip"}} {
             init_test $client_eviction
             
             for {set j 0} {$j < 30} {incr j} {
-                set rr [valkey_deferring_client]
+                set rr [kv_deferring_client]
                 lappend clients $rr
             }
 
@@ -119,7 +119,7 @@ start_server {tags {"maxmemory external:skip"}} {
             init_test $client_eviction
 
             for {set j 0} {$j < 20} {incr j} {
-                set rr [valkey_client]
+                set rr [kv_client]
                 lappend clients $rr
             }
 
@@ -330,12 +330,12 @@ proc test_slave_buffers {test_name cmd_count payload_len limit_memory pipeline} 
             }
 
             # put the slave to sleep
-            set rd_slave [valkey_deferring_client]
+            set rd_slave [kv_deferring_client]
             pause_process $slave_pid
 
             # send some 10mb worth of commands that don't increase the memory usage
             if {$pipeline == 1} {
-                set rd_master [valkey_deferring_client -1]
+                set rd_master [kv_deferring_client -1]
                 for {set k 0} {$k < $cmd_count} {incr k} {
                     $rd_master setrange key:0 0 [string repeat A $payload_len]
                 }
@@ -387,7 +387,7 @@ proc test_slave_buffers {test_name cmd_count payload_len limit_memory pipeline} 
 
 # test that slave buffer are counted correctly
 # we wanna use many small commands, and we don't wanna wait long
-# so we need to use a pipeline (valkey_deferring_client)
+# so we need to use a pipeline (kv_deferring_client)
 # that may cause query buffer to fill and induce eviction, so we disable it
 test_slave_buffers {slave buffer are counted correctly} 1000000 10 0 1
 
@@ -445,7 +445,7 @@ start_server {tags {"maxmemory external:skip io-threads:skip"}} {
         # 10 clients listening on tracking messages
         set clients {}
         for {set j 0} {$j < 10} {incr j} {
-            lappend clients [valkey_deferring_client]
+            lappend clients [kv_deferring_client]
         }
         foreach rd $clients {
             $rd HELLO 3

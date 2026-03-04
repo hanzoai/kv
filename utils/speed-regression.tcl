@@ -2,7 +2,7 @@
 # Copyright (C) 2011 Redis Ltd.
 # Released under the BSD license like Redis itself
 
-source ../tests/support/valkey.tcl
+source ../tests/support/kv.tcl
 set ::port 12123
 set ::tests {PING,SET,GET,INCR,LPUSH,LPOP,SADD,SPOP,LRANGE_100,LRANGE_600,MSET}
 set ::datasize 16
@@ -20,25 +20,25 @@ proc run-tests branches {
         exec -ignorestderr make 2> /dev/null
 
         if {$branch_id == 0} {
-            puts "  copy valkey-benchmark from unstable to /tmp..."
-            exec -ignorestderr cp ./valkey-benchmark /tmp
+            puts "  copy kv-benchmark from unstable to /tmp..."
+            exec -ignorestderr cp ./kv-benchmark /tmp
             incr branch_id
             continue
         }
 
         # Start the server
-        puts "  starting the server... [exec ./valkey-server -v]"
-        set pids [exec echo "port $::port\nloglevel warning\n" | ./valkey-server - > /dev/null 2> /dev/null &]
+        puts "  starting the server... [exec ./kv-server -v]"
+        set pids [exec echo "port $::port\nloglevel warning\n" | ./kv-server - > /dev/null 2> /dev/null &]
         puts "  pids: $pids"
         after 1000
         puts "  running the benchmark"
 
         set r [redis 127.0.0.1 $::port]
         set i [$r info]
-        puts "  valkey INFO shows version: [lindex [split $i] 0]"
+        puts "  kv INFO shows version: [lindex [split $i] 0]"
         $r close
 
-        set output [exec /tmp/valkey-benchmark -n $::requests -t $::tests -d $::datasize --csv -p $::port]
+        set output [exec /tmp/kv-benchmark -n $::requests -t $::tests -d $::datasize --csv -p $::port]
         lappend runs $b $output
         puts "  killing server..."
         catch {exec kill -9 [lindex $pids 0]}
@@ -83,7 +83,7 @@ proc combine-results {results} {
 }
 
 proc main {} {
-    # Note: the first branch is only used in order to get the valkey-benchmark
+    # Note: the first branch is only used in order to get the kv-benchmark
     # executable. Tests are performed starting from the second branch.
     set branches {
         slowset 2.2.0 2.4.0 unstable slowset

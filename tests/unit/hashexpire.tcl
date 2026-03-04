@@ -107,7 +107,7 @@ proc setup_replication_test {primary replica primary_host primary_port} {
 
 proc setup_single_keyspace_notification {r} {
     $r config set notify-keyspace-events KEA
-    set rd [valkey_deferring_client]
+    set rd [kv_deferring_client]
     assert_equal {1} [psubscribe $rd __keyevent@*]
     return $rd
 }
@@ -1751,7 +1751,7 @@ start_server {tags {"hashexpire"}} {
 
         # This test verifies that if a field has expired (but not yet lazily deleted),
         # and it is overwritten using a plain HSET (i.e., no TTL),
-        # Valkey treats the field as non existing and updates it,
+        # KV treats the field as non existing and updates it,
         # effectively clearing the old TTL and making the field persistent.
     
         r HSETEX myhash PX 10 FIELDS 1 field1 oldval
@@ -1782,7 +1782,7 @@ start_server {tags {"hashexpire"}} {
 
         # This test verifies that if a field has expired,
         # and it is overwritten using a plain HINCRBY (i.e., no TTL),
-        # Valkey treats the field as still existing and updates it,
+        # KV treats the field as still existing and updates it,
         # effectively clearing the old TTL and starting the value from 0.
     
         r HSETEX myhash PX 10 FIELDS 1 field1 1
@@ -1825,7 +1825,7 @@ start_server {tags {"hashexpire"}} {
 
         # This test verifies that if a field has expired,
         # and it is overwritten using a plain HINCRBYFLOAT (i.e., no TTL),
-        # Valkey treats the field as still existing and updates it,
+        # KV treats the field as still existing and updates it,
         # effectively clearing the old TTL and starting the value from 0.
     
         r HSETEX myhash PX 10 FIELDS 1 field1 1
@@ -1894,9 +1894,9 @@ start_server {tags {"hashexpire"}} {
         r DEBUG SET-ACTIVE-EXPIRE 0
 
         # This test proves that deleting an expired field with HDEL
-        # does NOT trigger Valkey's expiration mechanism.
+        # does NOT trigger KV's expiration mechanism.
         #
-        # The key observation is that Valkey tracks how many fields were
+        # The key observation is that KV tracks how many fields were
         # expired via TTL using the `expired_fields` counter in INFO stats.
         # If HDEL caused expiration to be processed internally,
         # this counter would increment. We assert that it remains unchanged.
@@ -2004,7 +2004,7 @@ start_server {tags {"hashexpire"}} {
             r FLUSHALL
             r DEBUG SET-ACTIVE-EXPIRE 0
             r config set notify-keyspace-events KEA
-            set rd [valkey_deferring_client]
+            set rd [kv_deferring_client]
             assert_equal {1} [psubscribe $rd __keyevent@*]
 
             r HSET myhash f1 v1 f2 v2 f3 v3
@@ -2037,7 +2037,7 @@ start_server {tags {"hashexpire"}} {
         test "Field TTL expires before key TTL: only the specific field should expire: $time_unit" {
             r FLUSHALL
             r DEBUG SET-ACTIVE-EXPIRE 0
-            set rd [valkey_deferring_client]
+            set rd [kv_deferring_client]
             assert_equal {1} [psubscribe $rd __keyevent@*]
             
             r HSET myhash f1 v1 f2 v2 f3 v3
@@ -2399,8 +2399,8 @@ start_server {tags {"hashexpire external:skip"}} {
             foreach instance [list $primary $replica_1] {
                 $instance config set notify-keyspace-events KEA
             }
-            set rd_primary [valkey_deferring_client -1]
-            set rd_replica_1 [valkey_deferring_client $replica_1_host $replica_1_port]
+            set rd_primary [kv_deferring_client -1]
+            set rd_replica_1 [kv_deferring_client $replica_1_host $replica_1_port]
             foreach rd [list $rd_primary $rd_replica_1] {
                 assert_equal {1} [psubscribe $rd __keyevent@*]
             }
@@ -2460,9 +2460,9 @@ start_server {tags {"hashexpire external:skip"}} {
                 }
 
                 # Initialize deferred clients and subscribe to keyspace notifications
-                set rd_primary [valkey_deferring_client -2]
-                set rd_replica_1 [valkey_deferring_client -1]
-                set rd_replica_2 [valkey_deferring_client $replica_2_host $replica_2_port]
+                set rd_primary [kv_deferring_client -2]
+                set rd_replica_1 [kv_deferring_client -1]
+                set rd_replica_2 [kv_deferring_client $replica_2_host $replica_2_port]
                 assert_equal {1} [psubscribe $rd_primary __keyevent@*]
                 assert_equal {1} [psubscribe $rd_replica_1 __keyevent@*]
                 assert_equal {1} [psubscribe $rd_replica_2 __keyevent@*]
@@ -2563,7 +2563,7 @@ start_server {tags {"hashexpire external:skip"}} {
 
             # Setup keyspace notifications for the promoted replica
             $replica_1 config set notify-keyspace-events KEA
-            set rd_replica [valkey_deferring_client $replica_1_host $replica_1_port]
+            set rd_replica [kv_deferring_client $replica_1_host $replica_1_port]
             assert_equal {1} [psubscribe $rd_replica __keyevent@*]
 
             # Check all values that checked before are the same
@@ -2661,8 +2661,8 @@ start_server {tags {"hashexpire external:skip"}} {
             # Setup keyspace notifications
             $primary config set notify-keyspace-events KEA
             $replica_1 config set notify-keyspace-events KEA
-            set rd_primary [valkey_deferring_client -1]
-            set rd_replica_1 [valkey_deferring_client $replica_1_host $replica_1_port]
+            set rd_primary [kv_deferring_client -1]
+            set rd_replica_1 [kv_deferring_client $replica_1_host $replica_1_port]
             assert_equal {1} [psubscribe $rd_primary __keyevent@*]
             assert_equal {1} [psubscribe $rd_replica_1 __keyevent@*]
 
@@ -2779,7 +2779,7 @@ start_cluster 3 0 {tags {"cluster mytest external:skip"} overrides {cluster-node
 
         # Setup keyspace notifications
         R 1 config set notify-keyspace-events KEA
-        set rd [valkey_deferring_client -1]
+        set rd [kv_deferring_client -1]
         assert_equal {1} [psubscribe $rd __keyevent@0__:hexpired]
 
         # Set expiration to 0
@@ -3220,7 +3220,7 @@ start_server {tags {"hashexpire external:skip"}} {
     }
 
     ##### Active expiry test with 1 node #####
-    set rd [valkey_deferring_client]
+    set rd [kv_deferring_client]
     assert_equal {1} [psubscribe $rd __keyevent@*]
 
     test {Active expiry deletes entire key when only field expires} {
@@ -4071,8 +4071,8 @@ start_server {tags {"hashexpire external:skip"}} {
             foreach instance [list $primary $replica] {
                 $instance config set notify-keyspace-events KEA
             }
-            set rd_primary [valkey_deferring_client -1]
-            set rd_replica [valkey_deferring_client $replica_host $replica_port]
+            set rd_primary [kv_deferring_client -1]
+            set rd_replica [kv_deferring_client $replica_host $replica_port]
             foreach rd [list $rd_primary $rd_replica] {
                 assert_equal {1} [psubscribe $rd __keyevent@*]
             }
@@ -4138,9 +4138,9 @@ start_server {tags {"hashexpire external:skip"}} {
                 foreach instance [list $primary $replica $replica_2] {
                     $instance config set notify-keyspace-events KEA
                 }
-                set rd_primary [valkey_deferring_client -2]
-                set rd_replica [valkey_deferring_client -1]
-                set rd_replica_2 [valkey_deferring_client $replica_2_host $replica_2_port]
+                set rd_primary [kv_deferring_client -2]
+                set rd_replica [kv_deferring_client -1]
+                set rd_replica_2 [kv_deferring_client $replica_2_host $replica_2_port]
                 foreach rd [list $rd_primary $rd_replica $rd_replica_2] {
                     assert_equal {1} [psubscribe $rd __keyevent@*]
                 }
@@ -4208,8 +4208,8 @@ start_server {tags {"hashexpire external:skip"}} {
             foreach instance [list $primary $replica] {
                 $instance config set notify-keyspace-events KEA
             }
-            set rd_primary [valkey_deferring_client -1]
-            set rd_replica [valkey_deferring_client $replica_host $replica_port]
+            set rd_primary [kv_deferring_client -1]
+            set rd_replica [kv_deferring_client $replica_host $replica_port]
             foreach rd [list $rd_primary $rd_replica] {
                 assert_equal {1} [psubscribe $rd __keyevent@*]
             }
@@ -4271,8 +4271,8 @@ start_server {tags {"hashexpire external:skip"}} {
             foreach instance [list $primary $replica] {
                 $instance config set notify-keyspace-events KEA
             }
-            set rd_primary [valkey_deferring_client -1]
-            set rd_replica [valkey_deferring_client $replica_host $replica_port]
+            set rd_primary [kv_deferring_client -1]
+            set rd_replica [kv_deferring_client $replica_host $replica_port]
             foreach rd [list $rd_primary $rd_replica] {
                 assert_equal {1} [psubscribe $rd __keyevent@*]
             }
@@ -4353,7 +4353,7 @@ start_server {tags {"hashexpire external:skip"}} {
         proc setup_replica_monitor_test {primary replica primary_host primary_port replica_host replica_port} {
             lassign [setup_replication_test $primary $replica $primary_host $primary_port] primary_initial_expired replica_initial_expired
 
-            set rd_replica [valkey_deferring_client $replica_host $replica_port]
+            set rd_replica [kv_deferring_client $replica_host $replica_port]
             $rd_replica monitor
             assert_match {*OK*} [$rd_replica read]
             
@@ -4441,8 +4441,8 @@ start_server {tags {"hashexpire external:skip"}} {
             foreach instance [list $primary $replica] {
                 $instance config set notify-keyspace-events KEA
             }
-            set rd_primary [valkey_deferring_client -1]
-            set rd_replica [valkey_deferring_client $replica_host $replica_port]
+            set rd_primary [kv_deferring_client -1]
+            set rd_replica [kv_deferring_client $replica_host $replica_port]
             foreach rd [list $rd_primary $rd_replica] {
                 assert_equal {1} [psubscribe $rd __keyevent@*]
             }
@@ -4543,8 +4543,8 @@ start_server {tags {"hashexpire external:skip"}} {
                 foreach instance [list $primary $replica] {
                     $instance config set notify-keyspace-events KEA
                 }
-                set primary_ksn [valkey_deferring_client -1]
-                set replica_ksn [valkey_deferring_client $replica_host $replica_port]
+                set primary_ksn [kv_deferring_client -1]
+                set replica_ksn [kv_deferring_client $replica_host $replica_port]
                 foreach rd [list $primary_ksn $replica_ksn] {
                     assert_equal {1} [psubscribe $rd __keyevent@*]
                 }
@@ -4607,8 +4607,8 @@ start_server {tags {"hashexpire external:skip"}} {
             foreach instance [list $primary $replica] {
                 $instance config set notify-keyspace-events KEA
             }
-            set primary_ksn [valkey_deferring_client -1]
-            set replica_ksn [valkey_deferring_client $replica_host $replica_port]
+            set primary_ksn [kv_deferring_client -1]
+            set replica_ksn [kv_deferring_client $replica_host $replica_port]
             foreach rd [list $primary_ksn $replica_ksn] {
                 assert_equal {1} [psubscribe $rd __keyevent@*]
             }
@@ -4645,8 +4645,8 @@ start_server {tags {"hashexpire external:skip"}} {
             foreach instance [list $primary $replica] {
                 $instance config set notify-keyspace-events KEA
             }
-            set primary_ksn [valkey_deferring_client -1]
-            set replica_ksn [valkey_deferring_client $replica_host $replica_port]
+            set primary_ksn [kv_deferring_client -1]
+            set replica_ksn [kv_deferring_client $replica_host $replica_port]
             foreach rd [list $primary_ksn $replica_ksn] {
                 assert_equal {1} [psubscribe $rd __keyevent@*]
             }

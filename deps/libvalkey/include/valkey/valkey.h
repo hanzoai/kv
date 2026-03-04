@@ -31,8 +31,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef VALKEY_VALKEY_H
-#define VALKEY_VALKEY_H
+#ifndef KV_KV_H
+#define KV_KV_H
 #include "read.h"
 #include "visibility.h"
 
@@ -49,146 +49,146 @@ typedef SSIZE_T ssize_t;
 
 #include <stdint.h> /* uintXX_t, etc */
 
-#define LIBVALKEY_VERSION_MAJOR 0
-#define LIBVALKEY_VERSION_MINOR 2
-#define LIBVALKEY_VERSION_PATCH 1
+#define LIBKV_VERSION_MAJOR 0
+#define LIBKV_VERSION_MINOR 2
+#define LIBKV_VERSION_PATCH 1
 
 /* Connection type can be blocking or non-blocking and is set in the
- * least significant bit of the flags field in valkeyContext. */
-#define VALKEY_BLOCK 0x1
+ * least significant bit of the flags field in kvContext. */
+#define KV_BLOCK 0x1
 
 /* Connection may be disconnected before being free'd. The second bit
  * in the flags field is set when the context is connected. */
-#define VALKEY_CONNECTED 0x2
+#define KV_CONNECTED 0x2
 
 /* The async API might try to disconnect cleanly and flush the output
  * buffer and read all subsequent replies before disconnecting.
  * This flag means no new commands can come in and the connection
  * should be terminated once all replies have been read. */
-#define VALKEY_DISCONNECTING 0x4
+#define KV_DISCONNECTING 0x4
 
 /* Flag specific to the async API which means that the context should be clean
  * up as soon as possible. */
-#define VALKEY_FREEING 0x8
+#define KV_FREEING 0x8
 
 /* Flag that is set when an async callback is executed. */
-#define VALKEY_IN_CALLBACK 0x10
+#define KV_IN_CALLBACK 0x10
 
 /* Flag that is set when the async context has one or more subscriptions. */
-#define VALKEY_SUBSCRIBED 0x20
+#define KV_SUBSCRIBED 0x20
 
 /* Flag that is set when monitor mode is active */
-#define VALKEY_MONITORING 0x40
+#define KV_MONITORING 0x40
 
 /* Flag that is set when we should set SO_REUSEADDR before calling bind() */
-#define VALKEY_REUSEADDR 0x80
+#define KV_REUSEADDR 0x80
 
 /* Flag that is set when the async connection supports push replies. */
-#define VALKEY_SUPPORTS_PUSH 0x100
+#define KV_SUPPORTS_PUSH 0x100
 
 /**
  * Flag that indicates the user does not want the context to
  * be automatically freed upon error
  */
-#define VALKEY_NO_AUTO_FREE 0x200
+#define KV_NO_AUTO_FREE 0x200
 
 /* Flag that indicates the user does not want replies to be automatically freed */
-#define VALKEY_NO_AUTO_FREE_REPLIES 0x400
+#define KV_NO_AUTO_FREE_REPLIES 0x400
 
 /* Flags to prefer IPv6 or IPv4 when doing DNS lookup. (If both are set,
  * AF_UNSPEC is used.) */
-#define VALKEY_PREFER_IPV4 0x800
-#define VALKEY_PREFER_IPV6 0x1000
+#define KV_PREFER_IPV4 0x800
+#define KV_PREFER_IPV6 0x1000
 
 /* Flag specific to use Multipath TCP (MPTCP) */
-#define VALKEY_MPTCP 0x2000
+#define KV_MPTCP 0x2000
 
-#define VALKEY_KEEPALIVE_INTERVAL 15 /* seconds */
+#define KV_KEEPALIVE_INTERVAL 15 /* seconds */
 
 /* number of times we retry to connect in the case of EADDRNOTAVAIL and
  * SO_REUSEADDR is being used. */
-#define VALKEY_CONNECT_RETRIES 10
+#define KV_CONNECT_RETRIES 10
 
 /* Forward declarations for structs defined elsewhere */
-struct valkeyAsyncContext;
-struct valkeyContext;
+struct kvAsyncContext;
+struct kvContext;
 
 /* RESP3 push helpers and callback prototypes */
-#define valkeyIsPushReply(r) (((valkeyReply *)(r))->type == VALKEY_REPLY_PUSH)
-typedef void(valkeyPushFn)(void *, void *);
-typedef void(valkeyAsyncPushFn)(struct valkeyAsyncContext *, void *);
+#define kvIsPushReply(r) (((kvReply *)(r))->type == KV_REPLY_PUSH)
+typedef void(kvPushFn)(void *, void *);
+typedef void(kvAsyncPushFn)(struct kvAsyncContext *, void *);
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* This is the reply object returned by valkeyCommand() */
-typedef struct valkeyReply {
-    int type;                     /* VALKEY_REPLY_* */
-    long long integer;            /* The integer when type is VALKEY_REPLY_INTEGER */
-    double dval;                  /* The double when type is VALKEY_REPLY_DOUBLE */
+/* This is the reply object returned by kvCommand() */
+typedef struct kvReply {
+    int type;                     /* KV_REPLY_* */
+    long long integer;            /* The integer when type is KV_REPLY_INTEGER */
+    double dval;                  /* The double when type is KV_REPLY_DOUBLE */
     size_t len;                   /* Length of string */
-    char *str;                    /* Used for VALKEY_REPLY_ERROR, VALKEY_REPLY_STRING
-                                   * VALKEY_REPLY_VERB,
-                                   * VALKEY_REPLY_DOUBLE (in additional to dval),
-                                   * and VALKEY_REPLY_BIGNUM. */
-    char vtype[4];                /* Used for VALKEY_REPLY_VERB, contains the null
+    char *str;                    /* Used for KV_REPLY_ERROR, KV_REPLY_STRING
+                                   * KV_REPLY_VERB,
+                                   * KV_REPLY_DOUBLE (in additional to dval),
+                                   * and KV_REPLY_BIGNUM. */
+    char vtype[4];                /* Used for KV_REPLY_VERB, contains the null
                                    * terminated 3 character content type,
                                    * such as "txt". */
-    size_t elements;              /* number of elements, for VALKEY_REPLY_ARRAY */
-    struct valkeyReply **element; /* elements vector for VALKEY_REPLY_ARRAY */
-} valkeyReply;
+    size_t elements;              /* number of elements, for KV_REPLY_ARRAY */
+    struct kvReply **element; /* elements vector for KV_REPLY_ARRAY */
+} kvReply;
 
-LIBVALKEY_API valkeyReader *valkeyReaderCreate(void);
+LIBKV_API kvReader *kvReaderCreate(void);
 
-/* Function to free the reply objects hivalkey returns by default. */
-LIBVALKEY_API void freeReplyObject(void *reply);
+/* Function to free the reply objects hikv returns by default. */
+LIBKV_API void freeReplyObject(void *reply);
 
 /* Functions to format a command according to the protocol. */
-LIBVALKEY_API int valkeyvFormatCommand(char **target, const char *format, va_list ap);
-LIBVALKEY_API int valkeyFormatCommand(char **target, const char *format, ...);
-LIBVALKEY_API long long valkeyFormatCommandArgv(char **target, int argc, const char **argv, const size_t *argvlen);
-LIBVALKEY_API void valkeyFreeCommand(char *cmd);
+LIBKV_API int kvvFormatCommand(char **target, const char *format, va_list ap);
+LIBKV_API int kvFormatCommand(char **target, const char *format, ...);
+LIBKV_API long long kvFormatCommandArgv(char **target, int argc, const char **argv, const size_t *argvlen);
+LIBKV_API void kvFreeCommand(char *cmd);
 
-enum valkeyConnectionType {
-    VALKEY_CONN_TCP,
-    VALKEY_CONN_UNIX,
-    VALKEY_CONN_USERFD,
-    VALKEY_CONN_RDMA, /* experimental, may be removed in any version */
+enum kvConnectionType {
+    KV_CONN_TCP,
+    KV_CONN_UNIX,
+    KV_CONN_USERFD,
+    KV_CONN_RDMA, /* experimental, may be removed in any version */
 
-    VALKEY_CONN_MAX
+    KV_CONN_MAX
 };
 
-#define VALKEY_OPT_NONBLOCK 0x01
-#define VALKEY_OPT_REUSEADDR 0x02
-#define VALKEY_OPT_NOAUTOFREE 0x04        /* Don't automatically free the async
+#define KV_OPT_NONBLOCK 0x01
+#define KV_OPT_REUSEADDR 0x02
+#define KV_OPT_NOAUTOFREE 0x04        /* Don't automatically free the async
                                           * object on a connection failure, or
                                           * other implicit conditions. Only free
                                           * on an explicit call to disconnect()
                                           * or free() */
-#define VALKEY_OPT_NO_PUSH_AUTOFREE 0x08  /* Don't automatically intercept and
+#define KV_OPT_NO_PUSH_AUTOFREE 0x08  /* Don't automatically intercept and
                                           * free RESP3 PUSH replies. */
-#define VALKEY_OPT_NOAUTOFREEREPLIES 0x10 /* Don't automatically free replies. */
-#define VALKEY_OPT_PREFER_IPV4 0x20       /* Prefer IPv4 in DNS lookups. */
-#define VALKEY_OPT_PREFER_IPV6 0x40       /* Prefer IPv6 in DNS lookups. */
-#define VALKEY_OPT_PREFER_IP_UNSPEC (VALKEY_OPT_PREFER_IPV4 | VALKEY_OPT_PREFER_IPV6)
-#define VALKEY_OPT_MPTCP 0x80
-#define VALKEY_OPT_LAST_SA_OPTION 0x80 /* Last defined standalone option. */
+#define KV_OPT_NOAUTOFREEREPLIES 0x10 /* Don't automatically free replies. */
+#define KV_OPT_PREFER_IPV4 0x20       /* Prefer IPv4 in DNS lookups. */
+#define KV_OPT_PREFER_IPV6 0x40       /* Prefer IPv6 in DNS lookups. */
+#define KV_OPT_PREFER_IP_UNSPEC (KV_OPT_PREFER_IPV4 | KV_OPT_PREFER_IPV6)
+#define KV_OPT_MPTCP 0x80
+#define KV_OPT_LAST_SA_OPTION 0x80 /* Last defined standalone option. */
 
 /* In Unix systems a file descriptor is a regular signed int, with -1
  * representing an invalid descriptor. In Windows it is a SOCKET
  * (32- or 64-bit unsigned integer depending on the architecture), where
  * all bits set (~0) is INVALID_SOCKET.  */
 #ifndef _WIN32
-typedef int valkeyFD;
-#define VALKEY_INVALID_FD -1
+typedef int kvFD;
+#define KV_INVALID_FD -1
 #else
 #ifdef _WIN64
-typedef unsigned long long valkeyFD; /* SOCKET = 64-bit UINT_PTR */
+typedef unsigned long long kvFD; /* SOCKET = 64-bit UINT_PTR */
 #else
-typedef unsigned long valkeyFD; /* SOCKET = 32-bit UINT_PTR */
+typedef unsigned long kvFD; /* SOCKET = 32-bit UINT_PTR */
 #endif
-#define VALKEY_INVALID_FD ((valkeyFD)(~0)) /* INVALID_SOCKET */
+#define KV_INVALID_FD ((kvFD)(~0)) /* INVALID_SOCKET */
 #endif
 
 typedef struct {
@@ -197,12 +197,12 @@ typedef struct {
      * `endpoint` member field to use
      */
     int type;
-    /* bit field of VALKEY_OPT_xxx */
+    /* bit field of KV_OPT_xxx */
     int options;
     /* timeout value for connect operation. If NULL, no timeout is used */
     const struct timeval *connect_timeout;
     /* timeout value for commands. If NULL, no timeout is used.  This can be
-     * updated at runtime with valkeySetTimeout/valkeyAsyncSetTimeout. */
+     * updated at runtime with kvSetTimeout/kvAsyncSetTimeout. */
     const struct timeval *command_timeout;
     union {
         /** use this field for tcp/ip connections */
@@ -214,9 +214,9 @@ typedef struct {
         /** use this field for unix domain sockets */
         const char *unix_socket;
         /**
-         * use this field to have libvalkey operate an already-open
+         * use this field to have libkv operate an already-open
          * file descriptor */
-        valkeyFD fd;
+        kvFD fd;
     } endpoint;
 
     /* Optional user defined data/destructor */
@@ -224,68 +224,68 @@ typedef struct {
     void (*free_privdata)(void *);
 
     /* A user defined PUSH message callback */
-    valkeyPushFn *push_cb;
-    valkeyAsyncPushFn *async_push_cb;
-} valkeyOptions;
+    kvPushFn *push_cb;
+    kvAsyncPushFn *async_push_cb;
+} kvOptions;
 
 /**
  * Helper macros to initialize options to their specified fields.
  */
-#define VALKEY_OPTIONS_SET_TCP(opts, ip_, port_) \
+#define KV_OPTIONS_SET_TCP(opts, ip_, port_) \
     do {                                         \
-        (opts)->type = VALKEY_CONN_TCP;          \
+        (opts)->type = KV_CONN_TCP;          \
         (opts)->endpoint.tcp.ip = ip_;           \
         (opts)->endpoint.tcp.port = port_;       \
     } while (0)
 
-#define VALKEY_OPTIONS_SET_MPTCP(opts, ip_, port_) \
+#define KV_OPTIONS_SET_MPTCP(opts, ip_, port_) \
     do {                                           \
-        (opts)->type = VALKEY_CONN_TCP;            \
+        (opts)->type = KV_CONN_TCP;            \
         (opts)->endpoint.tcp.ip = ip_;             \
         (opts)->endpoint.tcp.port = port_;         \
-        (opts)->options |= VALKEY_OPT_MPTCP;       \
+        (opts)->options |= KV_OPT_MPTCP;       \
     } while (0)
 
-#define VALKEY_OPTIONS_SET_UNIX(opts, path)  \
+#define KV_OPTIONS_SET_UNIX(opts, path)  \
     do {                                     \
-        (opts)->type = VALKEY_CONN_UNIX;     \
+        (opts)->type = KV_CONN_UNIX;     \
         (opts)->endpoint.unix_socket = path; \
     } while (0)
 
-#define VALKEY_OPTIONS_SET_PRIVDATA(opts, data, dtor) \
+#define KV_OPTIONS_SET_PRIVDATA(opts, data, dtor) \
     do {                                              \
         (opts)->privdata = data;                      \
         (opts)->free_privdata = dtor;                 \
     } while (0)
 
-typedef struct valkeyContextFuncs {
-    int (*connect)(struct valkeyContext *, const valkeyOptions *);
-    void (*close)(struct valkeyContext *);
+typedef struct kvContextFuncs {
+    int (*connect)(struct kvContext *, const kvOptions *);
+    void (*close)(struct kvContext *);
     void (*free_privctx)(void *);
-    void (*async_read)(struct valkeyAsyncContext *);
-    void (*async_write)(struct valkeyAsyncContext *);
+    void (*async_read)(struct kvAsyncContext *);
+    void (*async_write)(struct kvAsyncContext *);
 
     /* Read/Write data to the underlying communication stream, returning the
      * number of bytes read/written.  In the event of an unrecoverable error
      * these functions shall return a value < 0.  In the event of a
      * recoverable error, they should return 0. */
-    ssize_t (*read)(struct valkeyContext *, char *, size_t);
-    ssize_t (*write)(struct valkeyContext *);
-    int (*set_timeout)(struct valkeyContext *, const struct timeval);
-} valkeyContextFuncs;
+    ssize_t (*read)(struct kvContext *, char *, size_t);
+    ssize_t (*write)(struct kvContext *);
+    int (*set_timeout)(struct kvContext *, const struct timeval);
+} kvContextFuncs;
 
-/* Context for a connection to Valkey */
-typedef struct valkeyContext {
-    const valkeyContextFuncs *funcs; /* Function table */
+/* Context for a connection to KV */
+typedef struct kvContext {
+    const kvContextFuncs *funcs; /* Function table */
 
     int err;          /* Error flags, 0 when there is no error */
     char errstr[128]; /* String representation of error when applicable */
-    valkeyFD fd;
+    kvFD fd;
     int flags;
     char *obuf;           /* Write buffer */
-    valkeyReader *reader; /* Protocol reader */
+    kvReader *reader; /* Protocol reader */
 
-    enum valkeyConnectionType connection_type;
+    enum kvConnectionType connection_type;
     struct timeval *connect_timeout;
     struct timeval *command_timeout;
 
@@ -304,30 +304,30 @@ typedef struct valkeyContext {
     size_t addrlen;
 
     /* Optional data and corresponding destructor users can use to provide
-     * context to a given valkeyContext.  Not used by libvalkey. */
+     * context to a given kvContext.  Not used by libkv. */
     void *privdata;
     void (*free_privdata)(void *);
 
-    /* Internal context pointer presently used by libvalkey to manage
+    /* Internal context pointer presently used by libkv to manage
      * TLS connections. */
     void *privctx;
 
     /* An optional RESP3 PUSH handler */
-    valkeyPushFn *push_cb;
-} valkeyContext;
+    kvPushFn *push_cb;
+} kvContext;
 
-LIBVALKEY_API valkeyContext *valkeyConnectWithOptions(const valkeyOptions *options);
-LIBVALKEY_API valkeyContext *valkeyConnect(const char *ip, int port);
-LIBVALKEY_API valkeyContext *valkeyConnectWithTimeout(const char *ip, int port, const struct timeval tv);
-LIBVALKEY_API valkeyContext *valkeyConnectNonBlock(const char *ip, int port);
-LIBVALKEY_API valkeyContext *valkeyConnectBindNonBlock(const char *ip, int port,
+LIBKV_API kvContext *kvConnectWithOptions(const kvOptions *options);
+LIBKV_API kvContext *kvConnect(const char *ip, int port);
+LIBKV_API kvContext *kvConnectWithTimeout(const char *ip, int port, const struct timeval tv);
+LIBKV_API kvContext *kvConnectNonBlock(const char *ip, int port);
+LIBKV_API kvContext *kvConnectBindNonBlock(const char *ip, int port,
                                                        const char *source_addr);
-LIBVALKEY_API valkeyContext *valkeyConnectBindNonBlockWithReuse(const char *ip, int port,
+LIBKV_API kvContext *kvConnectBindNonBlockWithReuse(const char *ip, int port,
                                                                 const char *source_addr);
-LIBVALKEY_API valkeyContext *valkeyConnectUnix(const char *path);
-LIBVALKEY_API valkeyContext *valkeyConnectUnixWithTimeout(const char *path, const struct timeval tv);
-LIBVALKEY_API valkeyContext *valkeyConnectUnixNonBlock(const char *path);
-LIBVALKEY_API valkeyContext *valkeyConnectFd(valkeyFD fd);
+LIBKV_API kvContext *kvConnectUnix(const char *path);
+LIBKV_API kvContext *kvConnectUnixWithTimeout(const char *path, const struct timeval tv);
+LIBKV_API kvContext *kvConnectUnixNonBlock(const char *path);
+LIBKV_API kvContext *kvConnectFd(kvFD fd);
 
 /**
  * Reconnect the given context using the saved information.
@@ -336,52 +336,52 @@ LIBVALKEY_API valkeyContext *valkeyConnectFd(valkeyFD fd);
  * host, ip (or path), timeout and bind address are reused,
  * flags are used unmodified from the existing context.
  *
- * Returns VALKEY_OK on successful connect or VALKEY_ERR otherwise.
+ * Returns KV_OK on successful connect or KV_ERR otherwise.
  */
-LIBVALKEY_API int valkeyReconnect(valkeyContext *c);
+LIBKV_API int kvReconnect(kvContext *c);
 
-LIBVALKEY_API valkeyPushFn *valkeySetPushCallback(valkeyContext *c, valkeyPushFn *fn);
-LIBVALKEY_API int valkeySetTimeout(valkeyContext *c, const struct timeval tv);
+LIBKV_API kvPushFn *kvSetPushCallback(kvContext *c, kvPushFn *fn);
+LIBKV_API int kvSetTimeout(kvContext *c, const struct timeval tv);
 
 /* Configurations using socket options. Applied directly to the underlying
  * socket and not automatically applied after a reconnect. */
-LIBVALKEY_API int valkeyEnableKeepAlive(valkeyContext *c);
-LIBVALKEY_API int valkeyEnableKeepAliveWithInterval(valkeyContext *c, int interval);
-LIBVALKEY_API int valkeySetTcpUserTimeout(valkeyContext *c, unsigned int timeout);
+LIBKV_API int kvEnableKeepAlive(kvContext *c);
+LIBKV_API int kvEnableKeepAliveWithInterval(kvContext *c, int interval);
+LIBKV_API int kvSetTcpUserTimeout(kvContext *c, unsigned int timeout);
 
-LIBVALKEY_API void valkeyFree(valkeyContext *c);
-LIBVALKEY_API valkeyFD valkeyFreeKeepFd(valkeyContext *c);
-LIBVALKEY_API int valkeyBufferRead(valkeyContext *c);
-LIBVALKEY_API int valkeyBufferWrite(valkeyContext *c, int *done);
+LIBKV_API void kvFree(kvContext *c);
+LIBKV_API kvFD kvFreeKeepFd(kvContext *c);
+LIBKV_API int kvBufferRead(kvContext *c);
+LIBKV_API int kvBufferWrite(kvContext *c, int *done);
 
 /* In a blocking context, this function first checks if there are unconsumed
  * replies to return and returns one if so. Otherwise, it flushes the output
  * buffer to the socket and reads until it has a reply. In a non-blocking
  * context, it will return unconsumed replies until there are no more. */
-LIBVALKEY_API int valkeyGetReply(valkeyContext *c, void **reply);
-LIBVALKEY_API int valkeyGetReplyFromReader(valkeyContext *c, void **reply);
+LIBKV_API int kvGetReply(kvContext *c, void **reply);
+LIBKV_API int kvGetReplyFromReader(kvContext *c, void **reply);
 
 /* Write a formatted command to the output buffer. Use these functions in blocking mode
  * to get a pipeline of commands. */
-LIBVALKEY_API int valkeyAppendFormattedCommand(valkeyContext *c, const char *cmd, size_t len);
+LIBKV_API int kvAppendFormattedCommand(kvContext *c, const char *cmd, size_t len);
 
 /* Write a command to the output buffer. Use these functions in blocking mode
  * to get a pipeline of commands. */
-LIBVALKEY_API int valkeyvAppendCommand(valkeyContext *c, const char *format, va_list ap);
-LIBVALKEY_API int valkeyAppendCommand(valkeyContext *c, const char *format, ...);
-LIBVALKEY_API int valkeyAppendCommandArgv(valkeyContext *c, int argc, const char **argv, const size_t *argvlen);
+LIBKV_API int kvvAppendCommand(kvContext *c, const char *format, va_list ap);
+LIBKV_API int kvAppendCommand(kvContext *c, const char *format, ...);
+LIBKV_API int kvAppendCommandArgv(kvContext *c, int argc, const char **argv, const size_t *argvlen);
 
-/* Issue a command to Valkey. In a blocking context, it is identical to calling
- * valkeyAppendCommand, followed by valkeyGetReply. The function will return
+/* Issue a command to KV. In a blocking context, it is identical to calling
+ * kvAppendCommand, followed by kvGetReply. The function will return
  * NULL if there was an error in performing the request; otherwise, it will
  * return the reply. In a non-blocking context, it is identical to calling
- * only valkeyAppendCommand and will always return NULL. */
-LIBVALKEY_API void *valkeyvCommand(valkeyContext *c, const char *format, va_list ap);
-LIBVALKEY_API void *valkeyCommand(valkeyContext *c, const char *format, ...);
-LIBVALKEY_API void *valkeyCommandArgv(valkeyContext *c, int argc, const char **argv, const size_t *argvlen);
+ * only kvAppendCommand and will always return NULL. */
+LIBKV_API void *kvvCommand(kvContext *c, const char *format, va_list ap);
+LIBKV_API void *kvCommand(kvContext *c, const char *format, ...);
+LIBKV_API void *kvCommandArgv(kvContext *c, int argc, const char **argv, const size_t *argvlen);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* VALKEY_VALKEY_H */
+#endif /* KV_KV_H */

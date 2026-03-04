@@ -54,7 +54,7 @@ test "MULTI-EXEC with write operations is MOVED" {
 }
 
 test "write command is QUEUED, then EXEC should be MOVED after failover" {
-    set rr [valkey_client]
+    set rr [kv_client]
     $rr MULTI
     assert {[$rr SET foo bar] eq {QUEUED}}
 
@@ -78,7 +78,7 @@ test "write command is QUEUED, then EXEC should be MOVED after failover" {
 }
 
 test "read-only blocking operations from replica" {
-    set rd [valkey_deferring_client -1]
+    set rd [kv_deferring_client -1]
     $rd readonly
     $rd read
     $rd XREAD BLOCK 0 STREAMS k 0

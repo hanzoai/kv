@@ -34,10 +34,10 @@
 #include "fmacros.h"
 #include "win32.h"
 
-#include "valkey.h"
+#include "kv.h"
 
 #include "net.h"
-#include "valkey_private.h"
+#include "kv_private.h"
 
 #include <sds.h>
 
@@ -47,17 +47,17 @@
 #include <stdlib.h>
 #include <string.h>
 
-static valkeyReply *createReplyObject(int type);
-static void *createStringObject(const valkeyReadTask *task, char *str, size_t len);
-static void *createArrayObject(const valkeyReadTask *task, size_t elements);
-static void *createIntegerObject(const valkeyReadTask *task, long long value);
-static void *createDoubleObject(const valkeyReadTask *task, double value, char *str, size_t len);
-static void *createNilObject(const valkeyReadTask *task);
-static void *createBoolObject(const valkeyReadTask *task, int bval);
+static kvReply *createReplyObject(int type);
+static void *createStringObject(const kvReadTask *task, char *str, size_t len);
+static void *createArrayObject(const kvReadTask *task, size_t elements);
+static void *createIntegerObject(const kvReadTask *task, long long value);
+static void *createDoubleObject(const kvReadTask *task, double value, char *str, size_t len);
+static void *createNilObject(const kvReadTask *task);
+static void *createBoolObject(const kvReadTask *task, int bval);
 
 /* Default set of functions to build the reply. Keep in mind that such a
  * function returning NULL is interpreted as OOM. */
-static valkeyReplyObjectFunctions defaultFunctions = {
+static kvReplyObjectFunctions defaultFunctions = {
     createStringObject,
     createArrayObject,
     createIntegerObject,
@@ -67,8 +67,8 @@ static valkeyReplyObjectFunctions defaultFunctions = {
     freeReplyObject};
 
 /* Create a reply object */
-static valkeyReply *createReplyObject(int type) {
-    valkeyReply *r = vk_calloc(1, sizeof(*r));
+static kvReply *createReplyObject(int type) {
+    kvReply *r = vk_calloc(1, sizeof(*r));
 
     if (r == NULL)
         return NULL;
@@ -79,56 +79,56 @@ static valkeyReply *createReplyObject(int type) {
 
 /* Free a reply object */
 void freeReplyObject(void *reply) {
-    valkeyReply *r = reply;
+    kvReply *r = reply;
     size_t j;
 
     if (r == NULL)
         return;
 
     switch (r->type) {
-    case VALKEY_REPLY_INTEGER:
-    case VALKEY_REPLY_NIL:
-    case VALKEY_REPLY_BOOL:
+    case KV_REPLY_INTEGER:
+    case KV_REPLY_NIL:
+    case KV_REPLY_BOOL:
         break; /* Nothing to free */
-    case VALKEY_REPLY_ARRAY:
-    case VALKEY_REPLY_MAP:
-    case VALKEY_REPLY_ATTR:
-    case VALKEY_REPLY_SET:
-    case VALKEY_REPLY_PUSH:
+    case KV_REPLY_ARRAY:
+    case KV_REPLY_MAP:
+    case KV_REPLY_ATTR:
+    case KV_REPLY_SET:
+    case KV_REPLY_PUSH:
         if (r->element != NULL) {
             for (j = 0; j < r->elements; j++)
                 freeReplyObject(r->element[j]);
             vk_free(r->element);
         }
         break;
-    case VALKEY_REPLY_ERROR:
-    case VALKEY_REPLY_STATUS:
-    case VALKEY_REPLY_STRING:
-    case VALKEY_REPLY_DOUBLE:
-    case VALKEY_REPLY_VERB:
-    case VALKEY_REPLY_BIGNUM:
+    case KV_REPLY_ERROR:
+    case KV_REPLY_STATUS:
+    case KV_REPLY_STRING:
+    case KV_REPLY_DOUBLE:
+    case KV_REPLY_VERB:
+    case KV_REPLY_BIGNUM:
         vk_free(r->str);
         break;
     }
     vk_free(r);
 }
 
-static void *createStringObject(const valkeyReadTask *task, char *str, size_t len) {
-    valkeyReply *r, *parent;
+static void *createStringObject(const kvReadTask *task, char *str, size_t len) {
+    kvReply *r, *parent;
     char *buf;
 
     r = createReplyObject(task->type);
     if (r == NULL)
         return NULL;
 
-    assert(task->type == VALKEY_REPLY_ERROR ||
-           task->type == VALKEY_REPLY_STATUS ||
-           task->type == VALKEY_REPLY_STRING ||
-           task->type == VALKEY_REPLY_VERB ||
-           task->type == VALKEY_REPLY_BIGNUM);
+    assert(task->type == KV_REPLY_ERROR ||
+           task->type == KV_REPLY_STATUS ||
+           task->type == KV_REPLY_STRING ||
+           task->type == KV_REPLY_VERB ||
+           task->type == KV_REPLY_BIGNUM);
 
     /* Copy string value */
-    if (task->type == VALKEY_REPLY_VERB) {
+    if (task->type == KV_REPLY_VERB) {
         buf = vk_malloc(len - 4 + 1); /* Skip 4 bytes of verbatim type header. */
         if (buf == NULL)
             goto oom;
@@ -151,11 +151,11 @@ static void *createStringObject(const valkeyReadTask *task, char *str, size_t le
 
     if (task->parent) {
         parent = task->parent->obj;
-        assert(parent->type == VALKEY_REPLY_ARRAY ||
-               parent->type == VALKEY_REPLY_MAP ||
-               parent->type == VALKEY_REPLY_ATTR ||
-               parent->type == VALKEY_REPLY_SET ||
-               parent->type == VALKEY_REPLY_PUSH);
+        assert(parent->type == KV_REPLY_ARRAY ||
+               parent->type == KV_REPLY_MAP ||
+               parent->type == KV_REPLY_ATTR ||
+               parent->type == KV_REPLY_SET ||
+               parent->type == KV_REPLY_PUSH);
         parent->element[task->idx] = r;
     }
     return r;
@@ -165,15 +165,15 @@ oom:
     return NULL;
 }
 
-static void *createArrayObject(const valkeyReadTask *task, size_t elements) {
-    valkeyReply *r, *parent;
+static void *createArrayObject(const kvReadTask *task, size_t elements) {
+    kvReply *r, *parent;
 
     r = createReplyObject(task->type);
     if (r == NULL)
         return NULL;
 
     if (elements > 0) {
-        r->element = vk_calloc(elements, sizeof(valkeyReply *));
+        r->element = vk_calloc(elements, sizeof(kvReply *));
         if (r->element == NULL) {
             freeReplyObject(r);
             return NULL;
@@ -184,20 +184,20 @@ static void *createArrayObject(const valkeyReadTask *task, size_t elements) {
 
     if (task->parent) {
         parent = task->parent->obj;
-        assert(parent->type == VALKEY_REPLY_ARRAY ||
-               parent->type == VALKEY_REPLY_MAP ||
-               parent->type == VALKEY_REPLY_ATTR ||
-               parent->type == VALKEY_REPLY_SET ||
-               parent->type == VALKEY_REPLY_PUSH);
+        assert(parent->type == KV_REPLY_ARRAY ||
+               parent->type == KV_REPLY_MAP ||
+               parent->type == KV_REPLY_ATTR ||
+               parent->type == KV_REPLY_SET ||
+               parent->type == KV_REPLY_PUSH);
         parent->element[task->idx] = r;
     }
     return r;
 }
 
-static void *createIntegerObject(const valkeyReadTask *task, long long value) {
-    valkeyReply *r, *parent;
+static void *createIntegerObject(const kvReadTask *task, long long value) {
+    kvReply *r, *parent;
 
-    r = createReplyObject(VALKEY_REPLY_INTEGER);
+    r = createReplyObject(KV_REPLY_INTEGER);
     if (r == NULL)
         return NULL;
 
@@ -205,23 +205,23 @@ static void *createIntegerObject(const valkeyReadTask *task, long long value) {
 
     if (task->parent) {
         parent = task->parent->obj;
-        assert(parent->type == VALKEY_REPLY_ARRAY ||
-               parent->type == VALKEY_REPLY_MAP ||
-               parent->type == VALKEY_REPLY_ATTR ||
-               parent->type == VALKEY_REPLY_SET ||
-               parent->type == VALKEY_REPLY_PUSH);
+        assert(parent->type == KV_REPLY_ARRAY ||
+               parent->type == KV_REPLY_MAP ||
+               parent->type == KV_REPLY_ATTR ||
+               parent->type == KV_REPLY_SET ||
+               parent->type == KV_REPLY_PUSH);
         parent->element[task->idx] = r;
     }
     return r;
 }
 
-static void *createDoubleObject(const valkeyReadTask *task, double value, char *str, size_t len) {
-    valkeyReply *r, *parent;
+static void *createDoubleObject(const kvReadTask *task, double value, char *str, size_t len) {
+    kvReply *r, *parent;
 
     if (len == SIZE_MAX) // Prevents vk_malloc(0) if len equals SIZE_MAX
         return NULL;
 
-    r = createReplyObject(VALKEY_REPLY_DOUBLE);
+    r = createReplyObject(KV_REPLY_DOUBLE);
     if (r == NULL)
         return NULL;
 
@@ -234,7 +234,7 @@ static void *createDoubleObject(const valkeyReadTask *task, double value, char *
 
     /* The double reply also has the original protocol string representing a
      * double as a null terminated string. This way the caller does not need
-     * to format back for string conversion, especially since Valkey does efforts
+     * to format back for string conversion, especially since KV does efforts
      * to make the string more human readable avoiding the classical double
      * decimal string conversion artifacts. */
     memcpy(r->str, str, len);
@@ -243,39 +243,39 @@ static void *createDoubleObject(const valkeyReadTask *task, double value, char *
 
     if (task->parent) {
         parent = task->parent->obj;
-        assert(parent->type == VALKEY_REPLY_ARRAY ||
-               parent->type == VALKEY_REPLY_MAP ||
-               parent->type == VALKEY_REPLY_ATTR ||
-               parent->type == VALKEY_REPLY_SET ||
-               parent->type == VALKEY_REPLY_PUSH);
+        assert(parent->type == KV_REPLY_ARRAY ||
+               parent->type == KV_REPLY_MAP ||
+               parent->type == KV_REPLY_ATTR ||
+               parent->type == KV_REPLY_SET ||
+               parent->type == KV_REPLY_PUSH);
         parent->element[task->idx] = r;
     }
     return r;
 }
 
-static void *createNilObject(const valkeyReadTask *task) {
-    valkeyReply *r, *parent;
+static void *createNilObject(const kvReadTask *task) {
+    kvReply *r, *parent;
 
-    r = createReplyObject(VALKEY_REPLY_NIL);
+    r = createReplyObject(KV_REPLY_NIL);
     if (r == NULL)
         return NULL;
 
     if (task->parent) {
         parent = task->parent->obj;
-        assert(parent->type == VALKEY_REPLY_ARRAY ||
-               parent->type == VALKEY_REPLY_MAP ||
-               parent->type == VALKEY_REPLY_ATTR ||
-               parent->type == VALKEY_REPLY_SET ||
-               parent->type == VALKEY_REPLY_PUSH);
+        assert(parent->type == KV_REPLY_ARRAY ||
+               parent->type == KV_REPLY_MAP ||
+               parent->type == KV_REPLY_ATTR ||
+               parent->type == KV_REPLY_SET ||
+               parent->type == KV_REPLY_PUSH);
         parent->element[task->idx] = r;
     }
     return r;
 }
 
-static void *createBoolObject(const valkeyReadTask *task, int bval) {
-    valkeyReply *r, *parent;
+static void *createBoolObject(const kvReadTask *task, int bval) {
+    kvReply *r, *parent;
 
-    r = createReplyObject(VALKEY_REPLY_BOOL);
+    r = createReplyObject(KV_REPLY_BOOL);
     if (r == NULL)
         return NULL;
 
@@ -283,18 +283,18 @@ static void *createBoolObject(const valkeyReadTask *task, int bval) {
 
     if (task->parent) {
         parent = task->parent->obj;
-        assert(parent->type == VALKEY_REPLY_ARRAY ||
-               parent->type == VALKEY_REPLY_MAP ||
-               parent->type == VALKEY_REPLY_ATTR ||
-               parent->type == VALKEY_REPLY_SET ||
-               parent->type == VALKEY_REPLY_PUSH);
+        assert(parent->type == KV_REPLY_ARRAY ||
+               parent->type == KV_REPLY_MAP ||
+               parent->type == KV_REPLY_ATTR ||
+               parent->type == KV_REPLY_SET ||
+               parent->type == KV_REPLY_PUSH);
         parent->element[task->idx] = r;
     }
     return r;
 }
 
 /* Return the number of digits of 'v' when converted to string in radix 10.
- * Implementation borrowed from link in valkey/src/util.c:string2ll(). */
+ * Implementation borrowed from link in kv/src/util.c:string2ll(). */
 static uint32_t countDigits(uint64_t v) {
     uint32_t result = 1;
     for (;;) {
@@ -316,7 +316,7 @@ static size_t bulklen(size_t len) {
     return 1 + countDigits(len) + 2 + len + 2;
 }
 
-int valkeyvFormatCommand(char **target, const char *format, va_list ap) {
+int kvvFormatCommand(char **target, const char *format, va_list ap) {
     const char *c = format;
     char *cmd = NULL;   /* final command */
     int pos;            /* position in final command */
@@ -576,14 +576,14 @@ cleanup:
  * When using %b you need to provide both the pointer to the string
  * and the length in bytes as a size_t. Examples:
  *
- * len = valkeyFormatCommand(target, "GET %s", mykey);
- * len = valkeyFormatCommand(target, "SET %s %b", mykey, myval, myvallen);
+ * len = kvFormatCommand(target, "GET %s", mykey);
+ * len = kvFormatCommand(target, "SET %s %b", mykey, myval, myvallen);
  */
-int valkeyFormatCommand(char **target, const char *format, ...) {
+int kvFormatCommand(char **target, const char *format, ...) {
     va_list ap;
     int len;
     va_start(ap, format);
-    len = valkeyvFormatCommand(target, format, ap);
+    len = kvvFormatCommand(target, format, ap);
     va_end(ap);
 
     /* The API says "-1" means bad result, but we now also return "-2" in some
@@ -600,7 +600,7 @@ int valkeyFormatCommand(char **target, const char *format, ...) {
  * lengths. If the latter is set to NULL, strlen will be used to compute the
  * argument lengths.
  */
-long long valkeyFormatSdsCommandArgv(sds *target, int argc, const char **argv,
+long long kvFormatSdsCommandArgv(sds *target, int argc, const char **argv,
                                      const size_t *argvlen) {
     sds cmd, aux;
     unsigned long long totlen, len;
@@ -651,7 +651,7 @@ long long valkeyFormatSdsCommandArgv(sds *target, int argc, const char **argv,
  * lengths. If the latter is set to NULL, strlen will be used to compute the
  * argument lengths.
  */
-long long valkeyFormatCommandArgv(char **target, int argc, const char **argv, const size_t *argvlen) {
+long long kvFormatCommandArgv(char **target, int argc, const char **argv, const size_t *argvlen) {
     char *cmd = NULL; /* final command */
     size_t pos;       /* position in final command */
     size_t len, totlen;
@@ -689,11 +689,11 @@ long long valkeyFormatCommandArgv(char **target, int argc, const char **argv, co
     return totlen;
 }
 
-void valkeyFreeCommand(char *cmd) {
+void kvFreeCommand(char *cmd) {
     vk_free(cmd);
 }
 
-void valkeySetError(valkeyContext *c, int type, const char *str) {
+void kvSetError(kvContext *c, int type, const char *str) {
     size_t len;
 
     c->err = type;
@@ -703,41 +703,41 @@ void valkeySetError(valkeyContext *c, int type, const char *str) {
         memcpy(c->errstr, str, len);
         c->errstr[len] = '\0';
     } else {
-        /* Only VALKEY_ERR_IO may lack a description! */
-        assert(type == VALKEY_ERR_IO);
+        /* Only KV_ERR_IO may lack a description! */
+        assert(type == KV_ERR_IO);
         strerror_r(errno, c->errstr, sizeof(c->errstr));
     }
 }
 
-valkeyReader *valkeyReaderCreate(void) {
-    return valkeyReaderCreateWithFunctions(&defaultFunctions);
+kvReader *kvReaderCreate(void) {
+    return kvReaderCreateWithFunctions(&defaultFunctions);
 }
 
-static void valkeyPushAutoFree(void *privdata, void *reply) {
+static void kvPushAutoFree(void *privdata, void *reply) {
     (void)privdata;
     freeReplyObject(reply);
 }
 
-static valkeyContext *valkeyContextInit(void) {
-    valkeyContext *c;
+static kvContext *kvContextInit(void) {
+    kvContext *c;
 
     c = vk_calloc(1, sizeof(*c));
     if (c == NULL)
         return NULL;
 
     c->obuf = sdsempty();
-    c->reader = valkeyReaderCreate();
-    c->fd = VALKEY_INVALID_FD;
+    c->reader = kvReaderCreate();
+    c->fd = KV_INVALID_FD;
 
     if (c->obuf == NULL || c->reader == NULL) {
-        valkeyFree(c);
+        kvFree(c);
         return NULL;
     }
 
     return c;
 }
 
-void valkeyFree(valkeyContext *c) {
+void kvFree(kvContext *c) {
     if (c == NULL)
         return;
 
@@ -746,7 +746,7 @@ void valkeyFree(valkeyContext *c) {
     }
 
     sdsfree(c->obuf);
-    valkeyReaderFree(c->reader);
+    kvReaderFree(c->reader);
     vk_free(c->tcp.host);
     vk_free(c->tcp.source_addr);
     vk_free(c->unix_sock.path);
@@ -764,15 +764,15 @@ void valkeyFree(valkeyContext *c) {
     vk_free(c);
 }
 
-valkeyFD valkeyFreeKeepFd(valkeyContext *c) {
-    valkeyFD fd = c->fd;
-    c->fd = VALKEY_INVALID_FD;
-    valkeyFree(c);
+kvFD kvFreeKeepFd(kvContext *c) {
+    kvFD fd = c->fd;
+    c->fd = KV_INVALID_FD;
+    kvFree(c);
     return fd;
 }
 
-int valkeyReconnect(valkeyContext *c) {
-    valkeyOptions options = {.connect_timeout = c->connect_timeout};
+int kvReconnect(kvContext *c) {
+    kvOptions options = {.connect_timeout = c->connect_timeout};
 
     c->err = 0;
     memset(c->errstr, '\0', strlen(c->errstr));
@@ -787,107 +787,107 @@ int valkeyReconnect(valkeyContext *c) {
     }
 
     sdsfree(c->obuf);
-    valkeyReaderFree(c->reader);
+    kvReaderFree(c->reader);
 
     c->obuf = sdsempty();
-    c->reader = valkeyReaderCreate();
+    c->reader = kvReaderCreate();
 
     if (c->obuf == NULL || c->reader == NULL) {
-        valkeySetError(c, VALKEY_ERR_OOM, "Out of memory");
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OOM, "Out of memory");
+        return KV_ERR;
     }
 
     switch (c->connection_type) {
-    case VALKEY_CONN_TCP:
+    case KV_CONN_TCP:
         /* FALLTHRU */
-    case VALKEY_CONN_RDMA:
+    case KV_CONN_RDMA:
         options.endpoint.tcp.source_addr = c->tcp.source_addr;
         options.endpoint.tcp.ip = c->tcp.host;
         options.endpoint.tcp.port = c->tcp.port;
         break;
-    case VALKEY_CONN_UNIX:
+    case KV_CONN_UNIX:
         options.endpoint.unix_socket = c->unix_sock.path;
         break;
     default:
         /* Something bad happened here and shouldn't have. There isn't
            enough information in the context to reconnect. */
-        valkeySetError(c, VALKEY_ERR_OTHER, "Not enough information to reconnect");
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OTHER, "Not enough information to reconnect");
+        return KV_ERR;
     }
 
     if (c->funcs && c->funcs->connect &&
-        c->funcs->connect(c, &options) != VALKEY_OK) {
-        return VALKEY_ERR;
+        c->funcs->connect(c, &options) != KV_OK) {
+        return KV_ERR;
     }
 
-    if (c->command_timeout != NULL && (c->flags & VALKEY_BLOCK) &&
-        c->fd != VALKEY_INVALID_FD && c->funcs && c->funcs->set_timeout) {
+    if (c->command_timeout != NULL && (c->flags & KV_BLOCK) &&
+        c->fd != KV_INVALID_FD && c->funcs && c->funcs->set_timeout) {
         c->funcs->set_timeout(c, *c->command_timeout);
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-valkeyContext *valkeyConnectWithOptions(const valkeyOptions *options) {
-    valkeyContext *c;
+kvContext *kvConnectWithOptions(const kvOptions *options) {
+    kvContext *c;
 
-    if (options->type >= VALKEY_CONN_MAX) {
+    if (options->type >= KV_CONN_MAX) {
         return NULL;
     }
 
-    c = valkeyContextInit();
+    c = kvContextInit();
     if (c == NULL) {
         return NULL;
     }
-    if (!(options->options & VALKEY_OPT_NONBLOCK)) {
-        c->flags |= VALKEY_BLOCK;
+    if (!(options->options & KV_OPT_NONBLOCK)) {
+        c->flags |= KV_BLOCK;
     }
-    if (options->options & VALKEY_OPT_REUSEADDR) {
-        c->flags |= VALKEY_REUSEADDR;
+    if (options->options & KV_OPT_REUSEADDR) {
+        c->flags |= KV_REUSEADDR;
     }
-    if (options->options & VALKEY_OPT_NOAUTOFREE) {
-        c->flags |= VALKEY_NO_AUTO_FREE;
+    if (options->options & KV_OPT_NOAUTOFREE) {
+        c->flags |= KV_NO_AUTO_FREE;
     }
-    if (options->options & VALKEY_OPT_NOAUTOFREEREPLIES) {
-        c->flags |= VALKEY_NO_AUTO_FREE_REPLIES;
+    if (options->options & KV_OPT_NOAUTOFREEREPLIES) {
+        c->flags |= KV_NO_AUTO_FREE_REPLIES;
     }
-    if (options->options & VALKEY_OPT_PREFER_IPV4) {
-        c->flags |= VALKEY_PREFER_IPV4;
+    if (options->options & KV_OPT_PREFER_IPV4) {
+        c->flags |= KV_PREFER_IPV4;
     }
-    if (options->options & VALKEY_OPT_PREFER_IPV6) {
-        c->flags |= VALKEY_PREFER_IPV6;
+    if (options->options & KV_OPT_PREFER_IPV6) {
+        c->flags |= KV_PREFER_IPV6;
     }
 
-    if (options->options & VALKEY_OPT_MPTCP) {
-        if (!valkeyHasMptcp()) {
-            valkeySetError(c, VALKEY_ERR_PROTOCOL, "MPTCP is not supported on this platform");
+    if (options->options & KV_OPT_MPTCP) {
+        if (!kvHasMptcp()) {
+            kvSetError(c, KV_ERR_PROTOCOL, "MPTCP is not supported on this platform");
             return c;
         }
-        c->flags |= VALKEY_MPTCP;
+        c->flags |= KV_MPTCP;
     }
 
     /* Set any user supplied RESP3 PUSH handler or use freeReplyObject
      * as a default unless specifically flagged that we don't want one. */
     if (options->push_cb != NULL)
-        valkeySetPushCallback(c, options->push_cb);
-    else if (!(options->options & VALKEY_OPT_NO_PUSH_AUTOFREE))
-        valkeySetPushCallback(c, valkeyPushAutoFree);
+        kvSetPushCallback(c, options->push_cb);
+    else if (!(options->options & KV_OPT_NO_PUSH_AUTOFREE))
+        kvSetPushCallback(c, kvPushAutoFree);
 
     c->privdata = options->privdata;
     c->free_privdata = options->free_privdata;
     c->connection_type = options->type;
-    /* Make sure we set a valkeyContextFuncs before returning any context. */
-    valkeyContextSetFuncs(c);
+    /* Make sure we set a kvContextFuncs before returning any context. */
+    kvContextSetFuncs(c);
 
-    if (valkeyContextUpdateConnectTimeout(c, options->connect_timeout) != VALKEY_OK ||
-        valkeyContextUpdateCommandTimeout(c, options->command_timeout) != VALKEY_OK) {
-        valkeySetError(c, VALKEY_ERR_OOM, "Out of memory");
+    if (kvContextUpdateConnectTimeout(c, options->connect_timeout) != KV_OK ||
+        kvContextUpdateCommandTimeout(c, options->command_timeout) != KV_OK) {
+        kvSetError(c, KV_ERR_OOM, "Out of memory");
         return c;
     }
 
     c->funcs->connect(c, options);
-    if (c->err == 0 && c->fd != VALKEY_INVALID_FD &&
-        options->command_timeout != NULL && (c->flags & VALKEY_BLOCK)) {
+    if (c->err == 0 && c->fd != KV_INVALID_FD &&
+        options->command_timeout != NULL && (c->flags & KV_BLOCK)) {
         c->funcs->set_timeout(c, *options->command_timeout);
     }
 
@@ -897,101 +897,101 @@ valkeyContext *valkeyConnectWithOptions(const valkeyOptions *options) {
 /* Connect to a server instance. On error the field error in the returned
  * context will be set to the return value of the error function.
  * When no set of reply functions is given, the default set will be used. */
-valkeyContext *valkeyConnect(const char *ip, int port) {
-    valkeyOptions options = {0};
-    VALKEY_OPTIONS_SET_TCP(&options, ip, port);
-    return valkeyConnectWithOptions(&options);
+kvContext *kvConnect(const char *ip, int port) {
+    kvOptions options = {0};
+    KV_OPTIONS_SET_TCP(&options, ip, port);
+    return kvConnectWithOptions(&options);
 }
 
-valkeyContext *valkeyConnectWithTimeout(const char *ip, int port, const struct timeval tv) {
-    valkeyOptions options = {0};
-    VALKEY_OPTIONS_SET_TCP(&options, ip, port);
+kvContext *kvConnectWithTimeout(const char *ip, int port, const struct timeval tv) {
+    kvOptions options = {0};
+    KV_OPTIONS_SET_TCP(&options, ip, port);
     options.connect_timeout = &tv;
-    return valkeyConnectWithOptions(&options);
+    return kvConnectWithOptions(&options);
 }
 
-valkeyContext *valkeyConnectNonBlock(const char *ip, int port) {
-    valkeyOptions options = {0};
-    VALKEY_OPTIONS_SET_TCP(&options, ip, port);
-    options.options |= VALKEY_OPT_NONBLOCK;
-    return valkeyConnectWithOptions(&options);
+kvContext *kvConnectNonBlock(const char *ip, int port) {
+    kvOptions options = {0};
+    KV_OPTIONS_SET_TCP(&options, ip, port);
+    options.options |= KV_OPT_NONBLOCK;
+    return kvConnectWithOptions(&options);
 }
 
-valkeyContext *valkeyConnectBindNonBlock(const char *ip, int port,
+kvContext *kvConnectBindNonBlock(const char *ip, int port,
                                          const char *source_addr) {
-    valkeyOptions options = {0};
-    VALKEY_OPTIONS_SET_TCP(&options, ip, port);
+    kvOptions options = {0};
+    KV_OPTIONS_SET_TCP(&options, ip, port);
     options.endpoint.tcp.source_addr = source_addr;
-    options.options |= VALKEY_OPT_NONBLOCK;
-    return valkeyConnectWithOptions(&options);
+    options.options |= KV_OPT_NONBLOCK;
+    return kvConnectWithOptions(&options);
 }
 
-valkeyContext *valkeyConnectBindNonBlockWithReuse(const char *ip, int port,
+kvContext *kvConnectBindNonBlockWithReuse(const char *ip, int port,
                                                   const char *source_addr) {
-    valkeyOptions options = {0};
-    VALKEY_OPTIONS_SET_TCP(&options, ip, port);
+    kvOptions options = {0};
+    KV_OPTIONS_SET_TCP(&options, ip, port);
     options.endpoint.tcp.source_addr = source_addr;
-    options.options |= VALKEY_OPT_NONBLOCK | VALKEY_OPT_REUSEADDR;
-    return valkeyConnectWithOptions(&options);
+    options.options |= KV_OPT_NONBLOCK | KV_OPT_REUSEADDR;
+    return kvConnectWithOptions(&options);
 }
 
-valkeyContext *valkeyConnectUnix(const char *path) {
-    valkeyOptions options = {0};
-    VALKEY_OPTIONS_SET_UNIX(&options, path);
-    return valkeyConnectWithOptions(&options);
+kvContext *kvConnectUnix(const char *path) {
+    kvOptions options = {0};
+    KV_OPTIONS_SET_UNIX(&options, path);
+    return kvConnectWithOptions(&options);
 }
 
-valkeyContext *valkeyConnectUnixWithTimeout(const char *path, const struct timeval tv) {
-    valkeyOptions options = {0};
-    VALKEY_OPTIONS_SET_UNIX(&options, path);
+kvContext *kvConnectUnixWithTimeout(const char *path, const struct timeval tv) {
+    kvOptions options = {0};
+    KV_OPTIONS_SET_UNIX(&options, path);
     options.connect_timeout = &tv;
-    return valkeyConnectWithOptions(&options);
+    return kvConnectWithOptions(&options);
 }
 
-valkeyContext *valkeyConnectUnixNonBlock(const char *path) {
-    valkeyOptions options = {0};
-    VALKEY_OPTIONS_SET_UNIX(&options, path);
-    options.options |= VALKEY_OPT_NONBLOCK;
-    return valkeyConnectWithOptions(&options);
+kvContext *kvConnectUnixNonBlock(const char *path) {
+    kvOptions options = {0};
+    KV_OPTIONS_SET_UNIX(&options, path);
+    options.options |= KV_OPT_NONBLOCK;
+    return kvConnectWithOptions(&options);
 }
 
-valkeyContext *valkeyConnectFd(valkeyFD fd) {
-    valkeyOptions options = {0};
-    options.type = VALKEY_CONN_USERFD;
+kvContext *kvConnectFd(kvFD fd) {
+    kvOptions options = {0};
+    options.type = KV_CONN_USERFD;
     options.endpoint.fd = fd;
-    return valkeyConnectWithOptions(&options);
+    return kvConnectWithOptions(&options);
 }
 
 /* Set read/write timeout on a blocking socket. */
-int valkeySetTimeout(valkeyContext *c, const struct timeval tv) {
-    if (!(c->flags & VALKEY_BLOCK))
-        return VALKEY_ERR;
+int kvSetTimeout(kvContext *c, const struct timeval tv) {
+    if (!(c->flags & KV_BLOCK))
+        return KV_ERR;
 
-    if (valkeyContextUpdateCommandTimeout(c, &tv) != VALKEY_OK) {
-        valkeySetError(c, VALKEY_ERR_OOM, "Out of memory");
-        return VALKEY_ERR;
+    if (kvContextUpdateCommandTimeout(c, &tv) != KV_OK) {
+        kvSetError(c, KV_ERR_OOM, "Out of memory");
+        return KV_ERR;
     }
 
     return c->funcs->set_timeout(c, tv);
 }
 
-int valkeyEnableKeepAliveWithInterval(valkeyContext *c, int interval) {
-    return valkeyKeepAlive(c, interval);
+int kvEnableKeepAliveWithInterval(kvContext *c, int interval) {
+    return kvKeepAlive(c, interval);
 }
 
 /* Enable connection KeepAlive. */
-int valkeyEnableKeepAlive(valkeyContext *c) {
-    return valkeyKeepAlive(c, VALKEY_KEEPALIVE_INTERVAL);
+int kvEnableKeepAlive(kvContext *c) {
+    return kvKeepAlive(c, KV_KEEPALIVE_INTERVAL);
 }
 
 /* Set the socket option TCP_USER_TIMEOUT. */
-int valkeySetTcpUserTimeout(valkeyContext *c, unsigned int timeout) {
-    return valkeyContextSetTcpUserTimeout(c, timeout);
+int kvSetTcpUserTimeout(kvContext *c, unsigned int timeout) {
+    return kvContextSetTcpUserTimeout(c, timeout);
 }
 
 /* Set a user provided RESP3 PUSH handler and return any old one set. */
-valkeyPushFn *valkeySetPushCallback(valkeyContext *c, valkeyPushFn *fn) {
-    valkeyPushFn *old = c->push_cb;
+kvPushFn *kvSetPushCallback(kvContext *c, kvPushFn *fn) {
+    kvPushFn *old = c->push_cb;
     c->push_cb = fn;
     return old;
 }
@@ -999,46 +999,46 @@ valkeyPushFn *valkeySetPushCallback(valkeyContext *c, valkeyPushFn *fn) {
 /* Use this function to handle a read event on the descriptor. It will try
  * and read some bytes from the socket and feed them to the reply parser.
  *
- * After this function is called, you may use valkeyGetReplyFromReader to
+ * After this function is called, you may use kvGetReplyFromReader to
  * see if there is a reply available. */
-int valkeyBufferRead(valkeyContext *c) {
+int kvBufferRead(kvContext *c) {
     char buf[1024 * 16];
     int nread;
 
     /* Return early when the context has seen an error. */
     if (c->err)
-        return VALKEY_ERR;
+        return KV_ERR;
 
     nread = c->funcs->read(c, buf, sizeof(buf));
     if (nread < 0) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
-    if (nread > 0 && valkeyReaderFeed(c->reader, buf, nread) != VALKEY_OK) {
-        valkeySetError(c, c->reader->err, c->reader->errstr);
-        return VALKEY_ERR;
+    if (nread > 0 && kvReaderFeed(c->reader, buf, nread) != KV_OK) {
+        kvSetError(c, c->reader->err, c->reader->errstr);
+        return KV_ERR;
     }
-    return VALKEY_OK;
+    return KV_OK;
 }
 
 /* Write the output buffer to the socket.
  *
- * Returns VALKEY_OK when the buffer is empty, or (a part of) the buffer was
+ * Returns KV_OK when the buffer is empty, or (a part of) the buffer was
  * successfully written to the socket. When the buffer is empty after the
  * write operation, "done" is set to 1 (if given).
  *
- * Returns VALKEY_ERR if an unrecoverable error occurred in the underlying
+ * Returns KV_ERR if an unrecoverable error occurred in the underlying
  * c->funcs->write function.
  */
-int valkeyBufferWrite(valkeyContext *c, int *done) {
+int kvBufferWrite(kvContext *c, int *done) {
 
     /* Return early when the context has seen an error. */
     if (c->err)
-        return VALKEY_ERR;
+        return KV_ERR;
 
     if (sdslen(c->obuf) > 0) {
         ssize_t nwritten = c->funcs->write(c);
         if (nwritten < 0) {
-            return VALKEY_ERR;
+            return KV_ERR;
         } else if (nwritten > 0) {
             if (nwritten == (ssize_t)sdslen(c->obuf)) {
                 sdsfree(c->obuf);
@@ -1046,7 +1046,7 @@ int valkeyBufferWrite(valkeyContext *c, int *done) {
                 if (c->obuf == NULL)
                     goto oom;
             } else {
-                /* No length check in Valkeys sdsrange() */
+                /* No length check in KVs sdsrange() */
                 if (sdslen(c->obuf) > SSIZE_MAX)
                     goto oom;
                 sdsrange(c->obuf, nwritten, -1);
@@ -1055,17 +1055,17 @@ int valkeyBufferWrite(valkeyContext *c, int *done) {
     }
     if (done != NULL)
         *done = (sdslen(c->obuf) == 0);
-    return VALKEY_OK;
+    return KV_OK;
 
 oom:
-    valkeySetError(c, VALKEY_ERR_OOM, "Out of memory");
-    return VALKEY_ERR;
+    kvSetError(c, KV_ERR_OOM, "Out of memory");
+    return KV_ERR;
 }
 
 /* Internal helper that returns 1 if the reply was a RESP3 PUSH
  * message and we handled it with a user-provided callback. */
-static int valkeyHandledPushReply(valkeyContext *c, void *reply) {
-    if (reply && c->push_cb && valkeyIsPushReply(reply)) {
+static int kvHandledPushReply(kvContext *c, void *reply) {
+    if (reply && c->push_cb && kvIsPushReply(reply)) {
         c->push_cb(c->privdata, reply);
         return 1;
     }
@@ -1074,50 +1074,50 @@ static int valkeyHandledPushReply(valkeyContext *c, void *reply) {
 }
 
 /* Get a reply from our reader or set an error in the context. */
-int valkeyGetReplyFromReader(valkeyContext *c, void **reply) {
-    if (valkeyReaderGetReply(c->reader, reply) == VALKEY_ERR) {
-        valkeySetError(c, c->reader->err, c->reader->errstr);
-        return VALKEY_ERR;
+int kvGetReplyFromReader(kvContext *c, void **reply) {
+    if (kvReaderGetReply(c->reader, reply) == KV_ERR) {
+        kvSetError(c, c->reader->err, c->reader->errstr);
+        return KV_ERR;
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
 /* Internal helper to get the next reply from our reader while handling
  * any PUSH messages we encounter along the way.  This is separate from
- * valkeyGetReplyFromReader so as to not change its behavior. */
-static int valkeyNextInBandReplyFromReader(valkeyContext *c, void **reply) {
+ * kvGetReplyFromReader so as to not change its behavior. */
+static int kvNextInBandReplyFromReader(kvContext *c, void **reply) {
     do {
-        if (valkeyGetReplyFromReader(c, reply) == VALKEY_ERR)
-            return VALKEY_ERR;
-    } while (valkeyHandledPushReply(c, *reply));
+        if (kvGetReplyFromReader(c, reply) == KV_ERR)
+            return KV_ERR;
+    } while (kvHandledPushReply(c, *reply));
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-int valkeyGetReply(valkeyContext *c, void **reply) {
+int kvGetReply(kvContext *c, void **reply) {
     int wdone = 0;
     void *aux = NULL;
 
     /* Try to read pending replies */
-    if (valkeyNextInBandReplyFromReader(c, &aux) == VALKEY_ERR)
-        return VALKEY_ERR;
+    if (kvNextInBandReplyFromReader(c, &aux) == KV_ERR)
+        return KV_ERR;
 
     /* For the blocking context, flush output buffer and read reply */
-    if (aux == NULL && c->flags & VALKEY_BLOCK) {
+    if (aux == NULL && c->flags & KV_BLOCK) {
         /* Write until done */
         do {
-            if (valkeyBufferWrite(c, &wdone) == VALKEY_ERR)
-                return VALKEY_ERR;
+            if (kvBufferWrite(c, &wdone) == KV_ERR)
+                return KV_ERR;
         } while (!wdone);
 
         /* Read until there is a reply */
         do {
-            if (valkeyBufferRead(c) == VALKEY_ERR)
-                return VALKEY_ERR;
+            if (kvBufferRead(c) == KV_ERR)
+                return KV_ERR;
 
-            if (valkeyNextInBandReplyFromReader(c, &aux) == VALKEY_ERR)
-                return VALKEY_ERR;
+            if (kvNextInBandReplyFromReader(c, &aux) == KV_ERR)
+                return KV_ERR;
         } while (aux == NULL);
     }
 
@@ -1128,89 +1128,89 @@ int valkeyGetReply(valkeyContext *c, void **reply) {
         freeReplyObject(aux);
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-/* Helper function for the valkeyAppendCommand* family of functions.
+/* Helper function for the kvAppendCommand* family of functions.
  *
  * Write a formatted command to the output buffer. When this family
- * is used, you need to call valkeyGetReply yourself to retrieve
+ * is used, you need to call kvGetReply yourself to retrieve
  * the reply (or replies in pub/sub).
  */
-int valkeyAppendCmdLen(valkeyContext *c, const char *cmd, size_t len) {
+int kvAppendCmdLen(kvContext *c, const char *cmd, size_t len) {
     sds newbuf;
 
     newbuf = sdscatlen(c->obuf, cmd, len);
     if (newbuf == NULL) {
-        valkeySetError(c, VALKEY_ERR_OOM, "Out of memory");
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OOM, "Out of memory");
+        return KV_ERR;
     }
 
     c->obuf = newbuf;
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-int valkeyAppendFormattedCommand(valkeyContext *c, const char *cmd, size_t len) {
+int kvAppendFormattedCommand(kvContext *c, const char *cmd, size_t len) {
 
-    if (valkeyAppendCmdLen(c, cmd, len) != VALKEY_OK) {
-        return VALKEY_ERR;
+    if (kvAppendCmdLen(c, cmd, len) != KV_OK) {
+        return KV_ERR;
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-int valkeyvAppendCommand(valkeyContext *c, const char *format, va_list ap) {
+int kvvAppendCommand(kvContext *c, const char *format, va_list ap) {
     char *cmd;
     int len;
 
-    len = valkeyvFormatCommand(&cmd, format, ap);
+    len = kvvFormatCommand(&cmd, format, ap);
     if (len == -1) {
-        valkeySetError(c, VALKEY_ERR_OOM, "Out of memory");
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OOM, "Out of memory");
+        return KV_ERR;
     } else if (len == -2) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "Invalid format string");
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OTHER, "Invalid format string");
+        return KV_ERR;
     }
 
-    if (valkeyAppendCmdLen(c, cmd, len) != VALKEY_OK) {
+    if (kvAppendCmdLen(c, cmd, len) != KV_OK) {
         vk_free(cmd);
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     vk_free(cmd);
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-int valkeyAppendCommand(valkeyContext *c, const char *format, ...) {
+int kvAppendCommand(kvContext *c, const char *format, ...) {
     va_list ap;
     int ret;
 
     va_start(ap, format);
-    ret = valkeyvAppendCommand(c, format, ap);
+    ret = kvvAppendCommand(c, format, ap);
     va_end(ap);
     return ret;
 }
 
-int valkeyAppendCommandArgv(valkeyContext *c, int argc, const char **argv, const size_t *argvlen) {
+int kvAppendCommandArgv(kvContext *c, int argc, const char **argv, const size_t *argvlen) {
     sds cmd;
     long long len;
 
-    len = valkeyFormatSdsCommandArgv(&cmd, argc, argv, argvlen);
+    len = kvFormatSdsCommandArgv(&cmd, argc, argv, argvlen);
     if (len == -1) {
-        valkeySetError(c, VALKEY_ERR_OOM, "Out of memory");
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OOM, "Out of memory");
+        return KV_ERR;
     }
 
-    if (valkeyAppendCmdLen(c, cmd, len) != VALKEY_OK) {
+    if (kvAppendCmdLen(c, cmd, len) != KV_OK) {
         sdsfree(cmd);
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     sdsfree(cmd);
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-/* Helper function for the valkeyCommand* family of functions.
+/* Helper function for the kvCommand* family of functions.
  *
  * Write a formatted command to the output buffer. If the given context is
  * blocking, immediately read the reply into the "reply" pointer. When the
@@ -1221,33 +1221,33 @@ int valkeyAppendCommandArgv(valkeyContext *c, int argc, const char **argv, const
  * otherwise. When NULL is returned in a blocking context, the error field
  * in the context will be set.
  */
-static void *valkeyBlockForReply(valkeyContext *c) {
+static void *kvBlockForReply(kvContext *c) {
     void *reply;
 
-    if (c->flags & VALKEY_BLOCK) {
-        if (valkeyGetReply(c, &reply) != VALKEY_OK)
+    if (c->flags & KV_BLOCK) {
+        if (kvGetReply(c, &reply) != KV_OK)
             return NULL;
         return reply;
     }
     return NULL;
 }
 
-void *valkeyvCommand(valkeyContext *c, const char *format, va_list ap) {
-    if (valkeyvAppendCommand(c, format, ap) != VALKEY_OK)
+void *kvvCommand(kvContext *c, const char *format, va_list ap) {
+    if (kvvAppendCommand(c, format, ap) != KV_OK)
         return NULL;
-    return valkeyBlockForReply(c);
+    return kvBlockForReply(c);
 }
 
-void *valkeyCommand(valkeyContext *c, const char *format, ...) {
+void *kvCommand(kvContext *c, const char *format, ...) {
     va_list ap;
     va_start(ap, format);
-    void *reply = valkeyvCommand(c, format, ap);
+    void *reply = kvvCommand(c, format, ap);
     va_end(ap);
     return reply;
 }
 
-void *valkeyCommandArgv(valkeyContext *c, int argc, const char **argv, const size_t *argvlen) {
-    if (valkeyAppendCommandArgv(c, argc, argv, argvlen) != VALKEY_OK)
+void *kvCommandArgv(kvContext *c, int argc, const char **argv, const size_t *argvlen) {
+    if (kvAppendCommandArgv(c, argc, argv, argvlen) != KV_OK)
         return NULL;
-    return valkeyBlockForReply(c);
+    return kvBlockForReply(c);
 }

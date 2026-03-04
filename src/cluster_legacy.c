@@ -27,7 +27,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -660,7 +660,7 @@ int clusterLoadConfig(char *filename) {
         }
     }
 
-    if (valkey_fstat(fileno(fp), &sb) == -1) {
+    if (kv_fstat(fileno(fp), &sb) == -1) {
         serverLog(LL_WARNING, "Unable to obtain the cluster node config file stat %s: %s", filename, strerror(errno));
         exit(1);
     }
@@ -1069,7 +1069,7 @@ int clusterSaveConfig(int do_fsync) {
     if (do_fsync) {
         latencyStartMonitor(latency);
         server.cluster->todo_before_sleep &= ~CLUSTER_TODO_FSYNC_CONFIG;
-        if (valkey_fsync(fd) == -1) {
+        if (kv_fsync(fd) == -1) {
             serverLog(LL_WARNING, "Could not sync tmp cluster config file: %s", strerror(errno));
             goto cleanup;
         }
@@ -1185,7 +1185,7 @@ int clusterLockConfig(char *filename) {
      * we need save `fd` to `cluster_config_file_lock_fd`, so that in serverFork(),
      * it will be closed in the child process.
      * If it is not closed, when the main process is killed -9, but the child process
-     * (valkey-aof-rewrite) is still alive, the fd(lock) will still be held by the
+     * (kv-aof-rewrite) is still alive, the fd(lock) will still be held by the
      * child process, and the main process will fail to get lock, means fail to start. */
     server.cluster_config_file_lock_fd = fd;
 #else
@@ -1271,7 +1271,7 @@ void clusterUpdateMyselfIp(void) {
              * duplicating the string. This way later we can check if
              * the address really changed. */
             prev_ip = zstrdup(prev_ip);
-            valkey_strlcpy(myself->ip, server.cluster_announce_ip, NET_IP_STR_LEN);
+            kv_strlcpy(myself->ip, server.cluster_announce_ip, NET_IP_STR_LEN);
         } else {
             myself->ip[0] = '\0'; /* Force autodetection. */
         }
@@ -2423,7 +2423,7 @@ void clusterHandleConfigEpochCollision(clusterNode *sender) {
  * about the node we want to remove, we don't re-add it before some time.
  *
  * The default blacklist ttl is 1 minute which means
- * that valkey-cli has 60 seconds to send CLUSTER FORGET messages to nodes
+ * that kv-cli has 60 seconds to send CLUSTER FORGET messages to nodes
  * in the cluster without dealing with the problem of other nodes re-adding
  * back the node to nodes we already sent the FORGET command to.
  *
@@ -4633,7 +4633,7 @@ static void clusterBuildMessageHdr(clusterMsg *hdr, int type, size_t msglen) {
      * first byte is zero, they'll do auto discovery. */
     memset(hdr->myip, 0, NET_IP_STR_LEN);
     if (server.cluster_announce_ip) {
-        valkey_strlcpy(hdr->myip, server.cluster_announce_ip, NET_IP_STR_LEN);
+        kv_strlcpy(hdr->myip, server.cluster_announce_ip, NET_IP_STR_LEN);
     }
 
     /* Handle cluster-announce-[tls-|bus-]port. */
@@ -4887,7 +4887,7 @@ void clusterBroadcastPong(int target) {
  * As all the struct is used as a buffer, when more than 8 bytes are copied into
  * the 'bulk_data', sanitizer generates an out-of-bounds error which is a false
  * positive in this context. */
-VALKEY_NO_SANITIZE("bounds")
+KV_NO_SANITIZE("bounds")
 clusterMsgSendBlock *clusterCreatePublishMsgBlock(robj *channel, robj *message, int is_light, int is_sharded) {
     uint32_t channel_len, message_len;
     uint16_t type = is_sharded ? CLUSTERMSG_TYPE_PUBLISHSHARD : CLUSTERMSG_TYPE_PUBLISH;
@@ -7232,9 +7232,9 @@ unsigned int delKeysInSlot(unsigned int hashslot, int lazy, bool propagate_del, 
         if (db == NULL) continue;
         kvs_di = kvstoreGetHashtableIterator(db->keys, hashslot, HASHTABLE_ITER_SAFE);
         while (kvstoreHashtableIteratorNext(kvs_di, &next)) {
-            robj *valkey = next;
+            robj *kv = next;
             enterExecutionUnit(1, 0);
-            sds sdskey = objectGetKey(valkey);
+            sds sdskey = objectGetKey(kv);
             robj *key = createStringObject(sdskey, sdslen(sdskey));
             if (lazy) {
                 dbAsyncDelete(db, key);

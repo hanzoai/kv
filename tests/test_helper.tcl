@@ -3,7 +3,7 @@
 # more information.
 
 set tcl_precision 17
-source tests/support/valkey.tcl
+source tests/support/kv.tcl
 source tests/support/aofmanifest.tcl
 source tests/support/server.tcl
 source tests/support/cluster_util.tcl
@@ -214,7 +214,7 @@ proc reconnect {args} {
     set host [dict get $srv "host"]
     set port [dict get $srv "port"]
     set config [dict get $srv "config"]
-    set client [valkey $host $port 0 $::tls]
+    set client [kv $host $port 0 $::tls]
     if {[dict exists $srv "client"]} {
         set old [dict get $srv "client"]
         $old close
@@ -230,7 +230,7 @@ proc reconnect {args} {
     lset ::servers end+$level $srv
 }
 
-proc valkey_deferring_client {args} {
+proc kv_deferring_client {args} {
     set level 0
     if {[llength $args] > 0 && [string is integer [lindex $args 0]]} {
         set level [lindex $args 0]
@@ -238,7 +238,7 @@ proc valkey_deferring_client {args} {
     }
 
     # create client that defers reading reply
-    set client [valkey [srv $level "host"] [srv $level "port"] 1 $::tls]
+    set client [kv [srv $level "host"] [srv $level "port"] 1 $::tls]
 
     # select the right db and read the response (OK)
     if {!$::singledb} {
@@ -253,7 +253,7 @@ proc valkey_deferring_client {args} {
     return $client
 }
 
-proc valkey_client {args} {
+proc kv_client {args} {
     set level 0
     if {[llength $args] > 0 && [string is integer [lindex $args 0]]} {
         set level [lindex $args 0]
@@ -261,7 +261,7 @@ proc valkey_client {args} {
     }
 
     # create client that won't defers reading reply
-    set client [valkey [srv $level "host"] [srv $level "port"] 0 $::tls]
+    set client [kv [srv $level "host"] [srv $level "port"] 0 $::tls]
 
     # select the right db and read the response (OK), or at least ping
     # the server if we're in a singledb mode.
@@ -273,13 +273,13 @@ proc valkey_client {args} {
     return $client
 }
 
-proc valkey_deferring_client_by_addr {host port} {
-    set client [valkey $host $port 1 $::tls]
+proc kv_deferring_client_by_addr {host port} {
+    set client [kv $host $port 1 $::tls]
     return $client
 }
 
-proc valkey_client_by_addr {host port} {
-    set client [valkey $host $port 0 $::tls]
+proc kv_client_by_addr {host port} {
+    set client [kv $host $port 0 $::tls]
     return $client
 }
 
@@ -337,7 +337,7 @@ proc run_solo {name code} {
 proc cleanup {} {
     if {!$::quiet} {puts -nonewline "Cleanup: may take some time... "}
     flush stdout
-    catch {exec rm -rf {*}[glob tests/tmp/valkey.conf.*]}
+    catch {exec rm -rf {*}[glob tests/tmp/kv.conf.*]}
     catch {exec rm -rf {*}[glob tests/tmp/nodes.conf.*]}
     catch {exec rm -rf {*}[glob tests/tmp/server*.*]}
     catch {exec rm -rf {*}[glob tests/tmp/*.acl.*]}
@@ -542,7 +542,7 @@ proc kill_clients {} {
 
 proc force_kill_all_servers {} {
     foreach p $::active_servers {
-        puts "Killing still running Valkey server $p"
+        puts "Killing still running KV server $p"
         catch {exec kill -9 $p}
     }
 }
@@ -690,8 +690,8 @@ proc print_help_screen {} {
         "--tags <tags>      Run only tests having specified tags (allow list) or, for '-'"
         "                   prefixed tags, skip tests with the tag (deny list). Only"
         "                   top-level-only tags are possible in the allow list."
-        "--dont-clean       Don't delete valkey log files after the run."
-        "--dont-pre-clean   Don't delete existing valkey log files before the run."
+        "--dont-clean       Don't delete kv log files after the run."
+        "--dont-pre-clean   Don't delete existing kv log files before the run."
         "--no-latency       Skip latency measurements and validation by some tests."
         "--fastfail         Exit immediately once the first test fails."
         "--stop             Blocks once the first test fails."
@@ -702,14 +702,14 @@ proc print_help_screen {} {
         "--dump-logs        Dump server log on test failure."
         "--io-threads       Run tests with IO threads."
         "--tls              Run tests in TLS mode."
-        "--tls-module       Run tests in TLS mode with Valkey module."
+        "--tls-module       Run tests in TLS mode with KV module."
         "--host <addr>      Run tests against an external host."
         "--port <port>      TCP port to use against external host."
         "--other-server-path <path>"
-        "                   Path to another version of valkey-server, used for inter-"
+        "                   Path to another version of kv-server, used for inter-"
         "                   version compatibility testing."
-        "--baseport <port>  Initial port number for spawned valkey servers."
-        "--portcount <num>  Port range for spawned valkey servers."
+        "--baseport <port>  Initial port number for spawned kv servers."
+        "--portcount <num>  Port range for spawned kv servers."
         "--singledb         Use a single database, avoid SELECT."
         "--cluster-mode     Skip tests that are not compatible with cluster mode."
         "                   When running tests against an external node in cluster"
@@ -982,7 +982,7 @@ proc read_from_replication_stream {s} {
     set res {}
     for {set j 0} {$j < $count} {incr j} {
         read $s 1
-        set arg [::valkey::valkey_bulk_read $s]
+        set arg [::kv::kv_bulk_read $s]
         if {$j == 0} {set arg [string tolower $arg]}
         lappend res $arg
     }
@@ -1031,9 +1031,9 @@ proc is_ipv6_available {} {
 
 # MPTCP detection
 proc is_mptcp_available {} {
-    # Typical error output from valkey-cli --mptcp:
-    # Could not connect to Valkey at 127.0.0.1:6379: MPTCP is not supported on this platform
-    if {[catch {exec $::VALKEY_CLI_BIN --mptcp ping} e] &&
+    # Typical error output from kv-cli --mptcp:
+    # Could not connect to KV at 127.0.0.1:6379: MPTCP is not supported on this platform
+    if {[catch {exec $::KV_CLI_BIN --mptcp ping} e] &&
         [string match "*MPTCP is not supported on this platform*" $e]} {
         return 0
     }

@@ -201,7 +201,7 @@ start_cluster 1 0 {tags {external:skip cluster} overrides {cluster-slot-stats-en
 
     test "CLUSTER SLOT-STATS cpu-usec for blocking commands, unblocked on keyspace update." {
         # Blocking command with no timeout. Only keyspace update can unblock this client.
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd BLPOP $key 0
         wait_for_blocked_clients_count 1
         set slot_stats [R 0 CLUSTER SLOT-STATS SLOTSRANGE 0 16383]
@@ -229,7 +229,7 @@ start_cluster 1 0 {tags {external:skip cluster} overrides {cluster-slot-stats-en
 
     test "CLUSTER SLOT-STATS cpu-usec for blocking commands, unblocked on timeout." {
         # Blocking command with 0.5 seconds timeout.
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd BLPOP $key 0.5
 
         # Confirm that the client is blocked, then unblocked within 1 second.
@@ -250,7 +250,7 @@ start_cluster 1 0 {tags {external:skip cluster} overrides {cluster-slot-stats-en
     R 0 FLUSHALL
 
     test "CLUSTER SLOT-STATS cpu-usec for transactions." {
-        set r1 [valkey_client]
+        set r1 [kv_client]
         $r1 MULTI
         $r1 SET $key value
         $r1 GET $key
@@ -369,7 +369,7 @@ start_cluster 1 0 {tags {external:skip cluster} overrides {cluster-slot-stats-en
     R 0 FLUSHALL
 
     test "CLUSTER SLOT-STATS network-bytes-in, in-line buffer processing." {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         # SET key value\r\n --> 15 bytes.
         $rd write "SET $key value\r\n"
         $rd flush
@@ -389,7 +389,7 @@ start_cluster 1 0 {tags {external:skip cluster} overrides {cluster-slot-stats-en
     R 0 FLUSHALL
 
     test "CLUSTER SLOT-STATS network-bytes-in, blocking command." {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         # *3\r\n$5\r\nblpop\r\n$3\r\nkey\r\n$1\r\n0\r\n --> 31 bytes.
         $rd BLPOP $key 0
         wait_for_blocked_clients_count 1
@@ -415,7 +415,7 @@ start_cluster 1 0 {tags {external:skip cluster} overrides {cluster-slot-stats-en
     R 0 FLUSHALL
 
     test "CLUSTER SLOT-STATS network-bytes-in, multi-exec transaction." {
-        set r [valkey_client]
+        set r [kv_client]
         # *1\r\n$5\r\nmulti\r\n --> 15 bytes.
         $r MULTI
         # *3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$5\r\nvalue\r\n --> 33 bytes.
@@ -447,7 +447,7 @@ start_cluster 1 0 {tags {external:skip cluster} overrides {cluster-slot-stats-en
     test "CLUSTER SLOT-STATS network-bytes-in, pub/sub." {
         # PUB/SUB does not get accumulated at per-slot basis, 
         # as it is cluster-wide and is not slot specific.
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd subscribe channel
         R 0 publish channel message
 
@@ -476,7 +476,7 @@ start_cluster 1 1 {tags {external:skip cluster} overrides {cluster-slot-stats-en
         set slot [R 0 cluster keyslot $channel]
         set primary [Rn 0]
         set replica [Rn 1]
-        set replica_subscriber [valkey_deferring_client -1]
+        set replica_subscriber [kv_deferring_client -1]
         $replica_subscriber SSUBSCRIBE $channel
         # *2\r\n$10\r\nssubscribe\r\n$7\r\nchannel\r\n --> 34 bytes.
         $primary SPUBLISH $channel hello
@@ -562,7 +562,7 @@ start_cluster 1 0 {tags {external:skip cluster}} {
     R 0 FLUSHALL
 
     test "CLUSTER SLOT-STATS network-bytes-out, blocking commands." {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd BLPOP $key 0
         wait_for_blocked_clients_count 1
 
@@ -632,8 +632,8 @@ start_cluster 1 1 {tags {external:skip cluster}} {
     test "CLUSTER SLOT-STATS network-bytes-out, sharded pub/sub, single channel." {
         set slot [R 0 cluster keyslot $channel]
         set publisher [Rn 0]
-        set subscriber [valkey_client]
-        set replica [valkey_deferring_client -1]
+        set subscriber [kv_client]
+        set replica [kv_deferring_client -1]
 
         # Subscriber client) *3\r\n$10\r\nssubscribe\r\n$7\r\nchannel\r\n:1\r\n --> 38 bytes
         $subscriber SSUBSCRIBE $channel 
@@ -663,8 +663,8 @@ start_cluster 1 1 {tags {external:skip cluster}} {
     test "CLUSTER SLOT-STATS network-bytes-out, sharded pub/sub, cross-slot channels." {
         set slot [R 0 cluster keyslot $channel]
         set publisher [Rn 0]
-        set subscriber [valkey_client]
-        set replica [valkey_deferring_client -1]
+        set subscriber [kv_client]
+        set replica [kv_deferring_client -1]
 
         # Stack multi-slot subscriptions against a single client.
         # For primary channel;
@@ -723,7 +723,7 @@ start_cluster 1 0 {tags {external:skip cluster} overrides {cluster-slot-stats-en
         ]
     ]
 
-    test "CLUSTER SLOT-STATS contains default value upon valkey-server startup" {
+    test "CLUSTER SLOT-STATS contains default value upon kv-server startup" {
         set slot_stats [R 0 CLUSTER SLOT-STATS SLOTSRANGE 0 16383]
         assert_empty_slot_stats $slot_stats $metrics_to_assert
     }

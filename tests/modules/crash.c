@@ -1,17 +1,17 @@
-#include "valkeymodule.h"
+#include "kvmodule.h"
 
 #include <strings.h>
 #include <sys/mman.h>
 
 #define UNUSED(V) ((void) V)
 
-void assertCrash(ValkeyModuleInfoCtx *ctx, int for_crash_report) {
+void assertCrash(KVModuleInfoCtx *ctx, int for_crash_report) {
     UNUSED(ctx);
     UNUSED(for_crash_report);
-    ValkeyModule_Assert(0);
+    KVModule_Assert(0);
 }
 
-void segfaultCrash(ValkeyModuleInfoCtx *ctx, int for_crash_report) {
+void segfaultCrash(KVModuleInfoCtx *ctx, int for_crash_report) {
     UNUSED(ctx);
     UNUSED(for_crash_report);
     /* Compiler gives warnings about writing to a random address
@@ -21,19 +21,19 @@ void segfaultCrash(ValkeyModuleInfoCtx *ctx, int for_crash_report) {
     *p = 'x';
 }
 
-int ValkeyModule_OnLoad(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
-    VALKEYMODULE_NOT_USED(argv);
-    VALKEYMODULE_NOT_USED(argc);
-    if (ValkeyModule_Init(ctx,"infocrash",1,VALKEYMODULE_APIVER_1)
-            == VALKEYMODULE_ERR) return VALKEYMODULE_ERR;
-    ValkeyModule_Assert(argc == 1);
-    if (!strcasecmp(ValkeyModule_StringPtrLen(argv[0], NULL), "segfault")) {
-        if (ValkeyModule_RegisterInfoFunc(ctx, segfaultCrash) == VALKEYMODULE_ERR) return VALKEYMODULE_ERR;
-    } else if(!strcasecmp(ValkeyModule_StringPtrLen(argv[0], NULL), "assert")) {
-        if (ValkeyModule_RegisterInfoFunc(ctx, assertCrash) == VALKEYMODULE_ERR) return VALKEYMODULE_ERR;
+int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+    KVMODULE_NOT_USED(argv);
+    KVMODULE_NOT_USED(argc);
+    if (KVModule_Init(ctx,"infocrash",1,KVMODULE_APIVER_1)
+            == KVMODULE_ERR) return KVMODULE_ERR;
+    KVModule_Assert(argc == 1);
+    if (!strcasecmp(KVModule_StringPtrLen(argv[0], NULL), "segfault")) {
+        if (KVModule_RegisterInfoFunc(ctx, segfaultCrash) == KVMODULE_ERR) return KVMODULE_ERR;
+    } else if(!strcasecmp(KVModule_StringPtrLen(argv[0], NULL), "assert")) {
+        if (KVModule_RegisterInfoFunc(ctx, assertCrash) == KVMODULE_ERR) return KVMODULE_ERR;
     } else {
-        return VALKEYMODULE_ERR;
+        return KVMODULE_ERR;
     }
 
-    return VALKEYMODULE_OK;
+    return KVMODULE_OK;
 }

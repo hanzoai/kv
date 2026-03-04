@@ -84,9 +84,9 @@ typedef struct loadCtx {
  * This execution should be fast and should only register
  * functions so 500ms should be more than enough. */
 static void luaEngineLoadHook(lua_State *lua, lua_Debug *ar) {
-    VALKEYMODULE_NOT_USED(ar);
+    KVMODULE_NOT_USED(ar);
     loadCtx *load_ctx = luaGetFromRegistry(lua, REGISTRY_LOAD_CTX_NAME);
-    ValkeyModule_Assert(load_ctx); /* Only supported inside script invocation */
+    KVModule_Assert(load_ctx); /* Only supported inside script invocation */
     uint64_t duration = elapsedMs(load_ctx->start_time);
     if (load_ctx->timeout > 0 && duration > load_ctx->timeout) {
         lua_sethook(lua, luaEngineLoadHook, LUA_MASKLINE, 0);
@@ -97,13 +97,13 @@ static void luaEngineLoadHook(lua_State *lua, lua_Debug *ar) {
 }
 
 static void freeCompiledFunc(lua_State *lua,
-                             ValkeyModuleScriptingEngineCompiledFunction *compiled_func) {
-    ValkeyModule_FreeString(NULL, compiled_func->name);
+                             KVModuleScriptingEngineCompiledFunction *compiled_func) {
+    KVModule_FreeString(NULL, compiled_func->name);
     if (compiled_func->desc) {
-        ValkeyModule_FreeString(NULL, compiled_func->desc);
+        KVModule_FreeString(NULL, compiled_func->desc);
     }
     luaFunctionFreeFunction(lua, compiled_func->function);
-    ValkeyModule_Free(compiled_func);
+    KVModule_Free(compiled_func);
 }
 
 /*
@@ -117,12 +117,12 @@ static void freeCompiledFunc(lua_State *lua,
  *
  * Return NULL on compilation error and set the error to the err variable
  */
-ValkeyModuleScriptingEngineCompiledFunction **luaFunctionLibraryCreate(lua_State *lua,
+KVModuleScriptingEngineCompiledFunction **luaFunctionLibraryCreate(lua_State *lua,
                                                                        const char *code,
                                                                        size_t timeout,
                                                                        size_t *out_num_compiled_functions,
-                                                                       ValkeyModuleString **err) {
-    ValkeyModuleScriptingEngineCompiledFunction **compiled_functions = NULL;
+                                                                       KVModuleString **err) {
+    KVModuleScriptingEngineCompiledFunction **compiled_functions = NULL;
 
     /* set load library globals */
     lua_getmetatable(lua, LUA_GLOBALSINDEX);
@@ -134,11 +134,11 @@ ValkeyModuleScriptingEngineCompiledFunction **luaFunctionLibraryCreate(lua_State
 
     /* compile the code */
     if (luaL_loadbuffer(lua, code, strlen(code), "@user_function")) {
-        *err = ValkeyModule_CreateStringPrintf(NULL, "Error compiling function: %s", lua_tostring(lua, -1));
+        *err = KVModule_CreateStringPrintf(NULL, "Error compiling function: %s", lua_tostring(lua, -1));
         lua_pop(lua, 1); /* pops the error */
         goto done;
     }
-    ValkeyModule_Assert(lua_isfunction(lua, -1));
+    KVModule_Assert(lua_isfunction(lua, -1));
 
     loadCtx load_ctx = {
         .functions = list_create(),
@@ -152,7 +152,7 @@ ValkeyModuleScriptingEngineCompiledFunction **luaFunctionLibraryCreate(lua_State
     if (lua_pcall(lua, 0, 0, 0)) {
         errorInfo err_info = {0};
         luaExtractErrorInformation(lua, &err_info);
-        *err = ValkeyModule_CreateStringPrintf(NULL, "Error registering functions: %s", err_info.msg);
+        *err = KVModule_CreateStringPrintf(NULL, "Error registering functions: %s", err_info.msg);
         lua_pop(lua, 1); /* pops the error */
         luaErrorInformationDiscard(&err_info);
 
@@ -168,13 +168,13 @@ ValkeyModuleScriptingEngineCompiledFunction **luaFunctionLibraryCreate(lua_State
     }
 
     compiled_functions =
-        ValkeyModule_Calloc(list_length(load_ctx.functions),
-                            sizeof(ValkeyModuleScriptingEngineCompiledFunction *));
+        KVModule_Calloc(list_length(load_ctx.functions),
+                            sizeof(KVModuleScriptingEngineCompiledFunction *));
     ListIter *iter = list_get_iter(load_ctx.functions);
     void *val = NULL;
     *out_num_compiled_functions = 0;
     while ((val = list_iter_next(iter)) != NULL) {
-        ValkeyModuleScriptingEngineCompiledFunction *func = val;
+        KVModuleScriptingEngineCompiledFunction *func = val;
         compiled_functions[*out_num_compiled_functions] = func;
         (*out_num_compiled_functions)++;
     }
@@ -195,12 +195,12 @@ done:
     return compiled_functions;
 }
 
-static void luaRegisterFunctionArgsInitialize(ValkeyModuleScriptingEngineCompiledFunction *func,
-                                              ValkeyModuleString *name,
-                                              ValkeyModuleString *desc,
+static void luaRegisterFunctionArgsInitialize(KVModuleScriptingEngineCompiledFunction *func,
+                                              KVModuleString *name,
+                                              KVModuleString *desc,
                                               luaFunction *script,
                                               uint64_t flags) {
-    *func = (ValkeyModuleScriptingEngineCompiledFunction){
+    *func = (KVModuleScriptingEngineCompiledFunction){
         .name = name,
         .desc = desc,
         .function = script,
@@ -209,7 +209,7 @@ static void luaRegisterFunctionArgsInitialize(ValkeyModuleScriptingEngineCompile
 }
 
 typedef struct flagStr {
-    ValkeyModuleScriptingEngineScriptFlag flag;
+    KVModuleScriptingEngineScriptFlag flag;
     const char *str;
 } flagStr;
 
@@ -266,23 +266,23 @@ done:
     return ret;
 }
 
-/* Return a Valkey string of the string value located on stack at the given index.
+/* Return a KV string of the string value located on stack at the given index.
  * Return NULL if the value is not a string. */
-static ValkeyModuleString *luaGetStringObject(lua_State *lua, int index) {
+static KVModuleString *luaGetStringObject(lua_State *lua, int index) {
     if (!lua_isstring(lua, index)) {
         return NULL;
     }
 
     size_t len;
     const char *str = lua_tolstring(lua, index, &len);
-    return ValkeyModule_CreateString(NULL, str, len);
+    return KVModule_CreateString(NULL, str, len);
 }
 
 static int luaRegisterFunctionReadNamedArgs(lua_State *lua,
-                                            ValkeyModuleScriptingEngineCompiledFunction *func) {
+                                            KVModuleScriptingEngineCompiledFunction *func) {
     char *err = NULL;
-    ValkeyModuleString *name = NULL;
-    ValkeyModuleString *desc = NULL;
+    KVModuleString *name = NULL;
+    KVModuleString *desc = NULL;
     luaFunction *script = NULL;
     uint64_t flags = 0;
     if (!lua_istable(lua, 1)) {
@@ -318,7 +318,7 @@ static int luaRegisterFunctionReadNamedArgs(lua_State *lua,
             }
             int lua_function_ref = luaL_ref(lua, LUA_REGISTRYINDEX);
 
-            script = ValkeyModule_Alloc(sizeof(*script));
+            script = KVModule_Alloc(sizeof(*script));
             script->lua = lua;
             script->function_ref = lua_function_ref;
             continue; /* value was already popped, so no need to pop it out. */
@@ -358,20 +358,20 @@ static int luaRegisterFunctionReadNamedArgs(lua_State *lua,
     return C_OK;
 
 error:
-    if (name) ValkeyModule_FreeString(NULL, name);
-    if (desc) ValkeyModule_FreeString(NULL, desc);
+    if (name) KVModule_FreeString(NULL, name);
+    if (desc) KVModule_FreeString(NULL, desc);
     if (script) {
         lua_unref(lua, script->function_ref);
-        ValkeyModule_Free(script);
+        KVModule_Free(script);
     }
     luaPushError(lua, err);
     return C_ERR;
 }
 
 static int luaRegisterFunctionReadPositionalArgs(lua_State *lua,
-                                                 ValkeyModuleScriptingEngineCompiledFunction *func) {
+                                                 KVModuleScriptingEngineCompiledFunction *func) {
     char *err = NULL;
-    ValkeyModuleString *name = NULL;
+    KVModuleString *name = NULL;
     luaFunction *script = NULL;
 
     if (!(name = luaGetStringObject(lua, 1))) {
@@ -386,7 +386,7 @@ static int luaRegisterFunctionReadPositionalArgs(lua_State *lua,
 
     int lua_function_ref = luaL_ref(lua, LUA_REGISTRYINDEX);
 
-    script = ValkeyModule_Alloc(sizeof(*script));
+    script = KVModule_Alloc(sizeof(*script));
     script->lua = lua;
     script->function_ref = lua_function_ref;
 
@@ -395,13 +395,13 @@ static int luaRegisterFunctionReadPositionalArgs(lua_State *lua,
     return C_OK;
 
 error:
-    if (name) ValkeyModule_FreeString(NULL, name);
+    if (name) KVModule_FreeString(NULL, name);
     luaPushError(lua, err);
     return C_ERR;
 }
 
 static int luaRegisterFunctionReadArgs(lua_State *lua,
-                                       ValkeyModuleScriptingEngineCompiledFunction *func) {
+                                       KVModuleScriptingEngineCompiledFunction *func) {
     int argc = lua_gettop(lua);
     if (argc < 1 || argc > 2) {
         luaPushError(lua, "wrong number of arguments to server.register_function");
@@ -422,10 +422,10 @@ static int luaFunctionRegisterFunction(lua_State *lua) {
         return luaError(lua);
     }
 
-    ValkeyModuleScriptingEngineCompiledFunction *func = ValkeyModule_Calloc(1, sizeof(*func));
+    KVModuleScriptingEngineCompiledFunction *func = KVModule_Calloc(1, sizeof(*func));
 
     if (luaRegisterFunctionReadArgs(lua, func) != C_OK) {
-        ValkeyModule_Free(func);
+        KVModule_Free(func);
         return luaError(lua);
     }
 
@@ -479,5 +479,5 @@ void luaFunctionInitializeLuaState(luaEngineCtx *ctx, lua_State *lua) {
 void luaFunctionFreeFunction(lua_State *lua, void *function) {
     luaFunction *script = function;
     lua_unref(lua, script->function_ref);
-    ValkeyModule_Free(function);
+    KVModule_Free(function);
 }

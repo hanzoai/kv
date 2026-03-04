@@ -31,71 +31,71 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef VALKEY_ADAPTERS_MACOSX_H
-#define VALKEY_ADAPTERS_MACOSX_H
+#ifndef KV_ADAPTERS_MACOSX_H
+#define KV_ADAPTERS_MACOSX_H
 
 #include "../async.h"
 #include "../cluster.h"
-#include "../valkey.h"
+#include "../kv.h"
 
 #include <CoreFoundation/CoreFoundation.h>
 
 typedef struct {
-    valkeyAsyncContext *context;
+    kvAsyncContext *context;
     CFSocketRef socketRef;
     CFRunLoopSourceRef sourceRef;
-} ValkeyRunLoop;
+} KVRunLoop;
 
-static int freeValkeyRunLoop(ValkeyRunLoop *valkeyRunLoop) {
-    if (valkeyRunLoop != NULL) {
-        if (valkeyRunLoop->sourceRef != NULL) {
-            CFRunLoopSourceInvalidate(valkeyRunLoop->sourceRef);
-            CFRelease(valkeyRunLoop->sourceRef);
+static int freeKVRunLoop(KVRunLoop *kvRunLoop) {
+    if (kvRunLoop != NULL) {
+        if (kvRunLoop->sourceRef != NULL) {
+            CFRunLoopSourceInvalidate(kvRunLoop->sourceRef);
+            CFRelease(kvRunLoop->sourceRef);
         }
-        if (valkeyRunLoop->socketRef != NULL) {
-            CFSocketInvalidate(valkeyRunLoop->socketRef);
-            CFRelease(valkeyRunLoop->socketRef);
+        if (kvRunLoop->socketRef != NULL) {
+            CFSocketInvalidate(kvRunLoop->socketRef);
+            CFRelease(kvRunLoop->socketRef);
         }
-        vk_free(valkeyRunLoop);
+        vk_free(kvRunLoop);
     }
-    return VALKEY_ERR;
+    return KV_ERR;
 }
 
-static void valkeyMacOSAddRead(void *privdata) {
-    ValkeyRunLoop *valkeyRunLoop = (ValkeyRunLoop *)privdata;
-    CFSocketEnableCallBacks(valkeyRunLoop->socketRef, kCFSocketReadCallBack);
+static void kvMacOSAddRead(void *privdata) {
+    KVRunLoop *kvRunLoop = (KVRunLoop *)privdata;
+    CFSocketEnableCallBacks(kvRunLoop->socketRef, kCFSocketReadCallBack);
 }
 
-static void valkeyMacOSDelRead(void *privdata) {
-    ValkeyRunLoop *valkeyRunLoop = (ValkeyRunLoop *)privdata;
-    CFSocketDisableCallBacks(valkeyRunLoop->socketRef, kCFSocketReadCallBack);
+static void kvMacOSDelRead(void *privdata) {
+    KVRunLoop *kvRunLoop = (KVRunLoop *)privdata;
+    CFSocketDisableCallBacks(kvRunLoop->socketRef, kCFSocketReadCallBack);
 }
 
-static void valkeyMacOSAddWrite(void *privdata) {
-    ValkeyRunLoop *valkeyRunLoop = (ValkeyRunLoop *)privdata;
-    CFSocketEnableCallBacks(valkeyRunLoop->socketRef, kCFSocketWriteCallBack);
+static void kvMacOSAddWrite(void *privdata) {
+    KVRunLoop *kvRunLoop = (KVRunLoop *)privdata;
+    CFSocketEnableCallBacks(kvRunLoop->socketRef, kCFSocketWriteCallBack);
 }
 
-static void valkeyMacOSDelWrite(void *privdata) {
-    ValkeyRunLoop *valkeyRunLoop = (ValkeyRunLoop *)privdata;
-    CFSocketDisableCallBacks(valkeyRunLoop->socketRef, kCFSocketWriteCallBack);
+static void kvMacOSDelWrite(void *privdata) {
+    KVRunLoop *kvRunLoop = (KVRunLoop *)privdata;
+    CFSocketDisableCallBacks(kvRunLoop->socketRef, kCFSocketWriteCallBack);
 }
 
-static void valkeyMacOSCleanup(void *privdata) {
-    ValkeyRunLoop *valkeyRunLoop = (ValkeyRunLoop *)privdata;
-    freeValkeyRunLoop(valkeyRunLoop);
+static void kvMacOSCleanup(void *privdata) {
+    KVRunLoop *kvRunLoop = (KVRunLoop *)privdata;
+    freeKVRunLoop(kvRunLoop);
 }
 
-static void valkeyMacOSAsyncCallback(CFSocketRef __unused s, CFSocketCallBackType callbackType, CFDataRef __unused address, const void __unused *data, void *info) {
-    valkeyAsyncContext *context = (valkeyAsyncContext *)info;
+static void kvMacOSAsyncCallback(CFSocketRef __unused s, CFSocketCallBackType callbackType, CFDataRef __unused address, const void __unused *data, void *info) {
+    kvAsyncContext *context = (kvAsyncContext *)info;
 
     switch (callbackType) {
     case kCFSocketReadCallBack:
-        valkeyAsyncHandleRead(context);
+        kvAsyncHandleRead(context);
         break;
 
     case kCFSocketWriteCallBack:
-        valkeyAsyncHandleWrite(context);
+        kvAsyncHandleWrite(context);
         break;
 
     default:
@@ -103,61 +103,61 @@ static void valkeyMacOSAsyncCallback(CFSocketRef __unused s, CFSocketCallBackTyp
     }
 }
 
-static int valkeyMacOSAttach(valkeyAsyncContext *valkeyAsyncCtx, CFRunLoopRef runLoop) {
-    valkeyContext *valkeyCtx = &(valkeyAsyncCtx->c);
+static int kvMacOSAttach(kvAsyncContext *kvAsyncCtx, CFRunLoopRef runLoop) {
+    kvContext *kvCtx = &(kvAsyncCtx->c);
 
     /* Nothing should be attached when something is already attached */
-    if (valkeyAsyncCtx->ev.data != NULL)
-        return VALKEY_ERR;
+    if (kvAsyncCtx->ev.data != NULL)
+        return KV_ERR;
 
-    ValkeyRunLoop *valkeyRunLoop = (ValkeyRunLoop *)vk_calloc(1, sizeof(ValkeyRunLoop));
-    if (valkeyRunLoop == NULL)
-        return VALKEY_ERR;
+    KVRunLoop *kvRunLoop = (KVRunLoop *)vk_calloc(1, sizeof(KVRunLoop));
+    if (kvRunLoop == NULL)
+        return KV_ERR;
 
-    /* Setup valkey stuff */
-    valkeyRunLoop->context = valkeyAsyncCtx;
+    /* Setup kv stuff */
+    kvRunLoop->context = kvAsyncCtx;
 
-    valkeyAsyncCtx->ev.addRead = valkeyMacOSAddRead;
-    valkeyAsyncCtx->ev.delRead = valkeyMacOSDelRead;
-    valkeyAsyncCtx->ev.addWrite = valkeyMacOSAddWrite;
-    valkeyAsyncCtx->ev.delWrite = valkeyMacOSDelWrite;
-    valkeyAsyncCtx->ev.cleanup = valkeyMacOSCleanup;
-    valkeyAsyncCtx->ev.data = valkeyRunLoop;
+    kvAsyncCtx->ev.addRead = kvMacOSAddRead;
+    kvAsyncCtx->ev.delRead = kvMacOSDelRead;
+    kvAsyncCtx->ev.addWrite = kvMacOSAddWrite;
+    kvAsyncCtx->ev.delWrite = kvMacOSDelWrite;
+    kvAsyncCtx->ev.cleanup = kvMacOSCleanup;
+    kvAsyncCtx->ev.data = kvRunLoop;
 
     /* Initialize and install read/write events */
-    CFSocketContext socketCtx = {0, valkeyAsyncCtx, NULL, NULL, NULL};
+    CFSocketContext socketCtx = {0, kvAsyncCtx, NULL, NULL, NULL};
 
-    valkeyRunLoop->socketRef = CFSocketCreateWithNative(NULL, valkeyCtx->fd,
+    kvRunLoop->socketRef = CFSocketCreateWithNative(NULL, kvCtx->fd,
                                                         kCFSocketReadCallBack | kCFSocketWriteCallBack,
-                                                        valkeyMacOSAsyncCallback,
+                                                        kvMacOSAsyncCallback,
                                                         &socketCtx);
-    if (!valkeyRunLoop->socketRef)
-        return freeValkeyRunLoop(valkeyRunLoop);
+    if (!kvRunLoop->socketRef)
+        return freeKVRunLoop(kvRunLoop);
 
-    valkeyRunLoop->sourceRef = CFSocketCreateRunLoopSource(NULL, valkeyRunLoop->socketRef, 0);
-    if (!valkeyRunLoop->sourceRef)
-        return freeValkeyRunLoop(valkeyRunLoop);
+    kvRunLoop->sourceRef = CFSocketCreateRunLoopSource(NULL, kvRunLoop->socketRef, 0);
+    if (!kvRunLoop->sourceRef)
+        return freeKVRunLoop(kvRunLoop);
 
-    CFRunLoopAddSource(runLoop, valkeyRunLoop->sourceRef, kCFRunLoopDefaultMode);
+    CFRunLoopAddSource(runLoop, kvRunLoop->sourceRef, kCFRunLoopDefaultMode);
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
 /* Internal adapter function with correct function signature. */
-static int valkeyMacOSAttachAdapter(valkeyAsyncContext *ac, void *loop) {
-    return valkeyMacOSAttach(ac, (CFRunLoopRef)loop);
+static int kvMacOSAttachAdapter(kvAsyncContext *ac, void *loop) {
+    return kvMacOSAttach(ac, (CFRunLoopRef)loop);
 }
 
-VALKEY_UNUSED
-static int valkeyClusterOptionsUseMacOS(valkeyClusterOptions *options,
+KV_UNUSED
+static int kvClusterOptionsUseMacOS(kvClusterOptions *options,
                                         CFRunLoopRef loop) {
     if (options == NULL || loop == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    options->attach_fn = valkeyMacOSAttachAdapter;
+    options->attach_fn = kvMacOSAttachAdapter;
     options->attach_data = loop;
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-#endif /* VALKEY_ADAPTERS_MACOSX_H */
+#endif /* KV_ADAPTERS_MACOSX_H */

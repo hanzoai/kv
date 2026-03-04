@@ -1,8 +1,8 @@
 /*
  * Copyright (c) 2021-2024 zhenwei pi <pizhenwei@bytedance.com>
  *
- * Valkey Over RDMA has been supported as experimental feature since Valkey-8.0.
- * It's also supported as an experimental feature by libvalkey,
+ * KV Over RDMA has been supported as experimental feature since KV-8.0.
+ * It's also supported as an experimental feature by libkv,
  * It may be removed or changed in any version.
  *
  * All rights reserved.
@@ -32,8 +32,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef VALKEY_RDMA_H
-#define VALKEY_RDMA_H
+#ifndef KV_RDMA_H
+#define KV_RDMA_H
 
 #include "visibility.h"
 
@@ -45,25 +45,25 @@ extern "C" {
  * Helper macros to initialize options for RDMA.
  * It's ok to reuse TCP options.
  */
-#define VALKEY_OPTIONS_SET_RDMA(opts, ip_, port_) \
+#define KV_OPTIONS_SET_RDMA(opts, ip_, port_) \
     do {                                          \
-        (opts)->type = VALKEY_CONN_RDMA;          \
+        (opts)->type = KV_CONN_RDMA;          \
         (opts)->endpoint.tcp.ip = ip_;            \
         (opts)->endpoint.tcp.port = port_;        \
     } while (0)
 
-#define VALKEY_OPTIONS_SET_RDMA_WITH_SOURCE_ADDR(opts, ip_, port_, source_addr_) \
+#define KV_OPTIONS_SET_RDMA_WITH_SOURCE_ADDR(opts, ip_, port_, source_addr_) \
     do {                                                                         \
-        (opts)->type = VALKEY_CONN_RDMA;                                         \
+        (opts)->type = KV_CONN_RDMA;                                         \
         (opts)->endpoint.tcp.ip = ip_;                                           \
         (opts)->endpoint.tcp.port = port_;                                       \
         (opts)->endpoint.tcp.source_addr = source_addr_;                         \
     } while (0)
 
-LIBVALKEY_API int valkeyInitiateRdma(void);
+LIBKV_API int kvInitiateRdma(void);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* VALKEY_RDMA_H */
+#endif /* KV_RDMA_H */

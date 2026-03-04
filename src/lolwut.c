@@ -44,8 +44,8 @@ void lolwut9Command(client *c);
 /* The default target for LOLWUT if no matching version was found.
  * This is what unstable versions of the server will display. */
 void lolwutUnstableCommand(client *c) {
-    sds rendered = sdscatprintf(sdsempty(), "%s ver.", server.extended_redis_compat ? "Redis" : "Valkey");
-    rendered = sdscat(rendered, server.extended_redis_compat ? REDIS_VERSION : VALKEY_VERSION);
+    sds rendered = sdscatprintf(sdsempty(), "%s ver.", server.extended_redis_compat ? "Redis" : "KV");
+    rendered = sdscat(rendered, server.extended_redis_compat ? REDIS_VERSION : KV_VERSION);
     rendered = sdscatlen(rendered, "\n", 1);
     addReplyVerbatim(c, rendered, sdslen(rendered), "txt");
     sdsfree(rendered);
@@ -53,7 +53,7 @@ void lolwutUnstableCommand(client *c) {
 
 /* LOLWUT [VERSION <version>] [... version specific arguments ...] */
 void lolwutCommand(client *c) {
-    char *v = VALKEY_VERSION;
+    char *v = KV_VERSION;
     char verstr[64];
 
     if (c->argc >= 3 && !strcasecmp(objectGetVal(c->argv[1]), "version")) {

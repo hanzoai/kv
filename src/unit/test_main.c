@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -98,7 +98,7 @@ int main(int argc, char **argv) {
         if (file && strcasecmp(file, unitTestSuite[j].filename)) continue;
 
         /* We need to explicitly set the seed in the several random numbers
-         * generator that valkey server uses so that the unit tests reproduce
+         * generator that kv server uses so that the unit tests reproduce
          * the random values in a deterministic way. */
         setRandomSeedCString(seed_cstr, strlen(seed_cstr));
         init_genrand64(genrandseed);

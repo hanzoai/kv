@@ -33,7 +33,7 @@
 
 #include "alloc.h"
 #include "read.h"
-#include "valkey.h"
+#include "kv.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -45,7 +45,7 @@
 #include "async.h"
 #include "async_private.h"
 #include "net.h"
-#include "valkey_private.h"
+#include "kv_private.h"
 
 #include <dict.h>
 #include <sds.h>
@@ -61,12 +61,12 @@
 
 typedef struct {
     sds command;
-    valkeyCallbackFn *user_callback;
+    kvCallbackFn *user_callback;
     void *user_priv_data;
 } ssubscribeCallbackData;
 
-/* Forward declarations of valkey.c functions */
-int valkeyAppendCmdLen(valkeyContext *c, const char *cmd, size_t len);
+/* Forward declarations of kv.c functions */
+int kvAppendCmdLen(kvContext *c, const char *cmd, size_t len);
 
 /* Functions managing dictionary of callbacks for pub/sub. */
 static uint64_t callbackHash(const void *key) {
@@ -98,8 +98,8 @@ static dictType callbackDict = {
     .keyDestructor = callbackKeyDestructor,
     .valDestructor = callbackValDestructor};
 
-static valkeyAsyncContext *valkeyAsyncInitialize(valkeyContext *c) {
-    valkeyAsyncContext *ac;
+static kvAsyncContext *kvAsyncInitialize(kvContext *c) {
+    kvAsyncContext *ac;
     dict *channels = NULL, *patterns = NULL, *schannels = NULL;
 
     channels = dictCreate(&callbackDict);
@@ -114,16 +114,16 @@ static valkeyAsyncContext *valkeyAsyncInitialize(valkeyContext *c) {
     if (schannels == NULL)
         goto oom;
 
-    ac = vk_realloc(c, sizeof(valkeyAsyncContext));
+    ac = vk_realloc(c, sizeof(kvAsyncContext));
     if (ac == NULL)
         goto oom;
 
     c = &(ac->c);
 
-    /* The regular connect functions will always set the flag VALKEY_CONNECTED.
+    /* The regular connect functions will always set the flag KV_CONNECTED.
      * For the async API, we want to wait until the first write event is
      * received up before setting this flag, so reset it here. */
-    c->flags &= ~VALKEY_CONNECTED;
+    c->flags &= ~KV_CONNECTED;
 
     ac->err = 0;
     ac->errstr = NULL;
@@ -159,78 +159,78 @@ oom:
 }
 
 /* We want the error field to be accessible directly instead of requiring
- * an indirection to the valkeyContext struct. */
-static void valkeyAsyncCopyError(valkeyAsyncContext *ac) {
+ * an indirection to the kvContext struct. */
+static void kvAsyncCopyError(kvAsyncContext *ac) {
     if (!ac)
         return;
 
-    valkeyContext *c = &(ac->c);
+    kvContext *c = &(ac->c);
     ac->err = c->err;
     ac->errstr = c->errstr;
 }
 
-valkeyAsyncContext *valkeyAsyncConnectWithOptions(const valkeyOptions *options) {
-    valkeyOptions myOptions = *options;
-    valkeyContext *c;
-    valkeyAsyncContext *ac;
+kvAsyncContext *kvAsyncConnectWithOptions(const kvOptions *options) {
+    kvOptions myOptions = *options;
+    kvContext *c;
+    kvAsyncContext *ac;
 
     /* Clear any erroneously set sync callback and flag that we don't want to
      * use freeReplyObject by default. */
     myOptions.push_cb = NULL;
-    myOptions.options |= VALKEY_OPT_NO_PUSH_AUTOFREE;
+    myOptions.options |= KV_OPT_NO_PUSH_AUTOFREE;
 
-    myOptions.options |= VALKEY_OPT_NONBLOCK;
-    c = valkeyConnectWithOptions(&myOptions);
+    myOptions.options |= KV_OPT_NONBLOCK;
+    c = kvConnectWithOptions(&myOptions);
     if (c == NULL) {
         return NULL;
     }
 
-    ac = valkeyAsyncInitialize(c);
+    ac = kvAsyncInitialize(c);
     if (ac == NULL) {
-        valkeyFree(c);
+        kvFree(c);
         return NULL;
     }
 
     /* Set any configured async push handler */
-    valkeyAsyncSetPushCallback(ac, myOptions.async_push_cb);
+    kvAsyncSetPushCallback(ac, myOptions.async_push_cb);
 
-    valkeyAsyncCopyError(ac);
+    kvAsyncCopyError(ac);
     return ac;
 }
 
-valkeyAsyncContext *valkeyAsyncConnect(const char *ip, int port) {
-    valkeyOptions options = {0};
-    VALKEY_OPTIONS_SET_TCP(&options, ip, port);
-    return valkeyAsyncConnectWithOptions(&options);
+kvAsyncContext *kvAsyncConnect(const char *ip, int port) {
+    kvOptions options = {0};
+    KV_OPTIONS_SET_TCP(&options, ip, port);
+    return kvAsyncConnectWithOptions(&options);
 }
 
-valkeyAsyncContext *valkeyAsyncConnectBind(const char *ip, int port,
+kvAsyncContext *kvAsyncConnectBind(const char *ip, int port,
                                            const char *source_addr) {
-    valkeyOptions options = {0};
-    VALKEY_OPTIONS_SET_TCP(&options, ip, port);
+    kvOptions options = {0};
+    KV_OPTIONS_SET_TCP(&options, ip, port);
     options.endpoint.tcp.source_addr = source_addr;
-    return valkeyAsyncConnectWithOptions(&options);
+    return kvAsyncConnectWithOptions(&options);
 }
 
-valkeyAsyncContext *valkeyAsyncConnectBindWithReuse(const char *ip, int port,
+kvAsyncContext *kvAsyncConnectBindWithReuse(const char *ip, int port,
                                                     const char *source_addr) {
-    valkeyOptions options = {0};
-    VALKEY_OPTIONS_SET_TCP(&options, ip, port);
-    options.options |= VALKEY_OPT_REUSEADDR;
+    kvOptions options = {0};
+    KV_OPTIONS_SET_TCP(&options, ip, port);
+    options.options |= KV_OPT_REUSEADDR;
     options.endpoint.tcp.source_addr = source_addr;
-    return valkeyAsyncConnectWithOptions(&options);
+    return kvAsyncConnectWithOptions(&options);
 }
 
-valkeyAsyncContext *valkeyAsyncConnectUnix(const char *path) {
-    valkeyOptions options = {0};
-    VALKEY_OPTIONS_SET_UNIX(&options, path);
-    return valkeyAsyncConnectWithOptions(&options);
+kvAsyncContext *kvAsyncConnectUnix(const char *path) {
+    kvOptions options = {0};
+    KV_OPTIONS_SET_UNIX(&options, path);
+    return kvAsyncConnectWithOptions(&options);
 }
 
-int valkeyAsyncSetConnectCallback(valkeyAsyncContext *ac, valkeyConnectCallback *fn) {
+int kvAsyncSetConnectCallback(kvAsyncContext *ac, kvConnectCallback *fn) {
     /* If already set, this is an error */
     if (ac->onConnect)
-        return VALKEY_ERR;
+        return KV_ERR;
 
     ac->onConnect = fn;
 
@@ -239,25 +239,25 @@ int valkeyAsyncSetConnectCallback(valkeyAsyncContext *ac, valkeyConnectCallback 
      * library functions are already set. */
     _EL_ADD_WRITE(ac);
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-int valkeyAsyncSetDisconnectCallback(valkeyAsyncContext *ac, valkeyDisconnectCallback *fn) {
+int kvAsyncSetDisconnectCallback(kvAsyncContext *ac, kvDisconnectCallback *fn) {
     if (ac->onDisconnect == NULL) {
         ac->onDisconnect = fn;
-        return VALKEY_OK;
+        return KV_OK;
     }
-    return VALKEY_ERR;
+    return KV_ERR;
 }
 
 /* Helper functions to push/shift callbacks */
-static int valkeyPushCallback(valkeyCallbackList *list, valkeyCallback *source) {
-    valkeyCallback *cb;
+static int kvPushCallback(kvCallbackList *list, kvCallback *source) {
+    kvCallback *cb;
 
     /* Copy callback from stack to heap */
     cb = vk_malloc(sizeof(*cb));
     if (cb == NULL)
-        return VALKEY_ERR_OOM;
+        return KV_ERR_OOM;
 
     /* Otherwise cb will remain uninitialized but will be saved in the list */
     assert(source != NULL);
@@ -272,11 +272,11 @@ static int valkeyPushCallback(valkeyCallbackList *list, valkeyCallback *source) 
     if (list->tail != NULL)
         list->tail->next = cb;
     list->tail = cb;
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-static int valkeyShiftCallback(valkeyCallbackList *list, valkeyCallback *target) {
-    valkeyCallback *cb = list->head;
+static int kvShiftCallback(kvCallbackList *list, kvCallback *target) {
+    kvCallback *cb = list->head;
     if (cb != NULL) {
         list->head = cb->next;
         if (cb == list->tail)
@@ -286,48 +286,48 @@ static int valkeyShiftCallback(valkeyCallbackList *list, valkeyCallback *target)
         if (target != NULL)
             memcpy(target, cb, sizeof(*cb));
         vk_free(cb);
-        return VALKEY_OK;
+        return KV_OK;
     }
-    return VALKEY_ERR;
+    return KV_ERR;
 }
 
-static void valkeyRunCallback(valkeyAsyncContext *ac, valkeyCallback *cb, valkeyReply *reply) {
-    valkeyContext *c = &(ac->c);
+static void kvRunCallback(kvAsyncContext *ac, kvCallback *cb, kvReply *reply) {
+    kvContext *c = &(ac->c);
     if (cb->fn != NULL) {
-        c->flags |= VALKEY_IN_CALLBACK;
+        c->flags |= KV_IN_CALLBACK;
         cb->fn(ac, reply, cb->privdata);
-        c->flags &= ~VALKEY_IN_CALLBACK;
+        c->flags &= ~KV_IN_CALLBACK;
     }
 }
 
-static void valkeyRunPushCallback(valkeyAsyncContext *ac, valkeyReply *reply) {
+static void kvRunPushCallback(kvAsyncContext *ac, kvReply *reply) {
     if (ac->push_cb != NULL) {
-        ac->c.flags |= VALKEY_IN_CALLBACK;
+        ac->c.flags |= KV_IN_CALLBACK;
         ac->push_cb(ac, reply);
-        ac->c.flags &= ~VALKEY_IN_CALLBACK;
+        ac->c.flags &= ~KV_IN_CALLBACK;
     }
 }
 
-static void valkeyRunConnectCallback(valkeyAsyncContext *ac, int status) {
+static void kvRunConnectCallback(kvAsyncContext *ac, int status) {
     if (ac->onConnect == NULL)
         return;
 
-    if (!(ac->c.flags & VALKEY_IN_CALLBACK)) {
-        ac->c.flags |= VALKEY_IN_CALLBACK;
+    if (!(ac->c.flags & KV_IN_CALLBACK)) {
+        ac->c.flags |= KV_IN_CALLBACK;
         ac->onConnect(ac, status);
-        ac->c.flags &= ~VALKEY_IN_CALLBACK;
+        ac->c.flags &= ~KV_IN_CALLBACK;
     } else {
         /* already in callback */
         ac->onConnect(ac, status);
     }
 }
 
-static void valkeyRunDisconnectCallback(valkeyAsyncContext *ac, int status) {
+static void kvRunDisconnectCallback(kvAsyncContext *ac, int status) {
     if (ac->onDisconnect) {
-        if (!(ac->c.flags & VALKEY_IN_CALLBACK)) {
-            ac->c.flags |= VALKEY_IN_CALLBACK;
+        if (!(ac->c.flags & KV_IN_CALLBACK)) {
+            ac->c.flags |= KV_IN_CALLBACK;
             ac->onDisconnect(ac, status);
-            ac->c.flags &= ~VALKEY_IN_CALLBACK;
+            ac->c.flags &= ~KV_IN_CALLBACK;
         } else {
             /* already in callback */
             ac->onDisconnect(ac, status);
@@ -336,23 +336,23 @@ static void valkeyRunDisconnectCallback(valkeyAsyncContext *ac, int status) {
 }
 
 /* Helper function to free the context. */
-static void valkeyAsyncFreeInternal(valkeyAsyncContext *ac) {
-    valkeyContext *c = &(ac->c);
-    valkeyCallback cb;
+static void kvAsyncFreeInternal(kvAsyncContext *ac) {
+    kvContext *c = &(ac->c);
+    kvCallback cb;
     dictIterator it;
     dictEntry *de;
 
     /* Execute pending callbacks with NULL reply. */
-    while (valkeyShiftCallback(&ac->replies, &cb) == VALKEY_OK)
-        valkeyRunCallback(ac, &cb, NULL);
-    while (valkeyShiftCallback(&ac->sub.replies, &cb) == VALKEY_OK)
-        valkeyRunCallback(ac, &cb, NULL);
+    while (kvShiftCallback(&ac->replies, &cb) == KV_OK)
+        kvRunCallback(ac, &cb, NULL);
+    while (kvShiftCallback(&ac->sub.replies, &cb) == KV_OK)
+        kvRunCallback(ac, &cb, NULL);
 
     /* Run subscription callbacks with NULL reply */
     if (ac->sub.channels) {
         dictInitIterator(&it, ac->sub.channels);
         while ((de = dictNext(&it)) != NULL)
-            valkeyRunCallback(ac, dictGetVal(de), NULL);
+            kvRunCallback(ac, dictGetVal(de), NULL);
 
         dictRelease(ac->sub.channels);
     }
@@ -360,7 +360,7 @@ static void valkeyAsyncFreeInternal(valkeyAsyncContext *ac) {
     if (ac->sub.patterns) {
         dictInitIterator(&it, ac->sub.patterns);
         while ((de = dictNext(&it)) != NULL)
-            valkeyRunCallback(ac, dictGetVal(de), NULL);
+            kvRunCallback(ac, dictGetVal(de), NULL);
 
         dictRelease(ac->sub.patterns);
     }
@@ -368,7 +368,7 @@ static void valkeyAsyncFreeInternal(valkeyAsyncContext *ac) {
     if (ac->sub.schannels) {
         dictInitIterator(&it, ac->sub.schannels);
         while ((de = dictNext(&it)) != NULL)
-            valkeyRunCallback(ac, dictGetVal(de), NULL);
+            kvRunCallback(ac, dictGetVal(de), NULL);
 
         dictRelease(ac->sub.schannels);
     }
@@ -376,13 +376,13 @@ static void valkeyAsyncFreeInternal(valkeyAsyncContext *ac) {
     /* Signal event lib to clean up */
     _EL_CLEANUP(ac);
 
-    /* Execute disconnect callback. When valkeyAsyncFree() initiated destroying
-     * this context, the status will always be VALKEY_OK. */
-    if (c->flags & VALKEY_CONNECTED) {
-        int status = ac->err == 0 ? VALKEY_OK : VALKEY_ERR;
-        if (c->flags & VALKEY_FREEING)
-            status = VALKEY_OK;
-        valkeyRunDisconnectCallback(ac, status);
+    /* Execute disconnect callback. When kvAsyncFree() initiated destroying
+     * this context, the status will always be KV_OK. */
+    if (c->flags & KV_CONNECTED) {
+        int status = ac->err == 0 ? KV_OK : KV_ERR;
+        if (c->flags & KV_FREEING)
+            status = KV_OK;
+        kvRunDisconnectCallback(ac, status);
     }
 
     if (ac->dataCleanup) {
@@ -390,49 +390,49 @@ static void valkeyAsyncFreeInternal(valkeyAsyncContext *ac) {
     }
 
     /* Cleanup self */
-    valkeyFree(c);
+    kvFree(c);
 }
 
 /* Free the async context. When this function is called from a callback,
- * control needs to be returned to valkeyProcessCallbacks() before actual
+ * control needs to be returned to kvProcessCallbacks() before actual
  * free'ing. To do so, a flag is set on the context which is picked up by
- * valkeyProcessCallbacks(). Otherwise, the context is immediately free'd. */
-void valkeyAsyncFree(valkeyAsyncContext *ac) {
+ * kvProcessCallbacks(). Otherwise, the context is immediately free'd. */
+void kvAsyncFree(kvAsyncContext *ac) {
     if (ac == NULL)
         return;
 
-    valkeyContext *c = &(ac->c);
+    kvContext *c = &(ac->c);
 
-    c->flags |= VALKEY_FREEING;
-    if (!(c->flags & VALKEY_IN_CALLBACK))
-        valkeyAsyncFreeInternal(ac);
+    c->flags |= KV_FREEING;
+    if (!(c->flags & KV_IN_CALLBACK))
+        kvAsyncFreeInternal(ac);
 }
 
 /* Helper function to make the disconnect happen and clean up. */
-void valkeyAsyncDisconnectInternal(valkeyAsyncContext *ac) {
-    valkeyContext *c = &(ac->c);
+void kvAsyncDisconnectInternal(kvAsyncContext *ac) {
+    kvContext *c = &(ac->c);
 
     /* Make sure error is accessible if there is any */
-    valkeyAsyncCopyError(ac);
+    kvAsyncCopyError(ac);
 
     if (ac->err == 0) {
         /* For clean disconnects, there should be no pending callbacks. */
-        int ret = valkeyShiftCallback(&ac->replies, NULL);
-        assert(ret == VALKEY_ERR);
+        int ret = kvShiftCallback(&ac->replies, NULL);
+        assert(ret == KV_ERR);
     } else {
         /* Disconnection is caused by an error, make sure that pending
          * callbacks cannot call new commands. */
-        c->flags |= VALKEY_DISCONNECTING;
+        c->flags |= KV_DISCONNECTING;
     }
 
     /* cleanup event library on disconnect.
      * this is safe to call multiple times */
     _EL_CLEANUP(ac);
 
-    /* For non-clean disconnects, valkeyAsyncFreeInternal() will execute pending
+    /* For non-clean disconnects, kvAsyncFreeInternal() will execute pending
      * callbacks with a NULL-reply. */
-    if (!(c->flags & VALKEY_NO_AUTO_FREE)) {
-        valkeyAsyncFreeInternal(ac);
+    if (!(c->flags & KV_NO_AUTO_FREE)) {
+        kvAsyncFreeInternal(ac);
     }
 }
 
@@ -440,28 +440,28 @@ void valkeyAsyncDisconnectInternal(valkeyAsyncContext *ac) {
  * from being issued, but tries to flush the output buffer and execute
  * callbacks for all remaining replies. When this function is called from a
  * callback, there might be more replies and we can safely defer disconnecting
- * to valkeyProcessCallbacks(). Otherwise, we can only disconnect immediately
+ * to kvProcessCallbacks(). Otherwise, we can only disconnect immediately
  * when there are no pending callbacks. */
-void valkeyAsyncDisconnect(valkeyAsyncContext *ac) {
-    valkeyContext *c = &(ac->c);
-    c->flags |= VALKEY_DISCONNECTING;
+void kvAsyncDisconnect(kvAsyncContext *ac) {
+    kvContext *c = &(ac->c);
+    c->flags |= KV_DISCONNECTING;
 
     /** unset the auto-free flag here, because disconnect undoes this */
-    c->flags &= ~VALKEY_NO_AUTO_FREE;
-    if (!(c->flags & VALKEY_IN_CALLBACK) && ac->replies.head == NULL)
-        valkeyAsyncDisconnectInternal(ac);
+    c->flags &= ~KV_NO_AUTO_FREE;
+    if (!(c->flags & KV_IN_CALLBACK) && ac->replies.head == NULL)
+        kvAsyncDisconnectInternal(ac);
 }
 
-static int valkeyIsShardedVariant(const char *cstr) {
+static int kvIsShardedVariant(const char *cstr) {
     return !strncasecmp("sm", cstr, 2) || /* smessage */
            !strncasecmp("ss", cstr, 2) || /* ssubscribe */
            !strncasecmp("sun", cstr, 3);  /* sunsubscribe */
 }
 
-static int valkeyGetSubscribeCallback(valkeyAsyncContext *ac, valkeyReply *reply, valkeyCallback *dstcb) {
-    valkeyContext *c = &(ac->c);
+static int kvGetSubscribeCallback(kvAsyncContext *ac, kvReply *reply, kvCallback *dstcb) {
+    kvContext *c = &(ac->c);
     dict *callbacks;
-    valkeyCallback *cb = NULL;
+    kvCallback *cb = NULL;
     dictEntry *de;
     int pvariant, svariant;
     char *stype;
@@ -469,20 +469,20 @@ static int valkeyGetSubscribeCallback(valkeyAsyncContext *ac, valkeyReply *reply
 
     /* Match reply with the expected format of a pushed message.
      * The type and number of elements (3 to 4) are specified at:
-     * https://valkey.io/docs/topics/pubsub/#format-of-pushed-messages */
-    if ((reply->type == VALKEY_REPLY_ARRAY && !(c->flags & VALKEY_SUPPORTS_PUSH) && reply->elements >= 3) ||
-        reply->type == VALKEY_REPLY_PUSH) {
-        assert(reply->element[0]->type == VALKEY_REPLY_STRING);
+     * https://kv.io/docs/topics/pubsub/#format-of-pushed-messages */
+    if ((reply->type == KV_REPLY_ARRAY && !(c->flags & KV_SUPPORTS_PUSH) && reply->elements >= 3) ||
+        reply->type == KV_REPLY_PUSH) {
+        assert(reply->element[0]->type == KV_REPLY_STRING);
         stype = reply->element[0]->str;
         pvariant = (tolower(stype[0]) == 'p') ? 1 : 0;
-        svariant = valkeyIsShardedVariant(stype);
+        svariant = kvIsShardedVariant(stype);
 
         callbacks = pvariant ? ac->sub.patterns :
                     svariant ? ac->sub.schannels :
                                ac->sub.channels;
 
         /* Locate the right callback */
-        if (reply->element[1]->type == VALKEY_REPLY_STRING) {
+        if (reply->element[1]->type == KV_REPLY_STRING) {
             sname = sdsnewlen(reply->element[1]->str, reply->element[1]->len);
             if (sname == NULL)
                 goto oom;
@@ -506,7 +506,7 @@ static int valkeyGetSubscribeCallback(valkeyAsyncContext *ac, valkeyReply *reply
 
             /* If this was the last unsubscribe message, revert to
              * non-subscribe mode. */
-            assert(reply->element[2]->type == VALKEY_REPLY_INTEGER);
+            assert(reply->element[2]->type == KV_REPLY_INTEGER);
 
             /* Unset subscribed flag only when no pipelined pending subscribe
              * or pending unsubscribe replies. */
@@ -515,42 +515,42 @@ static int valkeyGetSubscribeCallback(valkeyAsyncContext *ac, valkeyReply *reply
                 dictSize(ac->sub.patterns) == 0 &&
                 dictSize(ac->sub.schannels) == 0 &&
                 ac->sub.pending_unsubs == 0) {
-                c->flags &= ~VALKEY_SUBSCRIBED;
+                c->flags &= ~KV_SUBSCRIBED;
 
                 /* Move ongoing regular command callbacks. */
-                valkeyCallback cb;
-                while (valkeyShiftCallback(&ac->sub.replies, &cb) == VALKEY_OK) {
-                    valkeyPushCallback(&ac->replies, &cb);
+                kvCallback cb;
+                while (kvShiftCallback(&ac->sub.replies, &cb) == KV_OK) {
+                    kvPushCallback(&ac->replies, &cb);
                 }
             }
         }
         sdsfree(sname);
     } else {
         /* Shift callback for pending command in subscribed context. */
-        valkeyShiftCallback(&ac->sub.replies, dstcb);
+        kvShiftCallback(&ac->sub.replies, dstcb);
     }
-    return VALKEY_OK;
+    return KV_OK;
 oom:
-    valkeySetError(&(ac->c), VALKEY_ERR_OOM, "Out of memory");
-    valkeyAsyncCopyError(ac);
-    return VALKEY_ERR;
+    kvSetError(&(ac->c), KV_ERR_OOM, "Out of memory");
+    kvAsyncCopyError(ac);
+    return KV_ERR;
 }
 
-#define valkeyIsSpontaneousPushReply(r) \
-    (valkeyIsPushReply(r) && !valkeyIsSubscribeReply(r))
+#define kvIsSpontaneousPushReply(r) \
+    (kvIsPushReply(r) && !kvIsSubscribeReply(r))
 
-static int valkeyIsSubscribeReply(valkeyReply *reply) {
+static int kvIsSubscribeReply(kvReply *reply) {
     char *str;
     size_t len, off;
 
     /* We will always have at least one string with the subscribe/message type */
-    if (reply->elements < 1 || reply->element[0]->type != VALKEY_REPLY_STRING ||
+    if (reply->elements < 1 || reply->element[0]->type != KV_REPLY_STRING ||
         reply->element[0]->len < sizeof("message") - 1) {
         return 0;
     }
 
     /* Get the string/len moving past 'p' if needed */
-    off = tolower(reply->element[0]->str[0]) == 'p' || valkeyIsShardedVariant(reply->element[0]->str);
+    off = tolower(reply->element[0]->str[0]) == 'p' || kvIsShardedVariant(reply->element[0]->str);
     str = reply->element[0]->str + off;
     len = reply->element[0]->len - off;
 
@@ -559,17 +559,17 @@ static int valkeyIsSubscribeReply(valkeyReply *reply) {
            !strncasecmp(str, "unsubscribe", len);
 }
 
-void valkeyProcessCallbacks(valkeyAsyncContext *ac) {
-    valkeyContext *c = &(ac->c);
+void kvProcessCallbacks(kvAsyncContext *ac) {
+    kvContext *c = &(ac->c);
     void *reply = NULL;
     int status;
 
-    while ((status = valkeyGetReply(c, &reply)) == VALKEY_OK) {
+    while ((status = kvGetReply(c, &reply)) == KV_OK) {
         if (reply == NULL) {
             /* When the connection is being disconnected and there are
              * no more replies, this is the cue to really disconnect. */
-            if (c->flags & VALKEY_DISCONNECTING && sdslen(c->obuf) == 0 && ac->replies.head == NULL) {
-                valkeyAsyncDisconnectInternal(ac);
+            if (c->flags & KV_DISCONNECTING && sdslen(c->obuf) == 0 && ac->replies.head == NULL) {
+                kvAsyncDisconnectInternal(ac);
                 return;
             }
             /* When the connection is not being disconnected, simply stop
@@ -578,23 +578,23 @@ void valkeyProcessCallbacks(valkeyAsyncContext *ac) {
         }
 
         /* Keep track of push message support for subscribe handling */
-        if (valkeyIsPushReply(reply))
-            c->flags |= VALKEY_SUPPORTS_PUSH;
+        if (kvIsPushReply(reply))
+            c->flags |= KV_SUPPORTS_PUSH;
 
         /* Send any non-subscribe related PUSH messages to our PUSH handler
          * while allowing subscribe related PUSH messages to pass through.
          * This allows existing code to be backward compatible and work in
          * either RESP2 or RESP3 mode. */
-        if (valkeyIsSpontaneousPushReply(reply)) {
-            valkeyRunPushCallback(ac, reply);
+        if (kvIsSpontaneousPushReply(reply)) {
+            kvRunPushCallback(ac, reply);
             c->reader->fn->freeObject(reply);
             continue;
         }
 
         /* Even if the context is subscribed, pending regular
          * callbacks will get a reply before pub/sub messages arrive. */
-        valkeyCallback cb = {NULL, NULL, 0, 0, NULL};
-        if (valkeyShiftCallback(&ac->replies, &cb) != VALKEY_OK) {
+        kvCallback cb = {NULL, NULL, 0, 0, NULL};
+        if (kvShiftCallback(&ac->replies, &cb) != KV_OK) {
             /*
              * A spontaneous reply in a not-subscribed context can be the error
              * reply that is sent when a new connection exceeds the maximum
@@ -610,32 +610,32 @@ void valkeyProcessCallbacks(valkeyAsyncContext *ac) {
              * In this case we also want to close the connection, and have the
              * user wait until the server is ready to take our request.
              */
-            if (((valkeyReply *)reply)->type != VALKEY_REPLY_ERROR) {
+            if (((kvReply *)reply)->type != KV_REPLY_ERROR) {
                 /* No more regular callbacks and no errors, the context *must* be subscribed. */
-                assert(c->flags & VALKEY_SUBSCRIBED);
-                if (c->flags & VALKEY_SUBSCRIBED)
-                    valkeyGetSubscribeCallback(ac, reply, &cb);
+                assert(c->flags & KV_SUBSCRIBED);
+                if (c->flags & KV_SUBSCRIBED)
+                    kvGetSubscribeCallback(ac, reply, &cb);
             } else if (
-                (c->flags & VALKEY_SUBSCRIBED) && (((valkeyReply *)reply)->type == VALKEY_REPLY_ERROR) && (strncmp(((valkeyReply *)reply)->str, "MOVED", 5) == 0 || strncmp(((valkeyReply *)reply)->str, "CROSSSLOT", 9) == 0) && valkeyShiftCallback(&ac->sub.replies, &cb) == VALKEY_OK) {
+                (c->flags & KV_SUBSCRIBED) && (((kvReply *)reply)->type == KV_REPLY_ERROR) && (strncmp(((kvReply *)reply)->str, "MOVED", 5) == 0 || strncmp(((kvReply *)reply)->str, "CROSSSLOT", 9) == 0) && kvShiftCallback(&ac->sub.replies, &cb) == KV_OK) {
                 /* Ssubscribe error */
             } else {
-                c->err = VALKEY_ERR_OTHER;
-                snprintf(c->errstr, sizeof(c->errstr), "%s", ((valkeyReply *)reply)->str);
+                c->err = KV_ERR_OTHER;
+                snprintf(c->errstr, sizeof(c->errstr), "%s", ((kvReply *)reply)->str);
                 c->reader->fn->freeObject(reply);
-                valkeyAsyncDisconnectInternal(ac);
+                kvAsyncDisconnectInternal(ac);
                 return;
             }
         }
 
         if (cb.fn != NULL) {
-            valkeyRunCallback(ac, &cb, reply);
-            if (!(c->flags & VALKEY_NO_AUTO_FREE_REPLIES)) {
+            kvRunCallback(ac, &cb, reply);
+            if (!(c->flags & KV_NO_AUTO_FREE_REPLIES)) {
                 c->reader->fn->freeObject(reply);
             }
 
-            /* Proceed with free'ing when valkeyAsyncFree() was called. */
-            if (c->flags & VALKEY_FREEING) {
-                valkeyAsyncFreeInternal(ac);
+            /* Proceed with free'ing when kvAsyncFree() was called. */
+            if (c->flags & KV_FREEING) {
+                kvAsyncFreeInternal(ac);
                 return;
             }
         } else {
@@ -647,99 +647,99 @@ void valkeyProcessCallbacks(valkeyAsyncContext *ac) {
         }
 
         /* If in monitor mode, repush the callback */
-        if (c->flags & VALKEY_MONITORING) {
-            valkeyPushCallback(&ac->replies, &cb);
+        if (c->flags & KV_MONITORING) {
+            kvPushCallback(&ac->replies, &cb);
         }
     }
 
     /* Disconnect when there was an error reading the reply */
-    if (status != VALKEY_OK)
-        valkeyAsyncDisconnectInternal(ac);
+    if (status != KV_OK)
+        kvAsyncDisconnectInternal(ac);
 }
 
-static void valkeyAsyncHandleConnectFailure(valkeyAsyncContext *ac) {
-    valkeyRunConnectCallback(ac, VALKEY_ERR);
-    valkeyAsyncDisconnectInternal(ac);
+static void kvAsyncHandleConnectFailure(kvAsyncContext *ac) {
+    kvRunConnectCallback(ac, KV_ERR);
+    kvAsyncDisconnectInternal(ac);
 }
 
 /* Internal helper function to detect socket status the first time a read or
  * write event fires. When connecting was not successful, the connect callback
- * is called with a VALKEY_ERR status and the context is free'd. */
-static int valkeyAsyncHandleConnect(valkeyAsyncContext *ac) {
+ * is called with a KV_ERR status and the context is free'd. */
+static int kvAsyncHandleConnect(kvAsyncContext *ac) {
     int completed = 0;
-    valkeyContext *c = &(ac->c);
+    kvContext *c = &(ac->c);
 
-    if (valkeyCheckConnectDone(c, &completed) == VALKEY_ERR) {
+    if (kvCheckConnectDone(c, &completed) == KV_ERR) {
         /* Error! */
-        if (valkeyCheckSocketError(c) == VALKEY_ERR)
-            valkeyAsyncCopyError(ac);
-        valkeyAsyncHandleConnectFailure(ac);
-        return VALKEY_ERR;
+        if (kvCheckSocketError(c) == KV_ERR)
+            kvAsyncCopyError(ac);
+        kvAsyncHandleConnectFailure(ac);
+        return KV_ERR;
     } else if (completed == 1) {
         /* connected! */
-        if (c->connection_type == VALKEY_CONN_TCP &&
-            valkeySetTcpNoDelay(c) == VALKEY_ERR) {
-            valkeyAsyncHandleConnectFailure(ac);
-            return VALKEY_ERR;
+        if (c->connection_type == KV_CONN_TCP &&
+            kvSetTcpNoDelay(c) == KV_ERR) {
+            kvAsyncHandleConnectFailure(ac);
+            return KV_ERR;
         }
 
         /* flag us as fully connect, but allow the callback
          * to disconnect.  For that reason, permit the function
          * to delete the context here after callback return.
          */
-        c->flags |= VALKEY_CONNECTED;
-        valkeyRunConnectCallback(ac, VALKEY_OK);
-        if ((ac->c.flags & VALKEY_DISCONNECTING)) {
-            valkeyAsyncDisconnect(ac);
-            return VALKEY_ERR;
-        } else if ((ac->c.flags & VALKEY_FREEING)) {
-            valkeyAsyncFree(ac);
-            return VALKEY_ERR;
+        c->flags |= KV_CONNECTED;
+        kvRunConnectCallback(ac, KV_OK);
+        if ((ac->c.flags & KV_DISCONNECTING)) {
+            kvAsyncDisconnect(ac);
+            return KV_ERR;
+        } else if ((ac->c.flags & KV_FREEING)) {
+            kvAsyncFree(ac);
+            return KV_ERR;
         }
-        return VALKEY_OK;
+        return KV_OK;
     } else {
-        return VALKEY_OK;
+        return KV_OK;
     }
 }
 
-void valkeyAsyncRead(valkeyAsyncContext *ac) {
-    valkeyContext *c = &(ac->c);
+void kvAsyncRead(kvAsyncContext *ac) {
+    kvContext *c = &(ac->c);
 
-    if (valkeyBufferRead(c) == VALKEY_ERR) {
-        valkeyAsyncDisconnectInternal(ac);
+    if (kvBufferRead(c) == KV_ERR) {
+        kvAsyncDisconnectInternal(ac);
     } else {
         /* Always re-schedule reads */
         _EL_ADD_READ(ac);
-        valkeyProcessCallbacks(ac);
+        kvProcessCallbacks(ac);
     }
 }
 
 /* This function should be called when the socket is readable.
  * It processes all replies that can be read and executes their callbacks.
  */
-void valkeyAsyncHandleRead(valkeyAsyncContext *ac) {
-    valkeyContext *c = &(ac->c);
+void kvAsyncHandleRead(kvAsyncContext *ac) {
+    kvContext *c = &(ac->c);
     /* must not be called from a callback */
-    assert(!(c->flags & VALKEY_IN_CALLBACK));
+    assert(!(c->flags & KV_IN_CALLBACK));
 
-    if (!(c->flags & VALKEY_CONNECTED)) {
+    if (!(c->flags & KV_CONNECTED)) {
         /* Abort connect was not successful. */
-        if (valkeyAsyncHandleConnect(ac) != VALKEY_OK)
+        if (kvAsyncHandleConnect(ac) != KV_OK)
             return;
         /* Try again later when the context is still not connected. */
-        if (!(c->flags & VALKEY_CONNECTED))
+        if (!(c->flags & KV_CONNECTED))
             return;
     }
 
     c->funcs->async_read(ac);
 }
 
-void valkeyAsyncWrite(valkeyAsyncContext *ac) {
-    valkeyContext *c = &(ac->c);
+void kvAsyncWrite(kvAsyncContext *ac) {
+    kvContext *c = &(ac->c);
     int done = 0;
 
-    if (valkeyBufferWrite(c, &done) == VALKEY_ERR) {
-        valkeyAsyncDisconnectInternal(ac);
+    if (kvBufferWrite(c, &done) == KV_ERR) {
+        kvAsyncDisconnectInternal(ac);
     } else {
         /* Continue writing when not done, stop writing otherwise */
         if (!done)
@@ -752,30 +752,30 @@ void valkeyAsyncWrite(valkeyAsyncContext *ac) {
     }
 }
 
-void valkeyAsyncHandleWrite(valkeyAsyncContext *ac) {
-    valkeyContext *c = &(ac->c);
+void kvAsyncHandleWrite(kvAsyncContext *ac) {
+    kvContext *c = &(ac->c);
     /* must not be called from a callback */
-    assert(!(c->flags & VALKEY_IN_CALLBACK));
+    assert(!(c->flags & KV_IN_CALLBACK));
 
-    if (!(c->flags & VALKEY_CONNECTED)) {
+    if (!(c->flags & KV_CONNECTED)) {
         /* Abort connect was not successful. */
-        if (valkeyAsyncHandleConnect(ac) != VALKEY_OK)
+        if (kvAsyncHandleConnect(ac) != KV_OK)
             return;
         /* Try again later when the context is still not connected. */
-        if (!(c->flags & VALKEY_CONNECTED))
+        if (!(c->flags & KV_CONNECTED))
             return;
     }
 
     c->funcs->async_write(ac);
 }
 
-void valkeyAsyncHandleTimeout(valkeyAsyncContext *ac) {
-    valkeyContext *c = &(ac->c);
-    valkeyCallback cb;
+void kvAsyncHandleTimeout(kvAsyncContext *ac) {
+    kvContext *c = &(ac->c);
+    kvCallback cb;
     /* must not be called from a callback */
-    assert(!(c->flags & VALKEY_IN_CALLBACK));
+    assert(!(c->flags & KV_IN_CALLBACK));
 
-    if ((c->flags & VALKEY_CONNECTED)) {
+    if ((c->flags & KV_CONNECTED)) {
         if (ac->replies.head == NULL && ac->sub.replies.head == NULL) {
             /* Nothing to do - just an idle timeout */
             return;
@@ -789,23 +789,23 @@ void valkeyAsyncHandleTimeout(valkeyAsyncContext *ac) {
     }
 
     if (!c->err) {
-        valkeySetError(c, VALKEY_ERR_TIMEOUT, "Timeout");
-        valkeyAsyncCopyError(ac);
+        kvSetError(c, KV_ERR_TIMEOUT, "Timeout");
+        kvAsyncCopyError(ac);
     }
 
-    if (!(c->flags & VALKEY_CONNECTED)) {
-        valkeyRunConnectCallback(ac, VALKEY_ERR);
+    if (!(c->flags & KV_CONNECTED)) {
+        kvRunConnectCallback(ac, KV_ERR);
     }
 
-    while (valkeyShiftCallback(&ac->replies, &cb) == VALKEY_OK) {
-        valkeyRunCallback(ac, &cb, NULL);
+    while (kvShiftCallback(&ac->replies, &cb) == KV_OK) {
+        kvRunCallback(ac, &cb, NULL);
     }
 
     /**
      * TODO: Don't automatically sever the connection,
      * rather, allow to ignore <x> responses before the queue is clear
      */
-    valkeyAsyncDisconnectInternal(ac);
+    kvAsyncDisconnectInternal(ac);
 }
 
 /* Sets a pointer to the first argument and its length starting at p. Returns
@@ -825,7 +825,7 @@ static const char *nextArgument(const char *start, const char **str, size_t *len
     return p + 2 + (*len) + 2;
 }
 
-void valkeySsubscribeCallback(struct valkeyAsyncContext *ac, void *reply, void *privdata) {
+void kvSsubscribeCallback(struct kvAsyncContext *ac, void *reply, void *privdata) {
     /*
       This callback called on the first reply from ssubscribe:
       - on successful subscription:
@@ -833,18 +833,18 @@ void valkeySsubscribeCallback(struct valkeyAsyncContext *ac, void *reply, void *
       - on failed ssubscribe:
           iterate over all channels specified in original ssubscribe command, reduce pending_subs and remove all not subscribed callbacks
     */
-    valkeyReply *r = reply;
+    kvReply *r = reply;
     ssubscribeCallbackData *data = privdata;
     size_t clen, alen;
     const char *p, *cstr, *astr;
     sds sname;
-    valkeyCallback *cb = NULL;
+    kvCallback *cb = NULL;
     dictEntry *de;
 
     assert(data != NULL);
     assert(data->command != NULL);
     assert(r != NULL);
-    if (r->type == VALKEY_REPLY_ERROR) {
+    if (r->type == KV_REPLY_ERROR) {
         /*/ On CROSSSLOT, MOVED and other errors */
         p = nextArgument(data->command, &cstr, &clen);
         while ((p = nextArgument(p, &astr, &alen)) != NULL) {
@@ -864,7 +864,7 @@ void valkeySsubscribeCallback(struct valkeyAsyncContext *ac, void *reply, void *
             sdsfree(sname);
         }
     } else {
-        if ((r->type == VALKEY_REPLY_ARRAY || r->type == VALKEY_REPLY_PUSH) && strncasecmp(r->element[0]->str, "ssubscribe", 10) == 0) {
+        if ((r->type == KV_REPLY_ARRAY || r->type == KV_REPLY_PUSH) && strncasecmp(r->element[0]->str, "ssubscribe", 10) == 0) {
             p = nextArgument(data->command, &cstr, &clen);
             while ((p = nextArgument(p, &astr, &alen)) != NULL) {
                 sname = sdsnewlen(astr, alen);
@@ -882,9 +882,9 @@ void valkeySsubscribeCallback(struct valkeyAsyncContext *ac, void *reply, void *
             }
         }
 
-        valkeyCallback cb = {0};
-        valkeyGetSubscribeCallback(ac, reply, &cb);
-        valkeyRunCallback(ac, &cb, reply);
+        kvCallback cb = {0};
+        kvGetSubscribeCallback(ac, reply, &cb);
+        kvRunCallback(ac, &cb, reply);
         vk_free(data->command);
         vk_free(privdata);
         return;
@@ -900,16 +900,16 @@ oom:
     vk_free(privdata);
 }
 
-/* Helper function for the valkeyAsyncCommand* family of functions. Writes a
+/* Helper function for the kvAsyncCommand* family of functions. Writes a
  * formatted command to the output buffer and registers the provided callback
  * function with the context. */
-static int valkeyAsyncAppendCmdLen(valkeyAsyncContext *ac, valkeyCallbackFn *fn, void *privdata, const char *cmd, size_t len) {
-    valkeyContext *c = &(ac->c);
-    valkeyCallback cb;
+static int kvAsyncAppendCmdLen(kvAsyncContext *ac, kvCallbackFn *fn, void *privdata, const char *cmd, size_t len) {
+    kvContext *c = &(ac->c);
+    kvCallback cb;
     struct dict *cbdict;
     dictIterator it;
     dictEntry *de;
-    valkeyCallback *existcb;
+    kvCallback *existcb;
     int pvariant, hasnext, hasprefix, svariant;
     const char *cstr, *astr;
     size_t clen, alen;
@@ -918,8 +918,8 @@ static int valkeyAsyncAppendCmdLen(valkeyAsyncContext *ac, valkeyCallbackFn *fn,
     ssubscribeCallbackData *ssubscribe_data = NULL;
 
     /* Don't accept new commands when the connection is about to be closed. */
-    if (c->flags & (VALKEY_DISCONNECTING | VALKEY_FREEING))
-        return VALKEY_ERR;
+    if (c->flags & (KV_DISCONNECTING | KV_FREEING))
+        return KV_ERR;
 
     /* Setup callback */
     cb.fn = fn;
@@ -933,14 +933,14 @@ static int valkeyAsyncAppendCmdLen(valkeyAsyncContext *ac, valkeyCallbackFn *fn,
     assert(p != NULL);
     hasnext = (p[0] == '$');
     pvariant = (tolower(cstr[0]) == 'p') ? 1 : 0;
-    svariant = valkeyIsShardedVariant(cstr);
+    svariant = kvIsShardedVariant(cstr);
     hasprefix = svariant || pvariant;
     cstr += hasprefix;
     clen -= hasprefix;
 
     if (hasnext && strncasecmp(cstr, "subscribe\r\n", 11) == 0) {
-        int was_subscribed = c->flags & VALKEY_SUBSCRIBED;
-        c->flags |= VALKEY_SUBSCRIBED;
+        int was_subscribed = c->flags & KV_SUBSCRIBED;
+        c->flags |= KV_SUBSCRIBED;
 
         /* Add every channel/pattern to the list of subscription callbacks. */
         while ((p = nextArgument(p, &astr, &alen)) != NULL) {
@@ -963,7 +963,7 @@ static int valkeyAsyncAppendCmdLen(valkeyAsyncContext *ac, valkeyCallbackFn *fn,
             }
 
             /* Create a duplicate to be stored in dict. */
-            valkeyCallback *dup = vk_malloc(sizeof(*dup));
+            kvCallback *dup = vk_malloc(sizeof(*dup));
             if (dup == NULL)
                 goto oom;
             memcpy(dup, &cb, sizeof(*dup));
@@ -978,7 +978,7 @@ static int valkeyAsyncAppendCmdLen(valkeyAsyncContext *ac, valkeyCallbackFn *fn,
                 goto oom;
 
             /* copy command to iterate over all channels.
-             * actual length of cmd is actually len + 1 (see valkeyvFormatCommand).
+             * actual length of cmd is actually len + 1 (see kvvFormatCommand).
              * last byte important in nextArgument function.
              */
             ssubscribe_data->command = vk_malloc(len + 1);
@@ -989,24 +989,24 @@ static int valkeyAsyncAppendCmdLen(valkeyAsyncContext *ac, valkeyCallbackFn *fn,
             ssubscribe_data->user_callback = fn;
             ssubscribe_data->user_priv_data = privdata;
 
-            cb.fn = &valkeySsubscribeCallback;
+            cb.fn = &kvSsubscribeCallback;
             cb.privdata = ssubscribe_data;
             cb.pending_subs = 1;
             cb.unsubscribe_sent = 0;
             cb.subscribed = 1;
             if (was_subscribed) {
-                if (valkeyPushCallback(&ac->sub.replies, &cb) != VALKEY_OK)
+                if (kvPushCallback(&ac->sub.replies, &cb) != KV_OK)
                     goto oom;
             } else {
-                if (valkeyPushCallback(&ac->replies, &cb) != VALKEY_OK)
+                if (kvPushCallback(&ac->replies, &cb) != KV_OK)
                     goto oom;
             }
         }
     } else if (strncasecmp(cstr, "unsubscribe\r\n", 13) == 0) {
         /* It is only useful to call (P)UNSUBSCRIBE when the context is
          * subscribed to one or more channels or patterns. */
-        if (!(c->flags & VALKEY_SUBSCRIBED))
-            return VALKEY_ERR;
+        if (!(c->flags & KV_SUBSCRIBED))
+            return KV_ERR;
 
         cbdict = pvariant ? ac->sub.patterns :
                  svariant ? ac->sub.schannels :
@@ -1057,89 +1057,89 @@ static int valkeyAsyncAppendCmdLen(valkeyAsyncContext *ac, valkeyCallbackFn *fn,
          * should not append a callback function for this command. */
     } else if (strncasecmp(cstr, "monitor\r\n", 9) == 0) {
         /* Set monitor flag and push callback */
-        c->flags |= VALKEY_MONITORING;
-        if (valkeyPushCallback(&ac->replies, &cb) != VALKEY_OK)
+        c->flags |= KV_MONITORING;
+        if (kvPushCallback(&ac->replies, &cb) != KV_OK)
             goto oom;
     } else {
-        if (c->flags & VALKEY_SUBSCRIBED) {
-            if (valkeyPushCallback(&ac->sub.replies, &cb) != VALKEY_OK)
+        if (c->flags & KV_SUBSCRIBED) {
+            if (kvPushCallback(&ac->sub.replies, &cb) != KV_OK)
                 goto oom;
         } else {
-            if (valkeyPushCallback(&ac->replies, &cb) != VALKEY_OK)
+            if (kvPushCallback(&ac->replies, &cb) != KV_OK)
                 goto oom;
         }
     }
 
-    valkeyAppendCmdLen(c, cmd, len);
+    kvAppendCmdLen(c, cmd, len);
 
     /* Always schedule a write when the write buffer is non-empty */
     _EL_ADD_WRITE(ac);
 
-    return VALKEY_OK;
+    return KV_OK;
 oom:
-    valkeySetError(&(ac->c), VALKEY_ERR_OOM, "Out of memory");
-    valkeyAsyncCopyError(ac);
+    kvSetError(&(ac->c), KV_ERR_OOM, "Out of memory");
+    kvAsyncCopyError(ac);
     if (ssubscribe_data) {
         vk_free(ssubscribe_data->command);
         vk_free(ssubscribe_data);
     }
-    return VALKEY_ERR;
+    return KV_ERR;
 }
 
-int valkeyvAsyncCommand(valkeyAsyncContext *ac, valkeyCallbackFn *fn, void *privdata, const char *format, va_list ap) {
+int kvvAsyncCommand(kvAsyncContext *ac, kvCallbackFn *fn, void *privdata, const char *format, va_list ap) {
     char *cmd;
     int len;
     int status;
-    len = valkeyvFormatCommand(&cmd, format, ap);
+    len = kvvFormatCommand(&cmd, format, ap);
 
     /* We don't want to pass -1 or -2 to future functions as a length. */
     if (len < 0)
-        return VALKEY_ERR;
+        return KV_ERR;
 
-    status = valkeyAsyncAppendCmdLen(ac, fn, privdata, cmd, len);
+    status = kvAsyncAppendCmdLen(ac, fn, privdata, cmd, len);
     vk_free(cmd);
     return status;
 }
 
-int valkeyAsyncCommand(valkeyAsyncContext *ac, valkeyCallbackFn *fn, void *privdata, const char *format, ...) {
+int kvAsyncCommand(kvAsyncContext *ac, kvCallbackFn *fn, void *privdata, const char *format, ...) {
     va_list ap;
     int status;
     va_start(ap, format);
-    status = valkeyvAsyncCommand(ac, fn, privdata, format, ap);
+    status = kvvAsyncCommand(ac, fn, privdata, format, ap);
     va_end(ap);
     return status;
 }
 
-int valkeyAsyncCommandArgv(valkeyAsyncContext *ac, valkeyCallbackFn *fn, void *privdata, int argc, const char **argv, const size_t *argvlen) {
+int kvAsyncCommandArgv(kvAsyncContext *ac, kvCallbackFn *fn, void *privdata, int argc, const char **argv, const size_t *argvlen) {
     sds cmd;
     long long len;
     int status;
-    len = valkeyFormatSdsCommandArgv(&cmd, argc, argv, argvlen);
+    len = kvFormatSdsCommandArgv(&cmd, argc, argv, argvlen);
     if (len < 0)
-        return VALKEY_ERR;
-    status = valkeyAsyncAppendCmdLen(ac, fn, privdata, cmd, len);
+        return KV_ERR;
+    status = kvAsyncAppendCmdLen(ac, fn, privdata, cmd, len);
     sdsfree(cmd);
     return status;
 }
 
-int valkeyAsyncFormattedCommand(valkeyAsyncContext *ac, valkeyCallbackFn *fn, void *privdata, const char *cmd, size_t len) {
-    int status = valkeyAsyncAppendCmdLen(ac, fn, privdata, cmd, len);
+int kvAsyncFormattedCommand(kvAsyncContext *ac, kvCallbackFn *fn, void *privdata, const char *cmd, size_t len) {
+    int status = kvAsyncAppendCmdLen(ac, fn, privdata, cmd, len);
     return status;
 }
 
-valkeyAsyncPushFn *valkeyAsyncSetPushCallback(valkeyAsyncContext *ac, valkeyAsyncPushFn *fn) {
-    valkeyAsyncPushFn *old = ac->push_cb;
+kvAsyncPushFn *kvAsyncSetPushCallback(kvAsyncContext *ac, kvAsyncPushFn *fn) {
+    kvAsyncPushFn *old = ac->push_cb;
     ac->push_cb = fn;
     return old;
 }
 
-int valkeyAsyncSetTimeout(valkeyAsyncContext *ac, struct timeval tv) {
+int kvAsyncSetTimeout(kvAsyncContext *ac, struct timeval tv) {
     if (!ac->c.command_timeout) {
         ac->c.command_timeout = vk_calloc(1, sizeof(tv));
         if (ac->c.command_timeout == NULL) {
-            valkeySetError(&ac->c, VALKEY_ERR_OOM, "Out of memory");
-            valkeyAsyncCopyError(ac);
-            return VALKEY_ERR;
+            kvSetError(&ac->c, KV_ERR_OOM, "Out of memory");
+            kvAsyncCopyError(ac);
+            return KV_ERR;
         }
     }
 
@@ -1148,5 +1148,5 @@ int valkeyAsyncSetTimeout(valkeyAsyncContext *ac, struct timeval tv) {
         *ac->c.command_timeout = tv;
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 }
