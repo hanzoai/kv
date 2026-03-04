@@ -15,7 +15,7 @@ tags {external:skip needs:other-server cluster modules singledb} {
     # To run this test use the `--other-server-path` parameter and pass in a compatible server path supporting
     # SendClusterMessage module API.
     #
-    # ./runtest-moduleapi --single unit/moduleapi/cross-version-cluster --other-server-path tests/tmp/valkey-8-0/valkey-server
+    # ./runtest-moduleapi --single unit/moduleapi/cross-version-cluster --other-server-path tests/tmp/kv-8-0/kv-server
     #
     # Test cross version compatibility of cluster module send message API.
     start_server {config "minimal-cluster.conf" start-other-server 1} {

@@ -28,51 +28,51 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef VALKEY_ADAPTERS_AE_H
-#define VALKEY_ADAPTERS_AE_H
+#ifndef KV_ADAPTERS_AE_H
+#define KV_ADAPTERS_AE_H
 #include "../async.h"
 #include "../cluster.h"
-#include "../valkey.h"
+#include "../kv.h"
 
 #include <ae.h>
 #include <sys/types.h>
 
-typedef struct valkeyAeEvents {
-    valkeyAsyncContext *context;
+typedef struct kvAeEvents {
+    kvAsyncContext *context;
     aeEventLoop *loop;
     int fd;
     int reading, writing;
-} valkeyAeEvents;
+} kvAeEvents;
 
-static void valkeyAeReadEvent(aeEventLoop *el, int fd, void *privdata, int mask) {
+static void kvAeReadEvent(aeEventLoop *el, int fd, void *privdata, int mask) {
     ((void)el);
     ((void)fd);
     ((void)mask);
 
-    valkeyAeEvents *e = (valkeyAeEvents *)privdata;
-    valkeyAsyncHandleRead(e->context);
+    kvAeEvents *e = (kvAeEvents *)privdata;
+    kvAsyncHandleRead(e->context);
 }
 
-static void valkeyAeWriteEvent(aeEventLoop *el, int fd, void *privdata, int mask) {
+static void kvAeWriteEvent(aeEventLoop *el, int fd, void *privdata, int mask) {
     ((void)el);
     ((void)fd);
     ((void)mask);
 
-    valkeyAeEvents *e = (valkeyAeEvents *)privdata;
-    valkeyAsyncHandleWrite(e->context);
+    kvAeEvents *e = (kvAeEvents *)privdata;
+    kvAsyncHandleWrite(e->context);
 }
 
-static void valkeyAeAddRead(void *privdata) {
-    valkeyAeEvents *e = (valkeyAeEvents *)privdata;
+static void kvAeAddRead(void *privdata) {
+    kvAeEvents *e = (kvAeEvents *)privdata;
     aeEventLoop *loop = e->loop;
     if (!e->reading) {
         e->reading = 1;
-        aeCreateFileEvent(loop, e->fd, AE_READABLE, valkeyAeReadEvent, e);
+        aeCreateFileEvent(loop, e->fd, AE_READABLE, kvAeReadEvent, e);
     }
 }
 
-static void valkeyAeDelRead(void *privdata) {
-    valkeyAeEvents *e = (valkeyAeEvents *)privdata;
+static void kvAeDelRead(void *privdata) {
+    kvAeEvents *e = (kvAeEvents *)privdata;
     aeEventLoop *loop = e->loop;
     if (e->reading) {
         e->reading = 0;
@@ -80,17 +80,17 @@ static void valkeyAeDelRead(void *privdata) {
     }
 }
 
-static void valkeyAeAddWrite(void *privdata) {
-    valkeyAeEvents *e = (valkeyAeEvents *)privdata;
+static void kvAeAddWrite(void *privdata) {
+    kvAeEvents *e = (kvAeEvents *)privdata;
     aeEventLoop *loop = e->loop;
     if (!e->writing) {
         e->writing = 1;
-        aeCreateFileEvent(loop, e->fd, AE_WRITABLE, valkeyAeWriteEvent, e);
+        aeCreateFileEvent(loop, e->fd, AE_WRITABLE, kvAeWriteEvent, e);
     }
 }
 
-static void valkeyAeDelWrite(void *privdata) {
-    valkeyAeEvents *e = (valkeyAeEvents *)privdata;
+static void kvAeDelWrite(void *privdata) {
+    kvAeEvents *e = (kvAeEvents *)privdata;
     aeEventLoop *loop = e->loop;
     if (e->writing) {
         e->writing = 0;
@@ -98,25 +98,25 @@ static void valkeyAeDelWrite(void *privdata) {
     }
 }
 
-static void valkeyAeCleanup(void *privdata) {
-    valkeyAeEvents *e = (valkeyAeEvents *)privdata;
-    valkeyAeDelRead(privdata);
-    valkeyAeDelWrite(privdata);
+static void kvAeCleanup(void *privdata) {
+    kvAeEvents *e = (kvAeEvents *)privdata;
+    kvAeDelRead(privdata);
+    kvAeDelWrite(privdata);
     vk_free(e);
 }
 
-static int valkeyAeAttach(aeEventLoop *loop, valkeyAsyncContext *ac) {
-    valkeyContext *c = &(ac->c);
-    valkeyAeEvents *e;
+static int kvAeAttach(aeEventLoop *loop, kvAsyncContext *ac) {
+    kvContext *c = &(ac->c);
+    kvAeEvents *e;
 
     /* Nothing should be attached when something is already attached */
     if (ac->ev.data != NULL)
-        return VALKEY_ERR;
+        return KV_ERR;
 
     /* Create container for context and r/w events */
-    e = (valkeyAeEvents *)vk_malloc(sizeof(*e));
+    e = (kvAeEvents *)vk_malloc(sizeof(*e));
     if (e == NULL)
-        return VALKEY_ERR;
+        return KV_ERR;
 
     e->context = ac;
     e->loop = loop;
@@ -124,31 +124,31 @@ static int valkeyAeAttach(aeEventLoop *loop, valkeyAsyncContext *ac) {
     e->reading = e->writing = 0;
 
     /* Register functions to start/stop listening for events */
-    ac->ev.addRead = valkeyAeAddRead;
-    ac->ev.delRead = valkeyAeDelRead;
-    ac->ev.addWrite = valkeyAeAddWrite;
-    ac->ev.delWrite = valkeyAeDelWrite;
-    ac->ev.cleanup = valkeyAeCleanup;
+    ac->ev.addRead = kvAeAddRead;
+    ac->ev.delRead = kvAeDelRead;
+    ac->ev.addWrite = kvAeAddWrite;
+    ac->ev.delWrite = kvAeDelWrite;
+    ac->ev.cleanup = kvAeCleanup;
     ac->ev.data = e;
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
 /* Internal adapter function with correct function signature. */
-static int valkeyAeAttachAdapter(valkeyAsyncContext *ac, void *loop) {
-    return valkeyAeAttach((aeEventLoop *)loop, ac);
+static int kvAeAttachAdapter(kvAsyncContext *ac, void *loop) {
+    return kvAeAttach((aeEventLoop *)loop, ac);
 }
 
-VALKEY_UNUSED
-static int valkeyClusterOptionsUseAe(valkeyClusterOptions *options,
+KV_UNUSED
+static int kvClusterOptionsUseAe(kvClusterOptions *options,
                                      aeEventLoop *loop) {
     if (options == NULL || loop == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    options->attach_fn = valkeyAeAttachAdapter;
+    options->attach_fn = kvAeAttachAdapter;
     options->attach_data = loop;
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-#endif /* VALKEY_ADAPTERS_AE_H */
+#endif /* KV_ADAPTERS_AE_H */

@@ -30,8 +30,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef VALKEY_VKUTIL_H
-#define VALKEY_VKUTIL_H
+#ifndef KV_VKUTIL_H
+#define KV_VKUTIL_H
 
 #include "win32.h"
 
@@ -79,8 +79,8 @@ static inline int64_t vk_msec_now(void) {
 
 uint16_t crc16(const char *buf, int len);
 
-static inline int valkeyMin(long long a, long long b) {
+static inline int kvMin(long long a, long long b) {
     return (a < b) ? a : b;
 }
 
-#endif /* VALKEY_VKUTIL_H */
+#endif /* KV_VKUTIL_H */

@@ -40,10 +40,10 @@ proc test_migrated_replica {type} {
         set addr "[srv 0 host]:[srv 0 port]"
         set myid [R 3 CLUSTER MYID]
         set code [catch {
-            exec $::VALKEY_CLI_BIN {*}[valkeycli_tls_config "./tests"] --cluster rebalance $addr --cluster-weight $myid=0
+            exec $::KV_CLI_BIN {*}[kvcli_tls_config "./tests"] --cluster rebalance $addr --cluster-weight $myid=0
         } result]
         if {$code != 0} {
-            fail "valkey-cli --cluster rebalance returns non-zero exit code, output below:\n$result"
+            fail "kv-cli --cluster rebalance returns non-zero exit code, output below:\n$result"
         }
 
         # Validate that shard 3's primary and replica can convert to replicas after
@@ -256,10 +256,10 @@ proc test_sub_replica {type} {
         set addr "[srv 0 host]:[srv 0 port]"
         set myid [R 3 CLUSTER MYID]
         set code [catch {
-            exec $::VALKEY_CLI_BIN {*}[valkeycli_tls_config "./tests"] --cluster rebalance $addr --cluster-weight $myid=0
+            exec $::KV_CLI_BIN {*}[kvcli_tls_config "./tests"] --cluster rebalance $addr --cluster-weight $myid=0
         } result]
         if {$code != 0} {
-            fail "valkey-cli --cluster rebalance returns non-zero exit code, output below:\n$result"
+            fail "kv-cli --cluster rebalance returns non-zero exit code, output below:\n$result"
         }
 
         # Make sure server 3 and server 7 becomes a replica of primary 0.
@@ -357,7 +357,7 @@ start_cluster 4 4 {tags {external:skip cluster} overrides {cluster-node-timeout 
 } my_slot_allocation cluster_allocate_replicas ;# start_cluster
 
 proc test_cluster_setslot {type} {
-    test "valkey-cli make source node ignores NOREPLICAS error when doing the last CLUSTER SETSLOT - $type" {
+    test "kv-cli make source node ignores NOREPLICAS error when doing the last CLUSTER SETSLOT - $type" {
         R 3 config set cluster-allow-replica-migration no
         R 7 config set cluster-allow-replica-migration yes
 
@@ -371,10 +371,10 @@ proc test_cluster_setslot {type} {
         set addr "[srv 0 host]:[srv 0 port]"
         set myid [R 3 CLUSTER MYID]
         set code [catch {
-            exec $::VALKEY_CLI_BIN {*}[valkeycli_tls_config "./tests"] --cluster rebalance $addr --cluster-weight $myid=0
+            exec $::KV_CLI_BIN {*}[kvcli_tls_config "./tests"] --cluster rebalance $addr --cluster-weight $myid=0
         } result]
         if {$code != 0} {
-            fail "valkey-cli --cluster rebalance returns non-zero exit code, output below:\n$result"
+            fail "kv-cli --cluster rebalance returns non-zero exit code, output below:\n$result"
         }
 
         # Wait for R 3 to report that it is an empty primary (cluster-allow-replica-migration no)

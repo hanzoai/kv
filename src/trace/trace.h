@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -14,8 +14,8 @@
  * ==========================================================================
  */
 
-#if !defined(__VALKEY_TRACE_H__)
-#define __VALKEY_TRACE_H__
+#if !defined(__KV_TRACE_H__)
+#define __KV_TRACE_H__
 
 #include "trace_aof.h"
 #include "trace_cluster.h"
@@ -31,7 +31,7 @@
 pid_t do_fork(void);
 
 #define latencyTraceIfNeeded(type, event, var) \
-    valkey_##type##_trace(valkey_##type, event, (var));
+    kv_##type##_trace(kv_##type, event, (var));
 
 #else
 
@@ -40,4 +40,4 @@ pid_t do_fork(void);
     } while (0)
 #endif
 
-#endif /* __VALKEY_TRACE_H__ */
+#endif /* __KV_TRACE_H__ */

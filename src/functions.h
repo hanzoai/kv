@@ -51,7 +51,7 @@
 #include "server.h"
 #include "scripting_engine.h"
 #include "script.h"
-#include "valkeymodule.h"
+#include "kvmodule.h"
 
 typedef struct functionLibInfo functionLibInfo;
 
@@ -59,8 +59,8 @@ typedef struct functionLibInfo functionLibInfo;
  * Used on rdb.c so it must be declared here. */
 typedef struct engineInfo {
     sds name;                    /* Name of the engine */
-    ValkeyModule *engineModule;  /* the module that implements the scripting engine */
-    ValkeyModuleCtx *module_ctx; /* Scripting engine module context */
+    KVModule *engineModule;  /* the module that implements the scripting engine */
+    KVModuleCtx *module_ctx; /* Scripting engine module context */
     scriptingEngine *engine;     /* engine callbacks that allows to interact with the engine */
     client *c;                   /* Client that is used to run commands */
 } engineInfo;

@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   determine-release-branches:
-    if: github.repository == 'valkey-io/valkey'
+    if: github.repository == 'kv-io/kv'
     runs-on: ubuntu-latest
     outputs:
       branches: ${{ steps.release-branches.outputs.branches }}
@@ -49,7 +49,7 @@ jobs:
             core.setOutput('has-branches', releaseBranches.length > 0 ? 'true' : 'false');
   run-daily-for-release-branches:
     needs: determine-release-branches
-    if: needs.determine-release-branches.outputs.has-branches == 'true' && github.repository == 'valkey-io/valkey'
+    if: needs.determine-release-branches.outputs.has-branches == 'true' && github.repository == 'kv-io/kv'
     permissions:
       actions: read
       contents: read
@@ -61,7 +61,7 @@ jobs:
       max-parallel: 1
     uses: ./.github/workflows/daily.yml
     with:
-      use_repo: valkey-io/valkey
+      use_repo: kv-io/kv
       use_git_ref: ${{ matrix.release-branch }}
       skipjobs: ""
       skiptests: ""

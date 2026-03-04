@@ -1,23 +1,23 @@
-Contributing to Valkey
+Contributing to KV
 ======================
 
 Welcome and thank you for wanting to contribute!
 
 # Project governance
 
-The Valkey project is led by a Technical Steering Committee, whose responsibilities are laid out in [GOVERNANCE.md](GOVERNANCE.md).
+The KV project is led by a Technical Steering Committee, whose responsibilities are laid out in [GOVERNANCE.md](GOVERNANCE.md).
 
 ## Get started
 
 * Have a question? Ask it on
-  [GitHub Discussions](https://github.com/valkey-io/valkey/discussions)
-  or [Valkey's Discord](https://discord.gg/zbcPa5umUB)
-  or [Valkey's Matrix](https://matrix.to/#/#valkey:matrix.org)
-* Found a bug? [Report it here](https://github.com/valkey-io/valkey/issues/new?template=bug_report.md&title=%5BBUG%5D)
-* Valkey crashed? [Submit a crash report here](https://github.com/valkey-io/valkey/issues/new?template=crash_report.md&title=%5BCRASH%5D+%3Cshort+description%3E)
-* Suggest a new feature? [Post your detailed feature request here](https://github.com/valkey-io/valkey/issues/new?template=feature_request.md&title=%5BNEW%5D)
-* Report a test failure? [Report it here](https://github.com/valkey-io/valkey/issues/new?template=test-failure.md)
-* Want to help with documentation? [Move on to valkey-doc](https://github.com/valkey-io/valkey-doc)
+  [GitHub Discussions](https://github.com/hanzoai/kv/discussions)
+  or [KV's Discord](https://discord.gg/zbcPa5umUB)
+  or [KV's Matrix](https://matrix.to/#/#kv:matrix.org)
+* Found a bug? [Report it here](https://github.com/hanzoai/kv/issues/new?template=bug_report.md&title=%5BBUG%5D)
+* KV crashed? [Submit a crash report here](https://github.com/hanzoai/kv/issues/new?template=crash_report.md&title=%5BCRASH%5D+%3Cshort+description%3E)
+* Suggest a new feature? [Post your detailed feature request here](https://github.com/hanzoai/kv/issues/new?template=feature_request.md&title=%5BNEW%5D)
+* Report a test failure? [Report it here](https://github.com/hanzoai/kv/issues/new?template=test-failure.md)
+* Want to help with documentation? [Move on to kv-doc](https://github.com/hanzoai/kv-doc)
 * Report a vulnerability? See [SECURITY.md](SECURITY.md)
 
 ## Developer Certificate of Origin
@@ -58,7 +58,7 @@ By making a contribution to this project, I certify that:
     involved.
 ```
 
-We require that every contribution to Valkey to be signed with a DCO. We require the
+We require that every contribution to KV to be signed with a DCO. We require the
 usage of known identity (such as a real or preferred name). We do not accept anonymous
 contributors nor those utilizing pseudonyms. A DCO signed commit will contain a line like:
 
@@ -72,7 +72,7 @@ user.name and user.email are set in your git configs, you can use `git commit` w
 or `--signoff` to add the `Signed-off-by` line to the end of the commit message. We also
 require revert commits to include a DCO.
 
-If you're contributing code to the Valkey project in any other form, including
+If you're contributing code to the KV project in any other form, including
 sending a code fragment or patch via private email or public discussion groups,
 you need to ensure that the contribution is in accordance with the DCO.
 
@@ -86,7 +86,7 @@ features to be accepted. Here you can see if there is consensus about your idea.
 
 2. If in step 1 you get an acknowledgment from the project leaders, use the following
 procedure to submit a patch:
-    1. Fork Valkey on GitHub ([HOWTO](https://docs.github.com/en/github/getting-started-with-github/fork-a-repo))
+    1. Fork KV on GitHub ([HOWTO](https://docs.github.com/en/github/getting-started-with-github/fork-a-repo))
     1. Create a topic branch (`git checkout -b my_branch`)
     1. Make the needed changes and commit with a DCO. (`git commit -s`)
     1. Push to your branch (`git push origin my_branch`)
@@ -101,7 +101,7 @@ try to popularize it, have other users commenting and sharing their point of
 view, and so forth. This helps.
 
 4. While developing code, make sure to refer to our [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md),
-which includes documentation about various best practices for writing Valkey code.
+which includes documentation about various best practices for writing KV code.
 
 5. For minor fixes, open a pull request on GitHub.
 
@@ -117,7 +117,7 @@ Use [`.github/workflows/daily.yml`](.github/workflows/daily.yml) with
 2. Click **Run workflow**.
 3. In the **Branch** dropdown, select the branch that contains the workflow file you want to use.
 4. In the input fields, set:
-   * `use_repo` to your fork (for example, `your-user/valkey`)
+   * `use_repo` to your fork (for example, `your-user/kv`)
    * `use_git_ref` to your branch name (or a specific commit SHA)
 5. Optionally set `skipjobs`, `skiptests`, `test_args`, and `cluster_test_args`.
 6. Click **Run workflow**.
@@ -125,7 +125,7 @@ Use [`.github/workflows/daily.yml`](.github/workflows/daily.yml) with
 Notes:
 * To run the full matrix, set `skipjobs` and `skiptests` to `none`.
   Do not leave them empty, since the workflow input defaults may be applied.
-* The scheduled part of this workflow is gated to `valkey-io/valkey`, but manual
+* The scheduled part of this workflow is gated to `hanzoai/kv`, but manual
   `workflow_dispatch` runs work for forks.
 
 Thanks!

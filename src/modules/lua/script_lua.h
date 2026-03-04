@@ -77,13 +77,13 @@ void luaPushError(lua_State *lua, const char *error);
 int luaError(lua_State *lua);
 void luaSaveOnRegistry(lua_State *lua, const char *name, void *ptr);
 void *luaGetFromRegistry(lua_State *lua, const char *name);
-void luaCallFunction(ValkeyModuleCtx *ctx,
-                     ValkeyModuleScriptingEngineServerRuntimeCtx *r_ctx,
-                     ValkeyModuleScriptingEngineSubsystemType type,
+void luaCallFunction(KVModuleCtx *ctx,
+                     KVModuleScriptingEngineServerRuntimeCtx *r_ctx,
+                     KVModuleScriptingEngineSubsystemType type,
                      lua_State *lua,
-                     ValkeyModuleString **keys,
+                     KVModuleString **keys,
                      size_t nkeys,
-                     ValkeyModuleString **args,
+                     KVModuleString **args,
                      size_t nargs,
                      int debug_enabled,
                      int lua_enable_insecure_api);

@@ -29,8 +29,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef VALKEY_COMMAND_H
-#define VALKEY_COMMAND_H
+#ifndef KV_COMMAND_H
+#define KV_COMMAND_H
 
 #include <stdint.h>
 
@@ -46,15 +46,15 @@ typedef enum cmd_type {
     CMD_UNKNOWN,
 /* Request commands */
 #define COMMAND(_type, _name, _subname, _arity, _keymethod, _keypos) \
-    CMD_REQ_VALKEY_##_type,
+    CMD_REQ_KV_##_type,
 #include "cmddef.h"
 #undef COMMAND
     /* Response types */
-    CMD_RSP_VALKEY_STATUS, /* simple string */
-    CMD_RSP_VALKEY_ERROR,
-    CMD_RSP_VALKEY_INTEGER,
-    CMD_RSP_VALKEY_BULK,
-    CMD_RSP_VALKEY_MULTIBULK,
+    CMD_RSP_KV_STATUS, /* simple string */
+    CMD_RSP_KV_ERROR,
+    CMD_RSP_KV_INTEGER,
+    CMD_RSP_KV_BULK,
+    CMD_RSP_KV_MULTIBULK,
     CMD_SENTINEL
 } cmd_type_t;
 
@@ -79,9 +79,9 @@ struct cmd {
     char *node_addr; /* Command sent to this node address */
 };
 
-void valkey_parse_cmd(struct cmd *r);
+void kv_parse_cmd(struct cmd *r);
 
 struct cmd *command_get(void);
 void command_destroy(struct cmd *command);
 
-#endif /* VALKEY_COMMAND_H */
+#endif /* KV_COMMAND_H */

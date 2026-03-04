@@ -27,21 +27,21 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
 const char *ascii_logo =
     "                .+^+.                                                \n"
     "            .+#########+.                                            \n"
-    "        .+########+########+.           Valkey %s (%s/%d) %s bit\n"
+    "        .+########+########+.           KV %s (%s/%d) %s bit\n"
     "    .+########+'     '+########+.                                    \n"
     " .########+'     .+.     '+########.    Running in %s mode\n"
     " |####+'     .+#######+.     '+####|    Port: %d\n"
     " |###|   .+###############+.   |###|    PID: %ld                     \n"
     " |###|   |#####*'' ''*#####|   |###|                                 \n"
     " |###|   |####'  .-.  '####|   |###|                                 \n"
-    " |###|   |###(  (@@@)  )###|   |###|          https://valkey.io      \n"
+    " |###|   |###(  (@@@)  )###|   |###|          https://kv.io      \n"
     " |###|   |####.  '-'  .####|   |###|                                 \n"
     " |###|   |#####*.   .*#####|   |###|                                 \n"
     " |###|   '+#####|   |#####+'   |###|                                 \n"

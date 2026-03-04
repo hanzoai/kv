@@ -1,19 +1,19 @@
-SET(TEST_WITH_VALKEY_VERSION "7.2.5" CACHE STRING "Valkey version used when running tests.")
+SET(TEST_WITH_KV_VERSION "7.2.5" CACHE STRING "KV version used when running tests.")
 
 if(ENABLE_TLS)
   # Generate TLS certs and keys when needed
-  set(TLS_CONFIGS ca.crt ca.key ca.txt valkey.crt valkey.key client.crt client.key)
+  set(TLS_CONFIGS ca.crt ca.key ca.txt kv.crt kv.key client.crt client.key)
   add_custom_command(
     OUTPUT ${TLS_CONFIGS}
     COMMAND openssl genrsa -out ca.key 4096
-    COMMAND openssl req -x509 -new -nodes -sha256 -key ca.key -days 3650 -subj '/CN=Valkey Test CA' -out ca.crt
-    COMMAND openssl genrsa -out valkey.key 2048
-    COMMAND openssl req -new -sha256 -key valkey.key -subj '/CN=Valkey Server Test Cert' | openssl x509 -req -sha256 -CA ca.crt -CAkey ca.key -CAserial ca.txt -CAcreateserial -days 365 -out valkey.crt
+    COMMAND openssl req -x509 -new -nodes -sha256 -key ca.key -days 3650 -subj '/CN=KV Test CA' -out ca.crt
+    COMMAND openssl genrsa -out kv.key 2048
+    COMMAND openssl req -new -sha256 -key kv.key -subj '/CN=KV Server Test Cert' | openssl x509 -req -sha256 -CA ca.crt -CAkey ca.key -CAserial ca.txt -CAcreateserial -days 365 -out kv.crt
     COMMAND openssl genrsa -out client.key 2048
-    COMMAND openssl req -new -sha256 -key client.key -subj '/CN=Valkey Client Test Cert' | openssl x509 -req -sha256 -CA ca.crt -CAkey ca.key -CAserial ca.txt -CAcreateserial -days 365 -out client.crt
+    COMMAND openssl req -new -sha256 -key client.key -subj '/CN=KV Client Test Cert' | openssl x509 -req -sha256 -CA ca.crt -CAkey ca.key -CAserial ca.txt -CAcreateserial -days 365 -out client.crt
     )
   add_custom_target(generate_tls_configs DEPENDS ${TLS_CONFIGS})
-  set(TLS_LIBRARY valkey_tls)
+  set(TLS_LIBRARY kv_tls)
 endif()
 
 if(ENABLE_IPV6_TESTS)
@@ -27,8 +27,8 @@ if(TEST_WITH_REDIS_VERSION)
   set(CLUSTER_SCRIPT "${CMAKE_SOURCE_DIR}/tests/scripts/redis-cluster")
   set(CLUSTER_VERSION "REDIS_VERSION=${TEST_WITH_REDIS_VERSION}")
 else()
-  set(CLUSTER_SCRIPT "${CMAKE_SOURCE_DIR}/tests/scripts/valkey-cluster")
-  set(CLUSTER_VERSION "VALKEY_VERSION=${TEST_WITH_VALKEY_VERSION}")
+  set(CLUSTER_SCRIPT "${CMAKE_SOURCE_DIR}/tests/scripts/kv-cluster")
+  set(CLUSTER_VERSION "KV_VERSION=${TEST_WITH_KV_VERSION}")
 endif()
 add_custom_target(start
   COMMAND PORT=7000 ${CLUSTER_VERSION} ${CLUSTER_SCRIPT} start
@@ -69,23 +69,23 @@ list(APPEND CMAKE_CTEST_ARGUMENTS "--output-on-failure")
 # Add non-cluster tests
 add_executable(client_test client_test.c)
 target_include_directories(client_test PRIVATE "${PROJECT_SOURCE_DIR}/src")
-target_link_libraries(client_test valkey_unittest)
+target_link_libraries(client_test kv_unittest)
 if(TLS_LIBRARY)
-  target_compile_definitions(client_test PUBLIC VALKEY_TEST_TLS=1)
+  target_compile_definitions(client_test PUBLIC KV_TEST_TLS=1)
   target_link_libraries(client_test ${TLS_LIBRARY})
 endif()
 if(ENABLE_RDMA)
-  target_compile_definitions(client_test PUBLIC VALKEY_TEST_RDMA=1)
-  target_link_libraries(client_test valkey_rdma)
+  target_compile_definitions(client_test PUBLIC KV_TEST_RDMA=1)
+  target_link_libraries(client_test kv_rdma)
 endif()
 if(LIBEVENT_LIBRARY)
-  target_compile_definitions(client_test PUBLIC VALKEY_TEST_ASYNC=1)
+  target_compile_definitions(client_test PUBLIC KV_TEST_ASYNC=1)
   target_link_libraries(client_test ${LIBEVENT_LIBRARY})
 endif()
 
 add_test(NAME client_test COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/test.sh")
 if(TEST_WITH_REDIS_VERSION)
-  set_property(TEST client_test APPEND PROPERTY ENVIRONMENT "VALKEY_SERVER=redis-server")
+  set_property(TEST client_test APPEND PROPERTY ENVIRONMENT "KV_SERVER=redis-server")
 endif()
 if(TLS_LIBRARY)
   set_property(TEST client_test APPEND PROPERTY ENVIRONMENT "TEST_TLS=1")
@@ -100,52 +100,52 @@ endif()
 # Unit tests
 add_executable(ut_parse_cmd ut_parse_cmd.c test_utils.c)
 target_include_directories(ut_parse_cmd PRIVATE "${PROJECT_SOURCE_DIR}/src")
-target_link_libraries(ut_parse_cmd valkey_unittest)
+target_link_libraries(ut_parse_cmd kv_unittest)
 add_test(NAME ut_parse_cmd COMMAND "$<TARGET_FILE:ut_parse_cmd>")
 
 add_executable(ut_slotmap_update ut_slotmap_update.c)
 target_include_directories(ut_slotmap_update PRIVATE "${PROJECT_SOURCE_DIR}/src")
-target_link_libraries(ut_slotmap_update valkey_unittest)
+target_link_libraries(ut_slotmap_update kv_unittest)
 add_test(NAME ut_slotmap_update COMMAND "$<TARGET_FILE:ut_slotmap_update>")
 
 # Cluster tests
 add_executable(ct_commands ct_commands.c test_utils.c)
-target_link_libraries(ct_commands valkey ${TLS_LIBRARY})
+target_link_libraries(ct_commands kv ${TLS_LIBRARY})
 add_test(NAME ct_commands COMMAND "$<TARGET_FILE:ct_commands>")
 
 if (LIBEVENT_LIBRARY)
   add_executable(ct_async ct_async.c)
-  target_link_libraries(ct_async valkey ${TLS_LIBRARY} ${LIBEVENT_LIBRARY})
+  target_link_libraries(ct_async kv ${TLS_LIBRARY} ${LIBEVENT_LIBRARY})
   add_test(NAME ct_async COMMAND "$<TARGET_FILE:ct_async>")
 
   add_executable(ct_connection ct_connection.c test_utils.c)
-  target_link_libraries(ct_connection valkey ${TLS_LIBRARY} ${LIBEVENT_LIBRARY})
+  target_link_libraries(ct_connection kv ${TLS_LIBRARY} ${LIBEVENT_LIBRARY})
   add_test(NAME ct_connection COMMAND "$<TARGET_FILE:ct_connection>")
 
   add_executable(ct_pipeline ct_pipeline.c)
-  target_link_libraries(ct_pipeline valkey ${TLS_LIBRARY} ${LIBEVENT_LIBRARY})
+  target_link_libraries(ct_pipeline kv ${TLS_LIBRARY} ${LIBEVENT_LIBRARY})
   add_test(NAME ct_pipeline COMMAND "$<TARGET_FILE:ct_pipeline>")
 
   add_executable(ct_connection_ipv6 ct_connection_ipv6.c)
-  target_link_libraries(ct_connection_ipv6 valkey ${TLS_LIBRARY} ${LIBEVENT_LIBRARY})
+  target_link_libraries(ct_connection_ipv6 kv ${TLS_LIBRARY} ${LIBEVENT_LIBRARY})
   add_test(NAME ct_connection_ipv6 COMMAND "$<TARGET_FILE:ct_connection_ipv6>")
   if(NOT ENABLE_IPV6_TESTS)
     set_tests_properties(ct_connection_ipv6 PROPERTIES DISABLED True)
   endif()
 
   add_executable(ct_out_of_memory_handling ct_out_of_memory_handling.c)
-  target_link_libraries(ct_out_of_memory_handling valkey ${TLS_LIBRARY} ${LIBEVENT_LIBRARY})
+  target_link_libraries(ct_out_of_memory_handling kv ${TLS_LIBRARY} ${LIBEVENT_LIBRARY})
   add_test(NAME ct_out_of_memory_handling COMMAND "$<TARGET_FILE:ct_out_of_memory_handling>")
 
   add_executable(ct_specific_nodes ct_specific_nodes.c test_utils.c)
-  target_link_libraries(ct_specific_nodes valkey ${TLS_LIBRARY} ${LIBEVENT_LIBRARY})
+  target_link_libraries(ct_specific_nodes kv ${TLS_LIBRARY} ${LIBEVENT_LIBRARY})
   add_test(NAME ct_specific_nodes COMMAND "$<TARGET_FILE:ct_specific_nodes>")
 
-  # Tests using simulated Valkey node
+  # Tests using simulated KV node
   add_executable(clusterclient clusterclient.c)
-  target_link_libraries(clusterclient valkey ${TLS_LIBRARY})
+  target_link_libraries(clusterclient kv ${TLS_LIBRARY})
   add_executable(clusterclient_async clusterclient_async.c)
-  target_link_libraries(clusterclient_async valkey ${TLS_LIBRARY} ${LIBEVENT_LIBRARY})
+  target_link_libraries(clusterclient_async kv ${TLS_LIBRARY} ${LIBEVENT_LIBRARY})
   add_test(NAME set-get-test
            COMMAND "${CMAKE_SOURCE_DIR}/tests/scripts/set-get-test.sh"
                    "$<TARGET_FILE:clusterclient>"
@@ -271,7 +271,7 @@ endif()
 if(LIBUV_LIBRARY AND LIBUV_INCLUDE_DIR)
   add_executable(ct_async_libuv ct_async_libuv.c)
   target_include_directories(ct_async_libuv PRIVATE ${LIBUV_INCLUDE_DIR})
-  target_link_libraries(ct_async_libuv valkey ${TLS_LIBRARY} ${LIBUV_LIBRARY})
+  target_link_libraries(ct_async_libuv kv ${TLS_LIBRARY} ${LIBUV_LIBRARY})
   add_test(NAME ct_async_libuv COMMAND "$<TARGET_FILE:ct_async_libuv>")
 else()
   add_test(NAME ct_async_libuv COMMAND "")
@@ -281,7 +281,7 @@ endif()
 if(LIBEV_LIBRARY AND LIBEV_INCLUDE_DIR)
   add_executable(ct_async_libev ct_async_libev.c)
   target_include_directories(ct_async_libev PRIVATE ${LIBEV_INCLUDE_DIR})
-  target_link_libraries(ct_async_libev valkey ${TLS_LIBRARY} ${LIBEV_LIBRARY})
+  target_link_libraries(ct_async_libev kv ${TLS_LIBRARY} ${LIBEV_LIBRARY})
   add_test(NAME ct_async_libev COMMAND "$<TARGET_FILE:ct_async_libev>")
 else()
   add_test(NAME ct_async_libev COMMAND "")
@@ -290,7 +290,7 @@ endif()
 
 if(GLIB_LIBRARY_FOUND)
   add_executable(ct_async_glib ct_async_glib.c)
-  target_link_libraries(ct_async_glib valkey ${TLS_LIBRARY} PkgConfig::GLIB_LIBRARY)
+  target_link_libraries(ct_async_glib kv ${TLS_LIBRARY} PkgConfig::GLIB_LIBRARY)
   add_test(NAME ct_async_glib COMMAND "$<TARGET_FILE:ct_async_glib>")
 else()
   add_test(NAME ct_async_glib COMMAND "")

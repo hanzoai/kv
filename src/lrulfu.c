@@ -10,7 +10,7 @@ static const uint32_t LRULFU_MASK = (1 << LRULFU_BITS) - 1;
  */
 
 /* The LRU_CLOCK_RESOLUTION is used to support an older ruby program which tests
- * the LRU behavior.  This should be set to 1 if building Valkey to support this
+ * the LRU behavior.  This should be set to 1 if building KV to support this
  * ruby test.  Otherwise, the default of 1000 is expected. */
 static const uint32_t LRU_CLOCK_RESOLUTION = 1000; /* LRU clock resolution in ms */
 

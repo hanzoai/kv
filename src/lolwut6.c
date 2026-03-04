@@ -182,8 +182,8 @@ void lolwut6Command(client *c) {
     sds rendered = renderCanvas(canvas);
     rendered = sdscatprintf(rendered, "\nDedicated to the 8 bit game developers of past and present.\n"
                                       "Original 8 bit image from Plaguemon by hikikomori. %s ver. ",
-                            server.extended_redis_compat ? "Redis" : "Valkey");
-    rendered = sdscat(rendered, server.extended_redis_compat ? REDIS_VERSION : VALKEY_VERSION);
+                            server.extended_redis_compat ? "Redis" : "KV");
+    rendered = sdscat(rendered, server.extended_redis_compat ? REDIS_VERSION : KV_VERSION);
     rendered = sdscatlen(rendered, "\n", 1);
     addReplyVerbatim(c, rendered, sdslen(rendered), "txt");
     sdsfree(rendered);

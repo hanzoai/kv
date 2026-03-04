@@ -25,42 +25,42 @@ all: helloworld.so hellotype.so helloblock.so hellocluster.so hellotimer.so hell
 .c.xo:
 	$(CC) -I. $(CFLAGS) $(SHOBJ_CFLAGS) -fPIC -c $< -o $@
 
-helloworld.xo: ../valkeymodule.h
+helloworld.xo: ../kvmodule.h
 
 helloworld.so: helloworld.xo
 	$(LD) -o $@ $^ $(SHOBJ_LDFLAGS) $(LIBS) -lc
 
-hellotype.xo: ../valkeymodule.h
+hellotype.xo: ../kvmodule.h
 
 hellotype.so: hellotype.xo
 	$(LD) -o $@ $^ $(SHOBJ_LDFLAGS) $(LIBS) -lc
 
-helloblock.xo: ../valkeymodule.h
+helloblock.xo: ../kvmodule.h
 
 helloblock.so: helloblock.xo
 	$(LD) -o $@ $^ $(SHOBJ_LDFLAGS) $(LIBS) -lpthread -lc
 
-hellocluster.xo: ../valkeymodule.h
+hellocluster.xo: ../kvmodule.h
 
 hellocluster.so: hellocluster.xo
 	$(LD) -o $@ $^ $(SHOBJ_LDFLAGS) $(LIBS) -lc
 
-hellotimer.xo: ../valkeymodule.h
+hellotimer.xo: ../kvmodule.h
 
 hellotimer.so: hellotimer.xo
 	$(LD) -o $@ $^ $(SHOBJ_LDFLAGS) $(LIBS) -lc
 
-hellodict.xo: ../valkeymodule.h
+hellodict.xo: ../kvmodule.h
 
 hellodict.so: hellodict.xo
 	$(LD) -o $@ $^ $(SHOBJ_LDFLAGS) $(LIBS) -lc
 
-hellohook.xo: ../valkeymodule.h
+hellohook.xo: ../kvmodule.h
 
 hellohook.so: hellohook.xo
 	$(LD) -o $@ $^ $(SHOBJ_LDFLAGS) $(LIBS) -lc
 
-helloacl.xo: ../valkeymodule.h
+helloacl.xo: ../kvmodule.h
 
 helloacl.so: helloacl.xo
 	$(LD) -o $@ $^ $(SHOBJ_LDFLAGS) $(LIBS) -lc

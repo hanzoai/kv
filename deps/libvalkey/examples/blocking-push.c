@@ -27,7 +27,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#include <valkey/valkey.h>
+#include <kv/kv.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,12 +43,12 @@
         exit(-1);                                                           \
     } while (0)
 
-static void assertReplyAndFree(valkeyContext *context, valkeyReply *reply, int type) {
+static void assertReplyAndFree(kvContext *context, kvReply *reply, int type) {
     if (reply == NULL)
         panicAbort("NULL reply from server (error: %s)", context->errstr);
 
     if (reply->type != type) {
-        if (reply->type == VALKEY_REPLY_ERROR)
+        if (reply->type == KV_REPLY_ERROR)
             fprintf(stderr, "Server Error: %s\n", reply->str);
 
         panicAbort("Expected reply type %d but got type %d", type, reply->type);
@@ -58,34 +58,34 @@ static void assertReplyAndFree(valkeyContext *context, valkeyReply *reply, int t
 }
 
 /* Switch to the RESP3 protocol and enable client tracking */
-static void enableClientTracking(valkeyContext *c) {
-    valkeyReply *reply = valkeyCommand(c, "HELLO 3");
+static void enableClientTracking(kvContext *c) {
+    kvReply *reply = kvCommand(c, "HELLO 3");
     if (reply == NULL || c->err) {
         panicAbort("NULL reply or server error (error: %s)", c->errstr);
     }
 
-    if (reply->type != VALKEY_REPLY_MAP) {
+    if (reply->type != KV_REPLY_MAP) {
         fprintf(stderr, "Error: Can't send HELLO 3 command.  Are you sure you're ");
-        fprintf(stderr, "connected to valkey-server >= 6.0.0?\nServer error: %s\n",
-                reply->type == VALKEY_REPLY_ERROR ? reply->str : "(unknown)");
+        fprintf(stderr, "connected to kv-server >= 6.0.0?\nServer error: %s\n",
+                reply->type == KV_REPLY_ERROR ? reply->str : "(unknown)");
         exit(-1);
     }
 
     freeReplyObject(reply);
 
     /* Enable client tracking */
-    reply = valkeyCommand(c, "CLIENT TRACKING ON");
-    assertReplyAndFree(c, reply, VALKEY_REPLY_STATUS);
+    reply = kvCommand(c, "CLIENT TRACKING ON");
+    assertReplyAndFree(c, reply, KV_REPLY_STATUS);
 }
 
 void pushReplyHandler(void *privdata, void *r) {
-    valkeyReply *reply = r;
+    kvReply *reply = r;
     int *invalidations = privdata;
 
     /* Sanity check on the invalidation reply */
-    if (reply->type != VALKEY_REPLY_PUSH || reply->elements != 2 ||
-        reply->element[1]->type != VALKEY_REPLY_ARRAY ||
-        reply->element[1]->element[0]->type != VALKEY_REPLY_STRING) {
+    if (reply->type != KV_REPLY_PUSH || reply->elements != 2 ||
+        reply->element[1]->type != KV_REPLY_ARRAY ||
+        reply->element[1]->element[0]->type != KV_REPLY_STRING) {
         panicAbort("%s", "Can't parse PUSH message!");
     }
 
@@ -99,7 +99,7 @@ void pushReplyHandler(void *privdata, void *r) {
 }
 
 /* We aren't actually freeing anything here, but it is included to show that we can
- * have libvalkey call our data destructor when freeing the context */
+ * have libkv call our data destructor when freeing the context */
 void privdata_dtor(void *privdata) {
     unsigned int *icount = privdata;
     printf("privdata_dtor():  In context privdata dtor (invalidations: %u)\n", *icount);
@@ -107,29 +107,29 @@ void privdata_dtor(void *privdata) {
 
 int main(int argc, char **argv) {
     unsigned int j, invalidations = 0;
-    valkeyContext *c;
-    valkeyReply *reply;
+    kvContext *c;
+    kvReply *reply;
 
     const char *hostname = (argc > 1) ? argv[1] : "127.0.0.1";
     int port = (argc > 2) ? atoi(argv[2]) : 6379;
 
-    valkeyOptions o = {0};
-    VALKEY_OPTIONS_SET_TCP(&o, hostname, port);
+    kvOptions o = {0};
+    KV_OPTIONS_SET_TCP(&o, hostname, port);
 
     /* Set our context privdata to the address of our invalidation counter.  Each
-     * time our PUSH handler is called, libvalkey will pass the privdata for context.
+     * time our PUSH handler is called, libkv will pass the privdata for context.
      *
      * This could also be done after we create the context like so:
      *
      *    c->privdata = &invalidations;
      *    c->free_privdata = privdata_dtor;
      */
-    VALKEY_OPTIONS_SET_PRIVDATA(&o, &invalidations, privdata_dtor);
+    KV_OPTIONS_SET_PRIVDATA(&o, &invalidations, privdata_dtor);
 
     /* Set our custom PUSH message handler */
     o.push_cb = pushReplyHandler;
 
-    c = valkeyConnectWithOptions(&o);
+    c = kvConnectWithOptions(&o);
     if (c == NULL || c->err)
         panicAbort("Connection error:  %s", c ? c->errstr : "OOM");
 
@@ -139,23 +139,23 @@ int main(int argc, char **argv) {
     /* Set some keys and then read them back.  Once we do that, Redis will deliver
      * invalidation push messages whenever the key is modified */
     for (j = 0; j < KEY_COUNT; j++) {
-        reply = valkeyCommand(c, "SET key:%d initial:%d", j, j);
-        assertReplyAndFree(c, reply, VALKEY_REPLY_STATUS);
+        reply = kvCommand(c, "SET key:%d initial:%d", j, j);
+        assertReplyAndFree(c, reply, KV_REPLY_STATUS);
 
-        reply = valkeyCommand(c, "GET key:%d", j);
-        assertReplyAndFree(c, reply, VALKEY_REPLY_STRING);
+        reply = kvCommand(c, "GET key:%d", j);
+        assertReplyAndFree(c, reply, KV_REPLY_STRING);
     }
 
     /* Trigger invalidation messages by updating keys we just read */
     for (j = 0; j < KEY_COUNT; j++) {
         printf("            main(): SET key:%d update:%d\n", j, j);
-        reply = valkeyCommand(c, "SET key:%d update:%d", j, j);
-        assertReplyAndFree(c, reply, VALKEY_REPLY_STATUS);
+        reply = kvCommand(c, "SET key:%d update:%d", j, j);
+        assertReplyAndFree(c, reply, KV_REPLY_STATUS);
         printf("            main(): SET REPLY OK\n");
     }
 
     printf("\nTotal detected invalidations: %d, expected: %d\n", invalidations, KEY_COUNT);
 
     /* PING server */
-    valkeyFree(c);
+    kvFree(c);
 }

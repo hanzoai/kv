@@ -19,7 +19,7 @@ on:
         default: "valgrind,sanitizer,tls,freebsd,macos,alpine,32bit,iothreads,ubuntu,rpm-distros,malloc,specific,fortify,reply-schema,arm,lttng"
       skiptests:
         description: "tests to skip (delete the ones you wanna keep, do not leave empty)"
-        default: "valkey,modules,sentinel,cluster,unittest,large-memory"
+        default: "kv,modules,sentinel,cluster,unittest,large-memory"
       test_args:
         description: "extra test arguments"
         default: ""
@@ -28,7 +28,7 @@ on:
         default: ""
       use_repo:
         description: "repo owner and name"
-        default: "valkey-io/valkey"
+        default: "kv-io/kv"
       use_git_ref:
         description: "git branch or sha to use"
         default: "unstable"
@@ -58,7 +58,7 @@ on:
         description: "repo owner and name"
         required: false
         type: string
-        default: "valkey-io/valkey"
+        default: "kv-io/kv"
       use_git_ref:
         description: "git branch or sha to use"
         required: false
@@ -80,7 +80,7 @@ jobs:
     # 4) unstable runs when run-extra-tests is added, and on later code updates while it remains.
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -115,7 +115,7 @@ jobs:
       - name: testprep
         run: sudo apt-get install tcl8.6 tclx
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest ${{ github.event_name != 'pull_request' && '--accurate' || '' }} --verbose --dump-logs ${{github.event.inputs.test_args}}
       - name: module api test
         if: true && !contains(github.event.inputs.skiptests, 'modules')
@@ -128,7 +128,7 @@ jobs:
         run: ./runtest-cluster ${{github.event.inputs.cluster_test_args}}
       - name: unittest
         if: true && !contains(github.event.inputs.skiptests, 'unittest')
-        run: ./src/valkey-unit-tests --accurate
+        run: ./src/kv-unit-tests --accurate
       - name: install Redis OSS 6.2 server for compatibility testing
         run: |
           cd tests/tmp
@@ -159,7 +159,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -194,7 +194,7 @@ jobs:
       - name: testprep
         run: sudo apt-get install tcl8.6 tclx
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest ${{ github.event_name != 'pull_request' && '--accurate' || '' }} --verbose --dump-logs ${{github.event.inputs.test_args}}
       - name: module api test
         if: true && !contains(github.event.inputs.skiptests, 'modules')
@@ -207,12 +207,12 @@ jobs:
         run: ./runtest-cluster ${{github.event.inputs.cluster_test_args}}
       - name: unittest
         if: true && !contains(github.event.inputs.skiptests, 'unittest')
-        run: ./src/valkey-unit-tests --accurate
+        run: ./src/kv-unit-tests --accurate
   test-ubuntu-jemalloc-fortify:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -252,7 +252,7 @@ jobs:
       - name: testprep
         run: apt-get install -y tcl8.6 tclx procps
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest ${{ github.event_name != 'pull_request' && '--accurate' || '' }} --verbose --dump-logs ${{github.event.inputs.test_args}}
       - name: module api test
         if: true && !contains(github.event.inputs.skiptests, 'modules')
@@ -265,12 +265,12 @@ jobs:
         run: ./runtest-cluster ${{github.event.inputs.cluster_test_args}}
       - name: unittest
         if: true && !contains(github.event.inputs.skiptests, 'unittest')
-        run: ./src/valkey-unit-tests --accurate
+        run: ./src/kv-unit-tests --accurate
   test-ubuntu-libc-malloc:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -305,7 +305,7 @@ jobs:
       - name: testprep
         run: sudo apt-get install tcl8.6 tclx
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest ${{ github.event_name != 'pull_request' && '--accurate' || '' }} --verbose --dump-logs ${{github.event.inputs.test_args}}
       - name: module api test
         if: true && !contains(github.event.inputs.skiptests, 'modules')
@@ -320,7 +320,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -355,7 +355,7 @@ jobs:
       - name: testprep
         run: sudo apt-get install tcl8.6 tclx
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest ${{ github.event_name != 'pull_request' && '--accurate' || '' }} --verbose --dump-logs ${{github.event.inputs.test_args}}
       - name: module api test
         if: true && !contains(github.event.inputs.skiptests, 'modules')
@@ -370,7 +370,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -408,7 +408,7 @@ jobs:
       - name: testprep
         run: sudo apt-get install tcl8.6 tclx
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest ${{ github.event_name != 'pull_request' && '--accurate' || '' }} --verbose --dump-logs ${{github.event.inputs.test_args}}
       - name: module api test
         if: true && !contains(github.event.inputs.skiptests, 'modules')
@@ -423,12 +423,12 @@ jobs:
         run: ./runtest-cluster ${{github.event.inputs.cluster_test_args}}
       - name: unittest
         if: true && !contains(github.event.inputs.skiptests, 'unittest')
-        run: ./src/valkey-unit-tests --accurate
+        run: ./src/kv-unit-tests --accurate
   test-ubuntu-tls:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -465,7 +465,7 @@ jobs:
           sudo apt-get install tcl8.6 tclx tcl-tls
           ./utils/gen-test-certs.sh
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: |
           ./runtest ${{ github.event_name != 'pull_request' && '--accurate' || '' }} --verbose --dump-logs --tls --dump-logs ${{github.event.inputs.test_args}}
       - name: module api test
@@ -484,7 +484,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -521,7 +521,7 @@ jobs:
           sudo apt-get install tcl8.6 tclx tcl-tls
           ./utils/gen-test-certs.sh
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: |
           ./runtest ${{ github.event_name != 'pull_request' && '--accurate' || '' }} --verbose --dump-logs ${{github.event.inputs.test_args}}
       - name: module api test
@@ -540,7 +540,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -575,7 +575,7 @@ jobs:
       - name: testprep
         run: sudo apt-get install tcl8.6 tclx
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest --io-threads --accurate --verbose --tags network --dump-logs ${{github.event.inputs.test_args}}
       - name: cluster tests
         if: true && !contains(github.event.inputs.skiptests, 'cluster')
@@ -584,7 +584,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -621,7 +621,7 @@ jobs:
           sudo apt-get install tcl8.6 tclx tcl-tls
           ./utils/gen-test-certs.sh
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: |
           ./runtest --io-threads --tls --accurate --verbose --tags network --dump-logs ${{github.event.inputs.test_args}}
       - name: cluster tests
@@ -632,7 +632,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -668,21 +668,21 @@ jobs:
         run: "sudo apt-get install vmtouch\nmkdir /tmp/master \nmkdir /tmp/slave\n"
       - name: warm up
         run: |
-          ./src/valkey-server --daemonize yes --logfile /dev/null
-          ./src/valkey-benchmark -n 1 > /dev/null
-          ./src/valkey-cli save | grep OK > /dev/null
+          ./src/kv-server --daemonize yes --logfile /dev/null
+          ./src/kv-benchmark -n 1 > /dev/null
+          ./src/kv-cli save | grep OK > /dev/null
           vmtouch -v ./dump.rdb > /dev/null
       - name: test
         run: |
           echo "test SAVE doesn't increase cache"
           CACHE0=$(grep -w file /sys/fs/cgroup/memory.stat | awk '{print $2}')
           echo "$CACHE0"
-          ./src/valkey-server --daemonize yes --logfile /dev/null --dir /tmp/master --port 8080 --repl-diskless-sync no --pidfile /tmp/master/valkey.pid --rdbcompression no --enable-debug-command yes
+          ./src/kv-server --daemonize yes --logfile /dev/null --dir /tmp/master --port 8080 --repl-diskless-sync no --pidfile /tmp/master/kv.pid --rdbcompression no --enable-debug-command yes
           sleep 1 # wait for server startup
-          ./src/valkey-cli -p 8080 debug populate 10000 k 102400
-          ./src/valkey-server --daemonize yes --logfile /dev/null --dir /tmp/slave --port 8081 --repl-diskless-load disabled --rdbcompression no
+          ./src/kv-cli -p 8080 debug populate 10000 k 102400
+          ./src/kv-server --daemonize yes --logfile /dev/null --dir /tmp/slave --port 8081 --repl-diskless-load disabled --rdbcompression no
           sleep 1 # wait for server startup
-          ./src/valkey-cli -p 8080 save > /dev/null
+          ./src/kv-cli -p 8080 save > /dev/null
           VMOUT=$(vmtouch -v /tmp/master/dump.rdb)
           echo $VMOUT
           grep -q " 0%" <<< $VMOUT
@@ -690,8 +690,8 @@ jobs:
           echo "$CACHE"
           if [ "$(( $CACHE-$CACHE0 ))" -gt "8000000" ]; then exit 1; fi
           echo "test replication doesn't increase cache"
-          ./src/valkey-cli -p 8081 REPLICAOF 127.0.0.1 8080 > /dev/null
-          while [ $(./src/valkey-cli -p 8081 info replication | grep "master_link_status:down") ]; do sleep 1; done;
+          ./src/kv-cli -p 8081 REPLICAOF 127.0.0.1 8080 > /dev/null
+          while [ $(./src/kv-cli -p 8081 info replication | grep "master_link_status:down") ]; do sleep 1; done;
           sleep 1 # wait for the completion of cache reclaim bio
           VMOUT=$(vmtouch -v /tmp/master/dump.rdb)
           echo $VMOUT
@@ -704,12 +704,12 @@ jobs:
           if [ "$(( $CACHE-$CACHE0 ))" -gt "8000000" ]; then exit 1; fi
 
           echo "test reboot doesn't increase cache"
-          PID=$(cat /tmp/master/valkey.pid)
+          PID=$(cat /tmp/master/kv.pid)
           kill -15 $PID
           while [ -x /proc/${PID} ]; do sleep 1; done
-          ./src/valkey-server --daemonize yes --logfile /dev/null --dir /tmp/master --port 8080
+          ./src/kv-server --daemonize yes --logfile /dev/null --dir /tmp/master --port 8080
           sleep 1 # wait for server startup
-          while [ $(./src/valkey-cli -p 8080 info persistence | grep "loading:1") ]; do sleep 1; done;
+          while [ $(./src/kv-cli -p 8080 info persistence | grep "loading:1") ]; do sleep 1; done;
           sleep 1 # wait for the completion of cache reclaim bio
           VMOUT=$(vmtouch -v /tmp/master/dump.rdb)
           echo $VMOUT
@@ -721,9 +721,9 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' && github.event.pull_request.base.ref != 'unstable' && github.event.action != 'labeled')) &&
-      !contains(github.event.inputs.skipjobs, 'valgrind') && !contains(github.event.inputs.skiptests, 'valkey')
+      !contains(github.event.inputs.skipjobs, 'valgrind') && !contains(github.event.inputs.skiptests, 'kv')
     timeout-minutes: 1440
     steps:
       - name: prep
@@ -753,13 +753,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install tcl8.6 tclx valgrind -y
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest --valgrind --no-latency --verbose --clients 1 --timeout 2400 --dump-logs ${{github.event.inputs.test_args}}
   test-valgrind-misc:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' && github.event.pull_request.base.ref != 'unstable' && github.event.action != 'labeled')) &&
       !contains(github.event.inputs.skipjobs, 'valgrind') && !(contains(github.event.inputs.skiptests, 'modules') && contains(github.event.inputs.skiptests, 'unittest'))
     timeout-minutes: 1440
@@ -796,15 +796,15 @@ jobs:
       - name: unittest
         if: true && !contains(github.event.inputs.skiptests, 'unittest')
         run: |
-          valgrind --track-origins=yes --suppressions=./src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full --log-file=err.txt ./src/valkey-unit-tests --valgrind
+          valgrind --track-origins=yes --suppressions=./src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full --log-file=err.txt ./src/kv-unit-tests --valgrind
           if grep -q 0x err.txt; then cat err.txt; exit 1; fi
   test-valgrind-no-malloc-usable-size-test:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' && github.event.pull_request.base.ref != 'unstable' && github.event.action != 'labeled')) &&
-      !contains(github.event.inputs.skipjobs, 'valgrind') && !contains(github.event.inputs.skiptests, 'valkey')
+      !contains(github.event.inputs.skipjobs, 'valgrind') && !contains(github.event.inputs.skiptests, 'kv')
     timeout-minutes: 1440
     steps:
       - name: prep
@@ -834,13 +834,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install tcl8.6 tclx valgrind -y
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest --valgrind --no-latency --verbose --clients 1 --timeout 2400 --dump-logs ${{github.event.inputs.test_args}}
   test-valgrind-no-malloc-usable-size-misc:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' && github.event.pull_request.base.ref != 'unstable' && github.event.action != 'labeled')) &&
       !contains(github.event.inputs.skipjobs, 'valgrind') && !(contains(github.event.inputs.skiptests, 'modules') && contains(github.event.inputs.skiptests, 'unittest'))
     timeout-minutes: 1440
@@ -877,13 +877,13 @@ jobs:
       - name: unittest
         if: true && !contains(github.event.inputs.skiptests, 'unittest')
         run: |
-          valgrind --track-origins=yes --suppressions=./src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full --log-file=err.txt ./src/valkey-unit-tests --valgrind
+          valgrind --track-origins=yes --suppressions=./src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full --log-file=err.txt ./src/kv-unit-tests --valgrind
           if grep -q 0x err.txt; then cat err.txt; exit 1; fi
   test-sanitizer-address:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' && github.event.pull_request.base.ref != 'unstable' && github.event.action != 'labeled')) &&
       !contains(github.event.inputs.skipjobs, 'sanitizer')
     timeout-minutes: 1440
@@ -921,7 +921,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install tcl8.6 tclx -y
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest --accurate --verbose --dump-logs ${{github.event.inputs.test_args}}
       - name: module api test
         if: true && !contains(github.event.inputs.skiptests, 'modules')
@@ -934,12 +934,12 @@ jobs:
         run: ./runtest-cluster ${{github.event.inputs.cluster_test_args}}
       - name: unittest
         if: true && !contains(github.event.inputs.skiptests, 'unittest')
-        run: ./src/valkey-unit-tests
+        run: ./src/kv-unit-tests
   test-sanitizer-address-large-memory:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' && github.event.pull_request.base.ref != 'unstable' && github.event.action != 'labeled')) &&
       !contains(github.event.inputs.skipjobs, 'sanitizer') &&
       !contains(github.event.inputs.skiptests, 'large-memory')
@@ -972,9 +972,9 @@ jobs:
           sudo apt-get install tcl8.6 tclx -y
       - name: unittest
         if: true && !contains(github.event.inputs.skiptests, 'unittest')
-        run: ./src/valkey-unit-tests --large-memory
+        run: ./src/kv-unit-tests --large-memory
       - name: large memory tests
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest --accurate --verbose --dump-logs --clients 5 --large-memory --tags large-memory ${{github.event.inputs.test_args}}
       - name: large memory module api tests
         if: true && !contains(github.event.inputs.skiptests, 'modules')
@@ -983,7 +983,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' && github.event.pull_request.base.ref != 'unstable' && github.event.action != 'labeled')) &&
       !contains(github.event.inputs.skipjobs, 'sanitizer')
     timeout-minutes: 1440
@@ -1021,7 +1021,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install tcl8.6 tclx -y
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest --accurate --verbose --dump-logs ${{github.event.inputs.test_args}}
       - name: module api test
         if: true && !contains(github.event.inputs.skiptests, 'modules')
@@ -1034,12 +1034,12 @@ jobs:
         run: ./runtest-cluster ${{github.event.inputs.cluster_test_args}}
       - name: unittest
         if: true && !contains(github.event.inputs.skiptests, 'unittest')
-        run: ./src/valkey-unit-tests --accurate
+        run: ./src/kv-unit-tests --accurate
   test-sanitizer-undefined-large-memory:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' && github.event.pull_request.base.ref != 'unstable' && github.event.action != 'labeled')) &&
       !contains(github.event.inputs.skipjobs, 'sanitizer') &&
       !contains(github.event.inputs.skiptests, 'large-memory')
@@ -1072,9 +1072,9 @@ jobs:
           sudo apt-get install tcl8.6 tclx -y
       - name: unittest
         if: true && !contains(github.event.inputs.skiptests, 'unittest')
-        run: ./src/valkey-unit-tests --accurate --large-memory
+        run: ./src/kv-unit-tests --accurate --large-memory
       - name: large memory tests
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest --accurate --verbose --dump-logs --clients 5 --large-memory --tags large-memory ${{github.event.inputs.test_args}}
       - name: large memory module api tests
         if: true && !contains(github.event.inputs.skiptests, 'modules')
@@ -1083,7 +1083,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' && github.event.pull_request.base.ref != 'unstable' && github.event.action != 'labeled')) &&
       !contains(github.event.inputs.skipjobs, 'sanitizer')
     timeout-minutes: 1440
@@ -1117,7 +1117,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install tcl8.6 tclx -y
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest --accurate --verbose --dump-logs ${{github.event.inputs.test_args}}
       - name: module api test
         if: true && !contains(github.event.inputs.skiptests, 'modules')
@@ -1130,12 +1130,12 @@ jobs:
         run: ./runtest-cluster ${{github.event.inputs.cluster_test_args}}
       - name: unittest
         if: true && !contains(github.event.inputs.skiptests, 'unittest')
-        run: ./src/valkey-unit-tests
+        run: ./src/kv-unit-tests
   test-ubuntu-lttng:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -1173,7 +1173,7 @@ jobs:
       - name: testprep
         run: sudo apt-get install tcl8.6 tclx
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest ${{ github.event_name != 'pull_request' && '--accurate' || '' }} --verbose --dump-logs ${{github.event.inputs.test_args}}
       - name: module api test
         if: true && !contains(github.event.inputs.skiptests, 'modules')
@@ -1187,7 +1187,7 @@ jobs:
   test-rpm-distros-jemalloc:
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -1248,7 +1248,7 @@ jobs:
       - name: testprep
         run: dnf -y install tcl tcltls
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest ${{ github.event_name != 'pull_request' && '--accurate' || '' }} --verbose --dump-logs ${{github.event.inputs.test_args}}
       - name: module api test
         if: true && !contains(github.event.inputs.skiptests, 'modules')
@@ -1262,7 +1262,7 @@ jobs:
   test-rpm-distros-tls-module:
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -1325,7 +1325,7 @@ jobs:
           dnf -y install tcl tcltls
           ./utils/gen-test-certs.sh
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: |
           ./runtest ${{ github.event_name != 'pull_request' && '--accurate' || '' }} --verbose --dump-logs --tls-module --dump-logs ${{github.event.inputs.test_args}}
       - name: module api test
@@ -1343,7 +1343,7 @@ jobs:
   test-rpm-distros-tls-module-no-tls:
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' && github.event.pull_request.base.ref != 'unstable' && github.event.action != 'labeled')) &&
       !contains(github.event.inputs.skipjobs, 'tls')
     strategy:
@@ -1401,7 +1401,7 @@ jobs:
           dnf -y install tcl tcltls
           ./utils/gen-test-certs.sh
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: |
           ./runtest --accurate --verbose --dump-logs ${{github.event.inputs.test_args}}
       - name: module api test
@@ -1420,14 +1420,14 @@ jobs:
     runs-on: macos-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
           (github.event.action != 'labeled' ||
             (github.event.pull_request.base.ref == 'unstable' && github.event.label.name == 'run-extra-tests'))
         )) &&
-      !contains(github.event.inputs.skipjobs, 'macos') && !(contains(github.event.inputs.skiptests, 'valkey') && contains(github.event.inputs.skiptests, 'modules'))
+      !contains(github.event.inputs.skipjobs, 'macos') && !(contains(github.event.inputs.skiptests, 'kv') && contains(github.event.inputs.skiptests, 'modules'))
     timeout-minutes: 1440
     steps:
       - name: prep
@@ -1453,7 +1453,7 @@ jobs:
       - name: make
         run: make SERVER_CFLAGS='-Werror' USE_LIBBACKTRACE=yes
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest ${{ github.event_name != 'pull_request' && '--accurate' || '' }} --verbose --clients 1 --no-latency --dump-logs ${{github.event.inputs.test_args}}
       - name: module api test
         if: true && !contains(github.event.inputs.skiptests, 'modules')
@@ -1462,7 +1462,7 @@ jobs:
     runs-on: macos-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -1501,7 +1501,7 @@ jobs:
     runs-on: macos-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -1544,7 +1544,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -1583,7 +1583,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -1617,7 +1617,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -1655,7 +1655,7 @@ jobs:
       - name: testprep
         run: apk add tcl procps tclx
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest ${{ github.event_name != 'pull_request' && '--accurate' || '' }} --verbose --dump-logs ${{github.event.inputs.test_args}}
       - name: module api test
         if: true && !contains(github.event.inputs.skiptests, 'modules')
@@ -1670,7 +1670,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -1708,7 +1708,7 @@ jobs:
       - name: testprep
         run: apk add tcl procps tclx
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest ${{ github.event_name != 'pull_request' && '--accurate' || '' }} --verbose --dump-logs ${{github.event.inputs.test_args}}
       - name: module api test
         if: true && !contains(github.event.inputs.skiptests, 'modules')
@@ -1724,7 +1724,7 @@ jobs:
     timeout-minutes: 1440
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
+        (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
         (github.event_name == 'pull_request' &&
           (github.event.pull_request.base.ref != 'unstable' ||
             contains(github.event.pull_request.labels.*.name, 'run-extra-tests')) &&
@@ -1758,7 +1758,7 @@ jobs:
       - name: testprep
         run: sudo apt-get install tcl8.6 tclx
       - name: test
-        if: true && !contains(github.event.inputs.skiptests, 'valkey')
+        if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest --log-req-res --no-latency --dont-clean --force-resp3 --tags -slow --verbose --dump-logs  ${{github.event.inputs.test_args}}
       - name: module api test
         if: true && !contains(github.event.inputs.skiptests, 'modules')
@@ -1774,10 +1774,10 @@ jobs:
         with:
           path: "./utils/req-res-validator/requirements.txt"
       - name: validator
-        run: ./utils/req-res-log-validator.py --verbose --fail-missing-reply-schemas ${{ (!contains(github.event.inputs.skiptests, 'valkey') && !contains(github.event.inputs.skiptests, 'module') && !contains(github.event.inputs.skiptests, 'sentinel') && !contains(github.event.inputs.skiptests, 'cluster')) && (inputs.test_args || github.event.inputs.test_args || '') == '' && (inputs.cluster_test_args || github.event.inputs.cluster_test_args || '') == '' && '--fail-commands-not-all-hit' || '' }}
+        run: ./utils/req-res-log-validator.py --verbose --fail-missing-reply-schemas ${{ (!contains(github.event.inputs.skiptests, 'kv') && !contains(github.event.inputs.skiptests, 'module') && !contains(github.event.inputs.skiptests, 'sentinel') && !contains(github.event.inputs.skiptests, 'cluster')) && (inputs.test_args || github.event.inputs.test_args || '') == '' && (inputs.cluster_test_args || github.event.inputs.cluster_test_args || '') == '' && '--fail-commands-not-all-hit' || '' }}
   notify-about-job-results:
     runs-on: ubuntu-latest
-    if: always() && github.event_name == 'schedule' && github.repository == 'valkey-io/valkey'
+    if: always() && github.event_name == 'schedule' && github.repository == 'kv-io/kv'
     needs:
       - test-ubuntu-jemalloc
       - test-ubuntu-arm

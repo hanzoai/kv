@@ -119,7 +119,7 @@ aofInfo *aofInfoDup(aofInfo *orig) {
 
 /* Format aofInfo as a string and it will be a line in the manifest.
  *
- * When update this format, make sure to update valkey-check-aof as well. */
+ * When update this format, make sure to update kv-check-aof as well. */
 sds aofInfoFormat(sds buf, aofInfo *ai) {
     sds filename_repr = NULL;
 
@@ -249,7 +249,7 @@ void aofLoadManifestFromDisk(void) {
     sdsfree(am_filepath);
 }
 
-/* Generic manifest loading function, used in `aofLoadManifestFromDisk` and valkey-check-aof tool. */
+/* Generic manifest loading function, used in `aofLoadManifestFromDisk` and kv-check-aof tool. */
 #define MANIFEST_MAX_LINE 1024
 aofManifest *aofLoadManifestFromFile(sds am_filepath) {
     const char *err = NULL;
@@ -556,7 +556,7 @@ int writeAofManifestFile(sds buf) {
         buf += nwritten;
     }
 
-    if (valkey_fsync(fd) == -1) {
+    if (kv_fsync(fd) == -1) {
         serverLog(LL_WARNING, "Fail to fsync the temp AOF file %s: %s.", tmp_am_name, strerror(errno));
 
         ret = C_ERR;
@@ -934,7 +934,7 @@ void stopAppendOnly(void) {
     serverAssert(server.aof_state != AOF_OFF);
     if (server.aof_fd != -1) {
         flushAppendOnlyFile(1);
-        if (valkey_fsync(server.aof_fd) == -1) {
+        if (kv_fsync(server.aof_fd) == -1) {
             serverLog(LL_WARNING, "Fail to fsync the AOF file: %s", strerror(errno));
         } else {
             server.aof_last_fsync = server.mstime;
@@ -1237,13 +1237,13 @@ try_fsync:
 
     /* Perform the fsync if needed. */
     if (server.aof_fsync == AOF_FSYNC_ALWAYS) {
-        /* valkey_fsync is defined as fdatasync() for Linux in order to avoid
+        /* kv_fsync is defined as fdatasync() for Linux in order to avoid
          * flushing metadata. */
         latencyStartMonitor(latency);
         /* Let's try to get this data on the disk. To guarantee data safe when
          * the AOF fsync policy is 'always', we should exit if failed to fsync
          * AOF (see comment next to the exit(1) after write error above). */
-        if (valkey_fsync(server.aof_fd) == -1) {
+        if (kv_fsync(server.aof_fd) == -1) {
             serverLog(LL_WARNING,
                       "Can't persist AOF for fsync error when the "
                       "AOF fsync policy is 'always': %s. Exiting...",
@@ -1395,7 +1395,7 @@ struct client *createAOFClient(void) {
  * AOF_FAILED: Failed to load the AOF file. */
 int loadSingleAppendOnlyFile(char *filename) {
     struct client *fakeClient;
-    struct valkey_stat sb;
+    struct kv_stat sb;
     int old_aof_state = server.aof_state;
     long loops = 0;
     off_t valid_up_to = 0;        /* Offset of latest well-formed command loaded. */
@@ -1407,7 +1407,7 @@ int loadSingleAppendOnlyFile(char *filename) {
     FILE *fp = fopen(aof_filepath, "r");
     if (fp == NULL) {
         int en = errno;
-        if (valkey_stat(aof_filepath, &sb) == 0 || errno != ENOENT) {
+        if (kv_stat(aof_filepath, &sb) == 0 || errno != ENOENT) {
             serverLog(LL_WARNING, "Fatal error: can't open the append log file %s for reading: %s", filename,
                       strerror(en));
             sdsfree(aof_filepath);
@@ -1419,7 +1419,7 @@ int loadSingleAppendOnlyFile(char *filename) {
         }
     }
 
-    if (fp && valkey_fstat(fileno(fp), &sb) != -1 && sb.st_size == 0) {
+    if (fp && kv_fstat(fileno(fp), &sb) != -1 && sb.st_size == 0) {
         fclose(fp);
         sdsfree(aof_filepath);
         return AOF_EMPTY;
@@ -1437,8 +1437,8 @@ int loadSingleAppendOnlyFile(char *filename) {
     /* Check if the AOF file is in RDB format (it may be RDB encoded base AOF
      * or old style RDB-preamble AOF). In that case we need to load the RDB file
      * and later continue loading the AOF tail if it is an old style RDB-preamble AOF. */
-    char sig[6]; /* "REDIS" or "VALKEY" */
-    if (fread(sig, 1, 6, fp) != 6 || (memcmp(sig, "REDIS0", 6) != 0 && memcmp(sig, "VALKEY", 6) != 0)) {
+    char sig[6]; /* "REDIS" or "KV" */
+    if (fread(sig, 1, 6, fp) != 6 || (memcmp(sig, "REDIS0", 6) != 0 && memcmp(sig, "KV", 6) != 0)) {
         /* Not in RDB format, seek back at 0 offset. */
         if (fseek(fp, 0, SEEK_SET) == -1) goto readerr;
     } else {
@@ -1621,7 +1621,7 @@ uxeof: /* Unexpected AOF end of file. */
     serverLog(
         LL_WARNING,
         "Unexpected end of file reading the append only file %s. You can: "
-        "1) Make a backup of your AOF file, then use ./valkey-check-aof --fix <filename.manifest>. "
+        "1) Make a backup of your AOF file, then use ./kv-check-aof --fix <filename.manifest>. "
         "2) Alternatively you can set the 'aof-load-truncated' configuration option to yes and restart the server.",
         filename);
     ret = AOF_FAILED;
@@ -1630,7 +1630,7 @@ uxeof: /* Unexpected AOF end of file. */
 fmterr: /* Format error. */
     serverLog(LL_WARNING,
               "Bad file format reading the append only file %s: "
-              "make a backup of your AOF file, then use ./valkey-check-aof --fix <filename.manifest>",
+              "make a backup of your AOF file, then use ./kv-check-aof --fix <filename.manifest>",
               filename);
     ret = AOF_FAILED;
     /* fall through to cleanup. */
@@ -2189,7 +2189,7 @@ int rewriteStreamObject(rio *r, robj *key, robj *o) {
  * that is exported by a module and is not handled by the server itself.
  * The function returns 0 on error, 1 on success. */
 int rewriteModuleObject(rio *r, robj *key, robj *o, int dbid) {
-    ValkeyModuleIO io;
+    KVModuleIO io;
     moduleValue *mv = objectGetVal(o);
     moduleType *mt = mv->type;
     moduleInitIOContext(&io, mt, r, key, dbid);
@@ -2504,7 +2504,7 @@ int rewriteAppendOnlyFileBackground(void) {
         if (strstr(server.exec_argv[0], "redis-server") != NULL) {
             serverSetProcTitle("redis-aof-rewrite");
         } else {
-            serverSetProcTitle("valkey-aof-rewrite");
+            serverSetProcTitle("kv-aof-rewrite");
         }
         serverSetCpuAffinity(server.aof_rewrite_cpulist);
         snprintf(tmpfile, 256, "temp-rewriteaof-bg-%d.aof", (int)getpid());
@@ -2560,12 +2560,12 @@ void aofRemoveTempFile(pid_t childpid, int from_signal) {
 
     /* Generate temp aof file name using async-signal safe functions. */
     ll2string(pid, sizeof(pid), childpid);
-    valkey_strlcpy(tmpfile, "temp-rewriteaof-bg-", sizeof(tmpfile));
-    valkey_strlcat(tmpfile, pid, sizeof(tmpfile));
-    valkey_strlcat(tmpfile, ".aof", sizeof(tmpfile));
-    valkey_strlcpy(tmpfile2, "temp-rewriteaof-", sizeof(tmpfile2));
-    valkey_strlcat(tmpfile2, pid, sizeof(tmpfile2));
-    valkey_strlcat(tmpfile2, ".aof", sizeof(tmpfile2));
+    kv_strlcpy(tmpfile, "temp-rewriteaof-bg-", sizeof(tmpfile));
+    kv_strlcat(tmpfile, pid, sizeof(tmpfile));
+    kv_strlcat(tmpfile, ".aof", sizeof(tmpfile));
+    kv_strlcpy(tmpfile2, "temp-rewriteaof-", sizeof(tmpfile2));
+    kv_strlcat(tmpfile2, pid, sizeof(tmpfile2));
+    kv_strlcat(tmpfile2, ".aof", sizeof(tmpfile2));
 
     if (from_signal) {
         /* bg_unlink is not async-signal-safe, but in this case we don't really
@@ -2586,13 +2586,13 @@ void aofRemoveTempFile(pid_t childpid, int from_signal) {
  * The status argument is an optional output argument to be filled with
  * one of the AOF_ status values. */
 off_t getAppendOnlyFileSize(sds filename, int *status) {
-    struct valkey_stat sb;
+    struct kv_stat sb;
     off_t size;
     mstime_t latency;
 
     sds aof_filepath = makePath(server.aof_dirname, filename);
     latencyStartMonitor(latency);
-    if (valkey_stat(aof_filepath, &sb) == -1) {
+    if (kv_stat(aof_filepath, &sb) == -1) {
         if (status) *status = errno == ENOENT ? AOF_NOT_EXIST : AOF_OPEN_ERR;
         serverLog(LL_WARNING, "Unable to obtain the AOF file %s length. stat: %s", filename, strerror(errno));
         size = 0;

@@ -28,12 +28,12 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef VALKEY_VK_PRIVATE_H
-#define VALKEY_VK_PRIVATE_H
+#ifndef KV_VK_PRIVATE_H
+#define KV_VK_PRIVATE_H
 
 #include "win32.h"
 
-#include "valkey.h"
+#include "kv.h"
 #include "visibility.h"
 
 #include <sds.h>
@@ -41,10 +41,10 @@
 #include <limits.h>
 #include <string.h>
 
-LIBVALKEY_API void valkeySetError(valkeyContext *c, int type, const char *str);
+LIBKV_API void kvSetError(kvContext *c, int type, const char *str);
 
 /* Helper function. Convert struct timeval to millisecond. */
-static inline int valkeyContextTimeoutMsec(const struct timeval *timeout, long *result) {
+static inline int kvContextTimeoutMsec(const struct timeval *timeout, long *result) {
     long max_msec = (LONG_MAX - 999) / 1000;
     long msec = INT_MAX;
 
@@ -52,7 +52,7 @@ static inline int valkeyContextTimeoutMsec(const struct timeval *timeout, long *
     if (timeout != NULL) {
         if (timeout->tv_usec > 1000000 || timeout->tv_sec > max_msec) {
             *result = msec;
-            return VALKEY_ERR;
+            return KV_ERR;
         }
 
         msec = (timeout->tv_sec * 1000) + ((timeout->tv_usec + 999) / 1000);
@@ -63,74 +63,74 @@ static inline int valkeyContextTimeoutMsec(const struct timeval *timeout, long *
     }
 
     *result = msec;
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-/* Get connect timeout of valkeyContext */
-static inline int valkeyConnectTimeoutMsec(valkeyContext *c, long *result) {
+/* Get connect timeout of kvContext */
+static inline int kvConnectTimeoutMsec(kvContext *c, long *result) {
     const struct timeval *timeout = c->connect_timeout;
-    int ret = valkeyContextTimeoutMsec(timeout, result);
+    int ret = kvContextTimeoutMsec(timeout, result);
 
-    if (ret != VALKEY_OK) {
-        valkeySetError(c, VALKEY_ERR_IO, "Invalid timeout specified");
+    if (ret != KV_OK) {
+        kvSetError(c, KV_ERR_IO, "Invalid timeout specified");
     }
 
     return ret;
 }
 
-/* Get command timeout of valkeyContext */
-static inline int valkeyCommandTimeoutMsec(valkeyContext *c, long *result) {
+/* Get command timeout of kvContext */
+static inline int kvCommandTimeoutMsec(kvContext *c, long *result) {
     const struct timeval *timeout = c->command_timeout;
-    int ret = valkeyContextTimeoutMsec(timeout, result);
+    int ret = kvContextTimeoutMsec(timeout, result);
 
-    if (ret != VALKEY_OK) {
-        valkeySetError(c, VALKEY_ERR_IO, "Invalid timeout specified");
+    if (ret != KV_OK) {
+        kvSetError(c, KV_ERR_IO, "Invalid timeout specified");
     }
 
     return ret;
 }
 
-static inline int valkeyContextUpdateConnectTimeout(valkeyContext *c,
+static inline int kvContextUpdateConnectTimeout(kvContext *c,
                                                     const struct timeval *timeout) {
     /* Same timeval struct, short circuit */
     if (c->connect_timeout == timeout)
-        return VALKEY_OK;
+        return KV_OK;
 
     /* Allocate context timeval if we need to */
     if (c->connect_timeout == NULL) {
         c->connect_timeout = vk_malloc(sizeof(*c->connect_timeout));
         if (c->connect_timeout == NULL)
-            return VALKEY_ERR;
+            return KV_ERR;
     }
 
     memcpy(c->connect_timeout, timeout, sizeof(*c->connect_timeout));
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-static inline int valkeyContextUpdateCommandTimeout(valkeyContext *c,
+static inline int kvContextUpdateCommandTimeout(kvContext *c,
                                                     const struct timeval *timeout) {
     /* Same timeval struct, short circuit */
     if (c->command_timeout == timeout)
-        return VALKEY_OK;
+        return KV_OK;
 
     /* Allocate context timeval if we need to */
     if (c->command_timeout == NULL) {
         c->command_timeout = vk_malloc(sizeof(*c->command_timeout));
         if (c->command_timeout == NULL)
-            return VALKEY_ERR;
+            return KV_ERR;
     }
 
     memcpy(c->command_timeout, timeout, sizeof(*c->command_timeout));
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-int valkeyContextRegisterFuncs(valkeyContextFuncs *funcs, enum valkeyConnectionType type);
-void valkeyContextRegisterTcpFuncs(void);
-void valkeyContextRegisterUnixFuncs(void);
-void valkeyContextRegisterUserfdFuncs(void);
+int kvContextRegisterFuncs(kvContextFuncs *funcs, enum kvConnectionType type);
+void kvContextRegisterTcpFuncs(void);
+void kvContextRegisterUnixFuncs(void);
+void kvContextRegisterUserfdFuncs(void);
 
-void valkeyContextSetFuncs(valkeyContext *c);
+void kvContextSetFuncs(kvContext *c);
 
-long long valkeyFormatSdsCommandArgv(sds *target, int argc, const char **argv, const size_t *argvlen);
+long long kvFormatSdsCommandArgv(sds *target, int argc, const char **argv, const size_t *argvlen);
 
-#endif /* VALKEY_VK_PRIVATE_H */
+#endif /* KV_VK_PRIVATE_H */

@@ -27,7 +27,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -78,13 +78,13 @@ int rdbLoadRioWithLoadingCtx(rio *rdb, int rdbflags, rdbSaveInfo *rsi, rdbLoadin
 void replicationEmptyDbCallback(hashtable *ht);
 
 /* Returns true if the RDB version is valid and accepted, false otherwise. This
- * function takes configuration into account. The parameter `is_valkey_magic`
- * indicates that an RDB file with the VALKEY magic string was parsed.
+ * function takes configuration into account. The parameter `is_kv_magic`
+ * indicates that an RDB file with the KV magic string was parsed.
  * `is_redis_magic` indicates a legacy RDB file with the REDIS magic string.
  * When there is no magic string such as in DUMP/RESTORE, set both to false. */
-bool rdbIsVersionAccepted(int rdbver, bool is_valkey_magic, bool is_redis_magic) {
+bool rdbIsVersionAccepted(int rdbver, bool is_kv_magic, bool is_redis_magic) {
     if (rdbver < 1) return false;
-    if (is_valkey_magic && rdbver <= RDB_FOREIGN_VERSION_MAX) return false;
+    if (is_kv_magic && rdbver <= RDB_FOREIGN_VERSION_MAX) return false;
     if (is_redis_magic && rdbver > RDB_FOREIGN_VERSION_MAX) return false;
     if (server.rdb_version_check == RDB_VERSION_CHECK_STRICT) {
         if (rdbver > RDB_VERSION) return false; /* future version */
@@ -1137,7 +1137,7 @@ ssize_t rdbSaveObject(rio *rdb, robj *o, robj *key, int dbid, unsigned char rdbt
         }
     } else if (o->type == OBJ_MODULE) {
         /* Save a module-specific value. */
-        ValkeyModuleIO io;
+        KVModuleIO io;
         moduleValue *mv = objectGetVal(o);
         moduleType *mt = mv->type;
 
@@ -1258,7 +1258,7 @@ int rdbSaveInfoAuxFields(rio *rdb, int rdbflags, rdbSaveInfo *rsi) {
     int aof_base = (rdbflags & RDBFLAGS_AOF_PREAMBLE) != 0;
 
     /* Add a few fields about the state when the RDB was created. */
-    if (rdbSaveAuxFieldStrStr(rdb, "valkey-ver", VALKEY_VERSION) == -1) return -1;
+    if (rdbSaveAuxFieldStrStr(rdb, "kv-ver", KV_VERSION) == -1) return -1;
     if (rdbSaveAuxFieldStrInt(rdb, "redis-bits", redis_bits) == -1) return -1;
     if (rdbSaveAuxFieldStrInt(rdb, "ctime", time(NULL)) == -1) return -1;
     if (rdbSaveAuxFieldStrInt(rdb, "used-mem", zmalloc_used_memory()) == -1) return -1;
@@ -1293,7 +1293,7 @@ int rdbSaveInfoAuxFields(rio *rdb, int rdbflags, rdbSaveInfo *rsi) {
 
 ssize_t rdbSaveSingleModuleAux(rio *rdb, int when, moduleType *mt) {
     /* Save a module-specific aux value. */
-    ValkeyModuleIO io;
+    KVModuleIO io;
     int retval = 0;
     moduleInitIOContext(&io, mt, rdb, NULL, -1);
 
@@ -1476,12 +1476,12 @@ int rdbSaveRio(int req, int rdbver, rio *rdb, int *error, int rdbflags, rdbSaveI
     int j;
 
     if (server.rdb_checksum) rdb->update_cksum = rioGenericUpdateChecksum;
-    const char *magic_prefix = rdbUseValkeyMagic(rdbver) ? "VALKEY" : "REDIS0";
+    const char *magic_prefix = rdbUseKVMagic(rdbver) ? "KV" : "REDIS0";
     serverAssert(rdbver >= 0 && rdbver <= RDB_VERSION);
     snprintf(magic, sizeof(magic), "%s%03d", magic_prefix, rdbver);
     if (rdbWriteRaw(rdb, magic, 9) == -1) goto werr;
     if (rdbSaveInfoAuxFields(rdb, rdbflags, rsi) == -1) goto werr;
-    if (!(req & REPLICA_REQ_RDB_EXCLUDE_DATA) && rdbSaveModulesAux(rdb, VALKEYMODULE_AUX_BEFORE_RDB) == -1) goto werr;
+    if (!(req & REPLICA_REQ_RDB_EXCLUDE_DATA) && rdbSaveModulesAux(rdb, KVMODULE_AUX_BEFORE_RDB) == -1) goto werr;
 
     /* save functions */
     if (!(req & REPLICA_REQ_RDB_EXCLUDE_FUNCTIONS) && rdbSaveFunctions(rdb) == -1) goto werr;
@@ -1496,7 +1496,7 @@ int rdbSaveRio(int req, int rdbver, rio *rdb, int *error, int rdbflags, rdbSaveI
         }
     }
 
-    if (!(req & REPLICA_REQ_RDB_EXCLUDE_DATA) && rdbSaveModulesAux(rdb, VALKEYMODULE_AUX_AFTER_RDB) == -1) goto werr;
+    if (!(req & REPLICA_REQ_RDB_EXCLUDE_DATA) && rdbSaveModulesAux(rdb, KVMODULE_AUX_AFTER_RDB) == -1) goto werr;
 
     /* EOF opcode */
     if (rdbSaveType(rdb, RDB_OPCODE_EOF) == -1) goto werr;
@@ -1677,7 +1677,7 @@ int rdbSaveBackground(int req, char *filename, rdbSaveInfo *rsi, int rdbflags) {
         if (strstr(server.exec_argv[0], "redis-server") != NULL) {
             serverSetProcTitle("redis-rdb-bgsave");
         } else {
-            serverSetProcTitle("valkey-rdb-bgsave");
+            serverSetProcTitle("kv-rdb-bgsave");
         }
         serverSetCpuAffinity(server.bgsave_cpulist);
         retval = rdbSave(req, filename, rsi, rdbflags);
@@ -1710,9 +1710,9 @@ void rdbRemoveTempFile(pid_t childpid, int from_signal) {
 
     /* Generate temp rdb file name using async-signal safe functions. */
     ll2string(pid, sizeof(pid), childpid);
-    valkey_strlcpy(tmpfile, "temp-", sizeof(tmpfile));
-    valkey_strlcat(tmpfile, pid, sizeof(tmpfile));
-    valkey_strlcat(tmpfile, ".rdb", sizeof(tmpfile));
+    kv_strlcpy(tmpfile, "temp-", sizeof(tmpfile));
+    kv_strlcat(tmpfile, pid, sizeof(tmpfile));
+    kv_strlcat(tmpfile, ".rdb", sizeof(tmpfile));
 
     if (from_signal) {
         /* bg_unlink is not async-signal-safe, but in this case we don't really
@@ -2874,7 +2874,7 @@ robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int dbid, int *error) {
             rdbReportCorruptRDB("The RDB file contains module data I can't load: no matching module type '%s'", name);
             return NULL;
         }
-        ValkeyModuleIO io;
+        KVModuleIO io;
         robj keyobj;
         initStaticStringObject(keyobj, key);
         moduleInitIOContext(&io, mt, rdb, &keyobj, dbid);
@@ -2949,12 +2949,12 @@ void startLoading(size_t size, int rdbflags, int async) {
     /* Fire the loading modules start event. */
     int subevent;
     if (rdbflags & RDBFLAGS_AOF_PREAMBLE)
-        subevent = VALKEYMODULE_SUBEVENT_LOADING_AOF_START;
+        subevent = KVMODULE_SUBEVENT_LOADING_AOF_START;
     else if (rdbflags & RDBFLAGS_REPLICATION)
-        subevent = VALKEYMODULE_SUBEVENT_LOADING_REPL_START;
+        subevent = KVMODULE_SUBEVENT_LOADING_REPL_START;
     else
-        subevent = VALKEYMODULE_SUBEVENT_LOADING_RDB_START;
-    moduleFireServerEvent(VALKEYMODULE_EVENT_LOADING, subevent, NULL);
+        subevent = KVMODULE_SUBEVENT_LOADING_RDB_START;
+    moduleFireServerEvent(KVMODULE_EVENT_LOADING, subevent, NULL);
 }
 
 /* Mark that we are loading in the global state and setup the fields
@@ -2990,28 +2990,28 @@ void stopLoading(int success) {
     rdbFileBeingLoaded = NULL;
 
     /* Fire the loading modules end event. */
-    moduleFireServerEvent(VALKEYMODULE_EVENT_LOADING,
-                          success ? VALKEYMODULE_SUBEVENT_LOADING_ENDED : VALKEYMODULE_SUBEVENT_LOADING_FAILED, NULL);
+    moduleFireServerEvent(KVMODULE_EVENT_LOADING,
+                          success ? KVMODULE_SUBEVENT_LOADING_ENDED : KVMODULE_SUBEVENT_LOADING_FAILED, NULL);
 }
 
 void startSaving(int rdbflags) {
     /* Fire the persistence modules start event. */
     int subevent;
     if (rdbflags & RDBFLAGS_AOF_PREAMBLE && getpid() != server.pid)
-        subevent = VALKEYMODULE_SUBEVENT_PERSISTENCE_AOF_START;
+        subevent = KVMODULE_SUBEVENT_PERSISTENCE_AOF_START;
     else if (rdbflags & RDBFLAGS_AOF_PREAMBLE)
-        subevent = VALKEYMODULE_SUBEVENT_PERSISTENCE_SYNC_AOF_START;
+        subevent = KVMODULE_SUBEVENT_PERSISTENCE_SYNC_AOF_START;
     else if (getpid() != server.pid)
-        subevent = VALKEYMODULE_SUBEVENT_PERSISTENCE_RDB_START;
+        subevent = KVMODULE_SUBEVENT_PERSISTENCE_RDB_START;
     else
-        subevent = VALKEYMODULE_SUBEVENT_PERSISTENCE_SYNC_RDB_START;
-    moduleFireServerEvent(VALKEYMODULE_EVENT_PERSISTENCE, subevent, NULL);
+        subevent = KVMODULE_SUBEVENT_PERSISTENCE_SYNC_RDB_START;
+    moduleFireServerEvent(KVMODULE_EVENT_PERSISTENCE, subevent, NULL);
 }
 
 void stopSaving(int success) {
     /* Fire the persistence modules end event. */
-    moduleFireServerEvent(VALKEYMODULE_EVENT_PERSISTENCE,
-                          success ? VALKEYMODULE_SUBEVENT_PERSISTENCE_ENDED : VALKEYMODULE_SUBEVENT_PERSISTENCE_FAILED,
+    moduleFireServerEvent(KVMODULE_EVENT_PERSISTENCE,
+                          success ? KVMODULE_SUBEVENT_PERSISTENCE_ENDED : KVMODULE_SUBEVENT_PERSISTENCE_FAILED,
                           NULL);
 }
 
@@ -3112,7 +3112,7 @@ int rdbLoadRioWithLoadingCtx(rio *rdb, int rdbflags, rdbSaveInfo *rsi, rdbLoadin
     char buf[1024];
     int error;
     long long empty_keys_skipped = 0;
-    bool is_valkey_magic = false, is_redis_magic = false;
+    bool is_kv_magic = false, is_redis_magic = false;
 
     rdb->update_cksum = rdbLoadProgressCallback;
     rdb->max_processing_chunk = server.loading_process_events_interval_bytes;
@@ -3120,15 +3120,15 @@ int rdbLoadRioWithLoadingCtx(rio *rdb, int rdbflags, rdbSaveInfo *rsi, rdbLoadin
     buf[9] = '\0';
     if (memcmp(buf, "REDIS0", 6) == 0) {
         is_redis_magic = true;
-    } else if (memcmp(buf, "VALKEY", 6) == 0) {
-        is_valkey_magic = true;
+    } else if (memcmp(buf, "KV", 6) == 0) {
+        is_kv_magic = true;
     } else {
         serverLog(LL_WARNING, "Wrong signature trying to load DB from file: %.9s", buf);
         /* Signal to terminate the rdbLoad without clearing existing data */
         return RDB_INCOMPATIBLE;
     }
     rdbver = atoi(buf + 6);
-    if (!rdbIsVersionAccepted(rdbver, is_valkey_magic, is_redis_magic)) {
+    if (!rdbIsVersionAccepted(rdbver, is_kv_magic, is_redis_magic)) {
         serverLog(LL_WARNING, "Can't handle RDB format version %d", rdbver);
         return RDB_INCOMPATIBLE;
     }
@@ -3264,8 +3264,8 @@ int rdbLoadRioWithLoadingCtx(rio *rdb, int rdbflags, rdbSaveInfo *rsi, rdbLoadin
                 /* Won't load the script back in memory anymore. */
             } else if (!strcasecmp(objectGetVal(auxkey), "redis-ver")) {
                 serverLog(LL_NOTICE, "Loading RDB produced by Redis version %s", (char *)objectGetVal(auxval));
-            } else if (!strcasecmp(objectGetVal(auxkey), "valkey-ver")) {
-                serverLog(LL_NOTICE, "Loading RDB produced by Valkey version %s", (char *)objectGetVal(auxval));
+            } else if (!strcasecmp(objectGetVal(auxkey), "kv-ver")) {
+                serverLog(LL_NOTICE, "Loading RDB produced by KV version %s", (char *)objectGetVal(auxval));
             } else if (!strcasecmp(objectGetVal(auxkey), "ctime")) {
                 time_t age = time(NULL) - strtol(objectGetVal(auxval), NULL, 10);
                 if (age < 0) age = 0;
@@ -3369,7 +3369,7 @@ int rdbLoadRioWithLoadingCtx(rio *rdb, int rdbflags, rdbSaveInfo *rsi, rdbLoadin
                     exit(1);
                 }
 
-                ValkeyModuleIO io;
+                KVModuleIO io;
                 moduleInitIOContext(&io, mt, rdb, NULL, -1);
                 /* Call the rdb_load method of the module providing the 10 bit
                  * encoding version in the lower 10 bits of the module ID. */
@@ -3378,7 +3378,7 @@ int rdbLoadRioWithLoadingCtx(rio *rdb, int rdbflags, rdbSaveInfo *rsi, rdbLoadin
                     moduleFreeContext(io.ctx);
                     zfree(io.ctx);
                 }
-                if (rc != VALKEYMODULE_OK || io.error) {
+                if (rc != KVMODULE_OK || io.error) {
                     moduleTypeNameByID(name, moduleid);
                     serverLog(LL_WARNING,
                               "The RDB file contains module AUX data for the module type '%s', that the responsible "
@@ -3782,7 +3782,7 @@ int rdbSaveToReplicasSockets(int req, int rdbver, rdbSaveInfo *rsi) {
         if (strstr(server.exec_argv[0], "redis-server") != NULL) {
             serverSetProcTitle("redis-rdb-to-slaves");
         } else {
-            serverSetProcTitle("valkey-rdb-to-replicas");
+            serverSetProcTitle("kv-rdb-to-replicas");
         }
         serverSetCpuAffinity(server.bgsave_cpulist);
 
