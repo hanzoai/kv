@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -17,22 +17,22 @@
 #ifdef USE_LTTNG
 
 #undef LTTNG_UST_TRACEPOINT_PROVIDER
-#define LTTNG_UST_TRACEPOINT_PROVIDER valkey_server
+#define LTTNG_UST_TRACEPOINT_PROVIDER kv_server
 
 #undef LTTNG_UST_TRACEPOINT_INCLUDE
 #define LTTNG_UST_TRACEPOINT_INCLUDE "./trace_server.h"
 
-#if !defined(__VALKEY_TRACE_SERVER_H__) || defined(LTTNG_UST_TRACEPOINT_HEADER_MULTI_READ)
-#define __VALKEY_TRACE_SERVER_H__
+#if !defined(__KV_TRACE_SERVER_H__) || defined(LTTNG_UST_TRACEPOINT_HEADER_MULTI_READ)
+#define __KV_TRACE_SERVER_H__
 
 #include <lttng/tracepoint.h>
 
 LTTNG_UST_TRACEPOINT_EVENT_CLASS(
     /* Tracepoint class provider name */
-    valkey_server,
+    kv_server,
 
     /* Tracepoint class name */
-    valkey_server_class,
+    kv_server_class,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -47,7 +47,7 @@ LTTNG_UST_TRACEPOINT_EVENT_CLASS(
 
 LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     /* Name of the tracepoint class provider */
-    valkey_server, valkey_server_class, valkey_server, command_unblocking,
+    kv_server, kv_server_class, kv_server, command_unblocking,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -57,7 +57,7 @@ LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
 
 LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     /* Name of the tracepoint class provider */
-    valkey_server, valkey_server_class, valkey_server, while_blocked_cron,
+    kv_server, kv_server_class, kv_server, while_blocked_cron,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -67,7 +67,7 @@ LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
 
 LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     /* Name of the tracepoint class provider */
-    valkey_server, valkey_server_class, valkey_server, eventloop,
+    kv_server, kv_server_class, kv_server, eventloop,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -77,7 +77,7 @@ LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
 
 LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     /* Name of the tracepoint class provider */
-    valkey_server, valkey_server_class, valkey_server, eventloop_cron,
+    kv_server, kv_server_class, kv_server, eventloop_cron,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -87,7 +87,7 @@ LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
 
 LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     /* Name of the tracepoint class provider */
-    valkey_server, valkey_server_class, valkey_server, module_acquire_gil,
+    kv_server, kv_server_class, kv_server, module_acquire_gil,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -97,7 +97,7 @@ LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
 
 LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     /* Name of the tracepoint class provider */
-    valkey_server, valkey_server_class, valkey_server, command,
+    kv_server, kv_server_class, kv_server, command,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -107,7 +107,7 @@ LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
 
 LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     /* Name of the tracepoint class provider */
-    valkey_server, valkey_server_class, valkey_server, fast_command,
+    kv_server, kv_server_class, kv_server, fast_command,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -115,25 +115,25 @@ LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     )
 )
 
-#define valkey_server_trace(...) lttng_ust_tracepoint(__VA_ARGS__)
+#define kv_server_trace(...) lttng_ust_tracepoint(__VA_ARGS__)
 
-#endif /* __VALKEY_TRACE_SERVER_H__ */
+#endif /* __KV_TRACE_SERVER_H__ */
 
 #include <lttng/tracepoint-event.h>
 
 #else /* USE_LTTNG */
 
-#ifndef __VALKEY_TRACE_SERVER_H__
-#define __VALKEY_TRACE_SERVER_H__
+#ifndef __KV_TRACE_SERVER_H__
+#define __KV_TRACE_SERVER_H__
 
 /* avoid compiler warning on empty source file */
-static inline void __valkey_server_trace(void) {
+static inline void __kv_server_trace(void) {
 }
 
-#define valkey_server_trace(...) \
+#define kv_server_trace(...) \
     do {                     \
     } while (0)
 
-#endif /* __VALKEY_TRACE_SERVER_H__ */
+#endif /* __KV_TRACE_SERVER_H__ */
 
 #endif /* USE_LTTNG */

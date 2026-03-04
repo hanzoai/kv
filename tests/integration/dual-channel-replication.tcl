@@ -1344,7 +1344,7 @@ start_server {tags {"dual-channel-replication external:skip"}} {
             set max_tries 1000
         }
 
-        test "Replica notice main-connection killed during rdb load callback" {; # https://github.com/valkey-io/valkey/issues/1152
+        test "Replica notice main-connection killed during rdb load callback" {; # https://github.com/kv-io/kv/issues/1152
             set loglines [count_log_lines 0]
             $replica replicaof $primary_host $primary_port
             # Wait for sync session to start
@@ -1355,7 +1355,7 @@ start_server {tags {"dual-channel-replication external:skip"}} {
             } else {
                 fail "replica didn't start sync session in time"
             }
-            wait_for_log_messages 0 {"*Loading RDB produced by Valkey version*"} $loglines 100 100
+            wait_for_log_messages 0 {"*Loading RDB produced by KV version*"} $loglines 100 100
             $primary set key val
             set replica_main_conn_id [get_client_id_by_last_cmd $primary "psync"]
             $primary config set repl-diskless-sync-delay 5; # allow catch failed sync before retry

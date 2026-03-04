@@ -43,9 +43,9 @@ ifeq ("$(wildcard /usr/lib/libSystem.dylib)","")
 endif
 endif
 
-all: libvalkeylua.so
+all: libkvlua.so
 
-libvalkeylua.so: $(OBJS) $(LIBS)
+libkvlua.so: $(OBJS) $(LIBS)
 	$(CC) -o $@ $(SHOBJ_LDFLAGS) $^
 
 sha1.o: ../../sha1.c

@@ -1,8 +1,8 @@
 CC?=gcc
 CXX?=g++
 
-STLIBNAME?=../lib/libvalkey.a
-TLS_STLIBNAME?=../lib/libvalkey_tls.a
+STLIBNAME?=../lib/libkv.a
+TLS_STLIBNAME?=../lib/libkv_tls.a
 INCLUDE_DIR?=../include
 
 WARNINGS=-Wall -Wextra
@@ -73,7 +73,7 @@ example-async-poll: async-poll.c $(STLIBNAME)
 
 ifndef AE_DIR
 example-async-ae:
-	@echo "Please specify AE_DIR (e.g. <valkey repository>/src)"
+	@echo "Please specify AE_DIR (e.g. <kv repository>/src)"
 	@false
 else
 example-async-ae: async-ae.c $(STLIBNAME)
@@ -98,7 +98,7 @@ example-async-qt:
 	@false
 else
 example-async-qt: async-qt.cpp $(STLIBNAME)
-	$(QT_MOC) ../include/valkey/adapters/qt.h | \
+	$(QT_MOC) ../include/kv/adapters/qt.h | \
 	    $(CXX) -x c++ -o qt-adapter-moc.o -c - $(CFLAGS) -I$(QT_INCLUDE_DIR) -I$(QT_INCLUDE_DIR)/QtCore
 	$(QT_MOC) async-qt.h | \
 	    $(CXX) -x c++ -o qt-example-moc.o -c - $(CFLAGS) -I$(QT_INCLUDE_DIR) -I$(QT_INCLUDE_DIR)/QtCore

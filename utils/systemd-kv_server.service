@@ -1,13 +1,13 @@
-# example systemd service unit file for valkey-server
+# example systemd service unit file for kv-server
 #
-# In order to use this as a template for providing a valkey service in your
-# environment, _at the very least_ make sure to adapt the valkey configuration
+# In order to use this as a template for providing a kv service in your
+# environment, _at the very least_ make sure to adapt the kv configuration
 # file you intend to use as needed (make sure to set "supervised systemd"), and
 # to set sane TimeoutStartSec and TimeoutStopSec property values in the unit's
 # "[Service]" section to fit your needs.
 #
 # Some properties, such as User= and Group=, are highly desirable for virtually
-# all deployments of valkey, but cannot be provided in a manner that fits all
+# all deployments of kv, but cannot be provided in a manner that fits all
 # expectable environments. Some of these properties have been commented out in
 # this example service unit file, but you are highly encouraged to set them to
 # fit your needs.
@@ -16,17 +16,17 @@
 # more information.
 
 [Unit]
-Description=Valkey data structure server
-Documentation=https://github.com/valkey-io/valkey-doc
+Description=KV data structure server
+Documentation=https://github.com/kv-io/kv-doc
 #Before=your_application.service another_example_application.service
-#AssertPathExists=/var/lib/valkey
+#AssertPathExists=/var/lib/kv
 Wants=network-online.target
 After=network-online.target
 
 [Service]
-ExecStart=/usr/local/bin/valkey-server --supervised systemd --daemonize no
-## Alternatively, have valkey-server load a configuration file:
-#ExecStart=/usr/local/bin/valkey-server /path/to/your/valkey.conf
+ExecStart=/usr/local/bin/kv-server --supervised systemd --daemonize no
+## Alternatively, have kv-server load a configuration file:
+#ExecStart=/usr/local/bin/kv-server /path/to/your/kv.conf
 LimitNOFILE=10032
 NoNewPrivileges=yes
 #OOMScoreAdjust=-900
@@ -35,9 +35,9 @@ Type=notify
 TimeoutStartSec=infinity
 TimeoutStopSec=infinity
 UMask=0077
-#User=valkey
-#Group=valkey
-#WorkingDirectory=/var/lib/valkey
+#User=kv
+#Group=kv
+#WorkingDirectory=/var/lib/kv
 
 [Install]
 WantedBy=multi-user.target

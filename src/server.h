@@ -27,8 +27,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef VALKEY_H
-#define VALKEY_H
+#ifndef KV_H
+#define KV_H
 
 #include "fmacros.h"
 #include "config.h"
@@ -93,16 +93,16 @@
 static_assert(sizeof(off_t) >= 8, "off_t must be 64-bit; ensure _FILE_OFFSET_BITS=64 is in effect before system headers");
 
 #ifdef USE_LTTNG
-#define valkey_fork() do_fork()
+#define kv_fork() do_fork()
 #else
-#define valkey_fork() fork()
+#define kv_fork() fork()
 #endif
 
 #define dismissMemory zmadvise_dontneed
 
-#define VALKEYMODULE_CORE 1
+#define KVMODULE_CORE 1
 typedef struct serverObject robj;
-#include "valkeymodule.h" /* Modules API defines. */
+#include "kvmodule.h" /* Modules API defines. */
 
 /* Following includes allow test functions to be called from main() */
 #include "zipmap.h"
@@ -112,7 +112,7 @@ typedef struct serverObject robj;
 #include "crc64.h"
 
 struct hdr_histogram;
-struct ValkeyModule;
+struct KVModule;
 
 
 /* helpers */
@@ -151,7 +151,7 @@ struct ValkeyModule;
 #define RDB_EOF_MARK_SIZE 40
 #define CONFIG_REPL_BACKLOG_MIN_SIZE (1024 * 16) /* 16k */
 #define CONFIG_BGSAVE_RETRY_DELAY 5              /* Wait a few secs before trying again. */
-#define CONFIG_DEFAULT_PID_FILE "/var/run/valkey.pid"
+#define CONFIG_DEFAULT_PID_FILE "/var/run/kv.pid"
 #define CONFIG_DEFAULT_BINDADDR_COUNT 2
 #define CONFIG_DEFAULT_BINDADDR {"*", "-::*"}
 #define CONFIG_BINDADDR_MAX 16
@@ -709,9 +709,9 @@ typedef enum {
 
 /* We can print the stacktrace, so our assert is defined this way: */
 #define serverAssertWithInfo(_c, _o, _e) \
-    (likely(_e) ? (void)0 : (_serverAssertWithInfo(_c, _o, #_e, __FILE__, __LINE__), valkey_unreachable()))
-#define serverAssert(_e) (likely(_e) ? (void)0 : (_serverAssert(#_e, __FILE__, __LINE__), valkey_unreachable()))
-#define serverPanic(...) _serverPanic(__FILE__, __LINE__, __VA_ARGS__), valkey_unreachable()
+    (likely(_e) ? (void)0 : (_serverAssertWithInfo(_c, _o, #_e, __FILE__, __LINE__), kv_unreachable()))
+#define serverAssert(_e) (likely(_e) ? (void)0 : (_serverAssert(#_e, __FILE__, __LINE__), kv_unreachable()))
+#define serverPanic(...) _serverPanic(__FILE__, __LINE__, __VA_ARGS__), kv_unreachable()
 
 /* The following macros provide a conditional assertion that is only executed
  * when the server config 'enable-debug-assert' is true. This is useful for adding
@@ -772,7 +772,7 @@ typedef enum {
 /* The "module" object type is a special one that signals that the object
  * is one directly managed by a module. In this case the value points
  * to a moduleValue struct, which contains the object value (which is only
- * handled by the module itself) and the ValkeyModuleType struct which lists
+ * handled by the module itself) and the KVModuleType struct which lists
  * function pointers in order to serialize, deserialize, AOF-rewrite and
  * free the object.
  *
@@ -784,7 +784,7 @@ typedef enum {
 #define OBJ_STREAM 6   /* Stream object. */
 #define OBJ_TYPE_MAX 7 /* Maximum number of object types */
 
-typedef struct ValkeyModuleType moduleType;
+typedef struct KVModuleType moduleType;
 
 /* Macro to check if the client is in the middle of module based authentication. */
 #define clientHasModuleAuthInProgress(c) (((c)->module_data && (c)->module_data->module_auth_ctx != NULL))
@@ -1011,11 +1011,11 @@ typedef struct blockingState {
     long long reploffset; /* Replication offset to reach. */
 
     /* BLOCKED_MODULE */
-    void *module_blocked_handle; /* ValkeyModuleBlockedClient structure.
+    void *module_blocked_handle; /* KVModuleBlockedClient structure.
                                     which is opaque for the Redis core, only
                                     handled in module.c. */
 
-    void *async_rm_call_handle; /* ValkeyModuleAsyncRMCallPromise structure.
+    void *async_rm_call_handle; /* KVModuleAsyncRMCallPromise structure.
                                    which is opaque for the Redis core, only
                                    handled in module.c. */
 } blockingState;
@@ -1276,13 +1276,13 @@ typedef struct ClientReplicationData {
 } ClientReplicationData;
 
 typedef struct ClientModuleData {
-    void *module_blocked_client;               /* Pointer to the ValkeyModuleBlockedClient associated with this
+    void *module_blocked_client;               /* Pointer to the KVModuleBlockedClient associated with this
                                                 * client. This is set in case of module authentication before the
                                                 * unblocked client is reprocessed to handle reply callbacks. */
     void *module_auth_ctx;                     /* Ongoing / attempted module based auth callback's ctx.
                                                 * This is only tracked within the context of the command attempting
                                                 * authentication. If not NULL, it means module auth is in progress. */
-    ValkeyModuleUserChangedFunc auth_callback; /* Module callback to execute
+    KVModuleUserChangedFunc auth_callback; /* Module callback to execute
                                                 * when the authenticated user
                                                 * changes. */
     void *auth_callback_privdata;              /* Private data that is passed when the auth
@@ -1739,7 +1739,7 @@ typedef enum childInfoType {
     CHILD_INFO_TYPE_REPL_OUTPUT_BYTES
 } childInfoType;
 
-struct valkeyServer {
+struct kvServer {
     /* General */
     pid_t pid;                                        /* Main process pid. */
     pthread_t main_thread_id;                         /* Main thread id */
@@ -2282,7 +2282,7 @@ struct valkeyServer {
     int cluster_module_flags;                              /* Set of flags that modules are able
                                                               to set in order to suppress certain
                                                               native Redis Cluster features. Check the
-                                                              VALKEYMODULE_CLUSTER_FLAG_*. */
+                                                              KVMODULE_CLUSTER_FLAG_*. */
     int cluster_allow_reads_when_down;                     /* Are reads allowed when the cluster
                                                             is down? */
     int cluster_config_file_lock_fd;                       /* cluster config fd, will be flocked. */
@@ -2424,7 +2424,7 @@ static inline void initGetKeysResult(getKeysResult *result) {
  * 2. keynum: there's an arg that contains the number of key args somewhere before the keys themselves
  */
 
-/* WARNING! Must be synced with generate-command-code.py and ValkeyModuleKeySpecBeginSearchType */
+/* WARNING! Must be synced with generate-command-code.py and KVModuleKeySpecBeginSearchType */
 typedef enum {
     KSPEC_BS_INVALID = 0, /* Must be 0 */
     KSPEC_BS_UNKNOWN,
@@ -2432,7 +2432,7 @@ typedef enum {
     KSPEC_BS_KEYWORD
 } kspec_bs_type;
 
-/* WARNING! Must be synced with generate-command-code.py and ValkeyModuleKeySpecFindKeysType */
+/* WARNING! Must be synced with generate-command-code.py and KVModuleKeySpecFindKeysType */
 typedef enum {
     KSPEC_FK_INVALID = 0, /* Must be 0 */
     KSPEC_FK_UNKNOWN,
@@ -2440,7 +2440,7 @@ typedef enum {
     KSPEC_FK_KEYNUM
 } kspec_fk_type;
 
-/* WARNING! This struct must match ValkeyModuleCommandKeySpec */
+/* WARNING! This struct must match KVModuleCommandKeySpec */
 typedef struct {
     /* Declarative data */
     const char *notes;
@@ -2520,7 +2520,7 @@ typedef struct jsonObject {
 
 #endif
 
-/* WARNING! This struct must match ValkeyModuleCommandHistoryEntry */
+/* WARNING! This struct must match KVModuleCommandHistoryEntry */
 typedef struct {
     const char *since;
     const char *changes;
@@ -2640,7 +2640,7 @@ typedef int *commandDbIdArgs(robj **argv, int argc, int *count);
  *
  * The following additional flags are only used in order to put commands
  * in a specific ACL category. Commands can have multiple ACL categories.
- * See valkey.conf for the exact meaning of each.
+ * See kv.conf for the exact meaning of each.
  *
  * @keyspace, @read, @write, @set, @sortedset, @list, @hash, @string, @bitmap,
  * @hyperloglog, @stream, @admin, @fast, @slow, @pubsub, @blocking, @dangerous,
@@ -2712,7 +2712,7 @@ struct serverCommand {
     hashtable *subcommands_ht;     /* Subcommands hash table. The key is the subcommand sds name
                                     * (not the fullname), and the value is the serverCommand structure pointer. */
     struct serverCommand *parent;
-    struct ValkeyModuleCommand *module_cmd; /* A pointer to the module command data (NULL if native command) */
+    struct KVModuleCommand *module_cmd; /* A pointer to the module command data (NULL if native command) */
     sds info_cache[RESP_CACHE_INDEX_MAX];   /* Cached COMMAND INFO response: [0]=RESP2, [1]=RESP3 */
 };
 
@@ -2789,7 +2789,7 @@ typedef struct {
  * Extern declarations
  *----------------------------------------------------------------------------*/
 
-extern struct valkeyServer server;
+extern struct kvServer server;
 extern struct sharedObjectsStruct shared;
 extern dictType objectKeyPointerValueDictType;
 extern hashtableType objectHashtableType;
@@ -3280,7 +3280,7 @@ int isMutuallyExclusiveChildType(int type);
 extern rax *Users;
 extern user *DefaultUser;
 void ACLInit(void);
-int ACLModuleHasCommandRules(const struct ValkeyModule *module, sds *rule_out);
+int ACLModuleHasCommandRules(const struct KVModule *module, sds *rule_out);
 /* Return values for ACLCheckAllPerm(). */
 #define ACL_OK 0                    /* Permission granted */
 #define ACL_DENIED_DB 1             /* Database access denied */
@@ -3335,7 +3335,7 @@ void ACLFreeUserAndKillClients(user *u);
 void addACLLogEntry(client *c, int reason, int context, int argpos, sds username, sds object);
 sds getAclErrorMessage(int acl_res, user *user, struct serverCommand *cmd, sds errored_val, int verbose);
 void ACLUpdateDefaultUserPassword(sds password);
-sds genValkeyInfoStringACLStats(sds info);
+sds genKVInfoStringACLStats(sds info);
 void ACLRecomputeCommandBitsFromCommandRulesAllUsers(void);
 
 /* Sorted sets data type */
@@ -3797,7 +3797,7 @@ void sentinelInfoCommand(client *c);
 void sentinelPublishCommand(client *c);
 void sentinelRoleCommand(client *c);
 
-/* valkey-check-rdb & aof */
+/* kv-check-rdb & aof */
 int redis_check_rdb(char *rdbfilename, FILE *fp);
 int redis_check_rdb_main(int argc, char **argv, FILE *fp);
 int redis_check_aof_main(int argc, char **argv);
@@ -4201,7 +4201,7 @@ void removeSigSegvHandlers(void);
 const char *getSafeInfoString(const char *s, size_t len, char **tmp);
 dict *genInfoSectionDict(robj **argv, int argc, char **defaults, int *out_all, int *out_everything);
 void releaseInfoSectionDict(dict *sec);
-sds genValkeyInfoString(dict *section_dict, int all_sections, int everything);
+sds genKVInfoString(dict *section_dict, int all_sections, int everything);
 sds genModulesInfoString(sds info);
 void applyWatchdogPeriod(void);
 void watchdogScheduleSignal(int period);

@@ -12,7 +12,7 @@ start_server {tags {"cli logreqres:skip"}} {
             set opts "-n $::dbnum"
         }
         set ::env(TERM) dumb
-        set cmdline [valkeycli [srv host] [srv port] $opts]
+        set cmdline [kvcli [srv host] [srv port] $opts]
         if {$infile ne ""} {
             set cmdline "$cmdline < $infile"
             set mode "r"
@@ -93,7 +93,7 @@ start_server {tags {"cli logreqres:skip"}} {
     }
 
     proc _run_cli {host port db opts args} {
-        set cmd [valkeycli $host $port [list -n $db {*}$args]]
+        set cmd [kvcli $host $port [list -n $db {*}$args]]
         foreach {key value} $opts {
             if {$key eq "pipe"} {
                 set cmd "sh -c \"$value | $cmd\""
@@ -371,7 +371,7 @@ if {!$::tls} { ;# fake_redis_node doesn't support TLS
             [catch {close [socket "127.0.0.1" $port1]}] == 0 && \
             [catch {close [socket "127.0.0.1" $port2]}] == 0
         } else {
-            fail "Failed to start fake Valkey nodes"
+            fail "Failed to start fake KV nodes"
         }
         # Run the cli
         assert_equal "OK" [run_cli_host_port_db "127.0.0.1" $port1 0 -c SET foo bar]
@@ -440,7 +440,7 @@ if {!$::tls} { ;# fake_redis_node doesn't support TLS
         r acl deluser clitest
     }
     
-    proc test_valkey_cli_rdb_dump {functions_only} {
+    proc test_kv_cli_rdb_dump {functions_only} {
         r flushdb
         r function flush
 
@@ -476,12 +476,12 @@ if {!$::tls} { ;# fake_redis_node doesn't support TLS
     test "Dumping an RDB - functions only: $functions_only" {
         # Disk-based master
         assert_match "OK" [r config set repl-diskless-sync no]
-        test_valkey_cli_rdb_dump $functions_only
+        test_kv_cli_rdb_dump $functions_only
 
         # Disk-less master
         assert_match "OK" [r config set repl-diskless-sync yes]
         assert_match "OK" [r config set repl-diskless-sync-delay 0]
-        test_valkey_cli_rdb_dump $functions_only
+        test_kv_cli_rdb_dump $functions_only
     } {} {needs:repl needs:debug}
 
     } ;# foreach functions_only
@@ -500,12 +500,12 @@ if {!$::tls} { ;# fake_redis_node doesn't support TLS
         assert_equal {key:2} [split [run_cli --scan --quoted-pattern {"*:\x32"}]]
     }
 
-    proc test_valkey_cli_repl {} {
+    proc test_kv_cli_repl {} {
         set fd [open_cli "--replica"]
         wait_for_condition 500 100 {
             [string match {*slave0:*state=online*} [r info]]
         } else {
-            fail "valkey-cli --replica did not connect"
+            fail "kv-cli --replica did not connect"
         }
 
         for {set i 0} {$i < 100} {incr i} {
@@ -515,7 +515,7 @@ if {!$::tls} { ;# fake_redis_node doesn't support TLS
         wait_for_condition 500 100 {
             [string match {*test-value-99*} [read_cli $fd]]
         } else {
-            fail "valkey-cli --replica didn't read commands"
+            fail "kv-cli --replica didn't read commands"
         }
 
         fconfigure $fd -blocking true
@@ -527,12 +527,12 @@ if {!$::tls} { ;# fake_redis_node doesn't support TLS
     test "Connecting as a replica" {
         # Disk-based master
         assert_match "OK" [r config set repl-diskless-sync no]
-        test_valkey_cli_repl
+        test_kv_cli_repl
 
         # Disk-less master
         assert_match "OK" [r config set repl-diskless-sync yes]
         assert_match "OK" [r config set repl-diskless-sync-delay 0]
-        test_valkey_cli_repl
+        test_kv_cli_repl
     } {} {needs:repl}
 
     test "Piping raw protocol" {
@@ -576,7 +576,7 @@ if {!$::tls} { ;# fake_redis_node doesn't support TLS
     }
 
     test "DUMP RESTORE with -x option" {
-        set cmdline [valkeycli [srv host] [srv port]]
+        set cmdline [kvcli [srv host] [srv port]]
 
         exec {*}$cmdline DEL set new_set
         exec {*}$cmdline SADD set 1 2 3 4 5 6
@@ -590,7 +590,7 @@ if {!$::tls} { ;# fake_redis_node doesn't support TLS
     }
 
     test "DUMP RESTORE with -X option" {
-        set cmdline [valkeycli [srv host] [srv port]]
+        set cmdline [kvcli [srv host] [srv port]]
 
         exec {*}$cmdline DEL zset new_zset
         exec {*}$cmdline ZADD zset 1 a 2 b 3 c
@@ -603,7 +603,7 @@ if {!$::tls} { ;# fake_redis_node doesn't support TLS
         assert_equal "a\n1\nb\n2\nc\n3" [exec {*}$cmdline ZRANGE new_zset 0 -1 WITHSCORES]
     }
 
-    test "valkey-cli pubsub mode with single standard channel subscription" {
+    test "kv-cli pubsub mode with single standard channel subscription" {
         set fd [open_cli]
 
         write_cli $fd ":get pubsub"
@@ -627,7 +627,7 @@ if {!$::tls} { ;# fake_redis_node doesn't support TLS
         close_cli $fd
     }
 
-    test "valkey-cli pubsub mode with multiple standard channel subscriptions" {
+    test "kv-cli pubsub mode with multiple standard channel subscriptions" {
         set fd [open_cli]
 
         write_cli $fd ":get pubsub"
@@ -651,7 +651,7 @@ if {!$::tls} { ;# fake_redis_node doesn't support TLS
         close_cli $fd
     }
 
-    test "valkey-cli pubsub mode with single shard channel subscription" {
+    test "kv-cli pubsub mode with single shard channel subscription" {
         set fd [open_cli]
 
         write_cli $fd ":get pubsub"
@@ -675,7 +675,7 @@ if {!$::tls} { ;# fake_redis_node doesn't support TLS
         close_cli $fd
     }
 
-    test "valkey-cli pubsub mode with multiple shard channel subscriptions" {
+    test "kv-cli pubsub mode with multiple shard channel subscriptions" {
         set fd [open_cli]
 
         write_cli $fd ":get pubsub"
@@ -699,7 +699,7 @@ if {!$::tls} { ;# fake_redis_node doesn't support TLS
         close_cli $fd
     }
 
-    test "valkey-cli pubsub mode with single pattern channel subscription" {
+    test "kv-cli pubsub mode with single pattern channel subscription" {
         set fd [open_cli]
 
         write_cli $fd ":get pubsub"
@@ -723,7 +723,7 @@ if {!$::tls} { ;# fake_redis_node doesn't support TLS
         close_cli $fd
     }
 
-    test "valkey-cli pubsub mode with multiple pattern channel subscriptions" {
+    test "kv-cli pubsub mode with multiple pattern channel subscriptions" {
         set fd [open_cli]
 
         write_cli $fd "PSUBSCRIBE pattern1* pattern2* pattern3*"
@@ -743,7 +743,7 @@ if {!$::tls} { ;# fake_redis_node doesn't support TLS
         close_cli $fd
     }
 
-    test "valkey-cli pubsub mode when subscribing to the same channel" {
+    test "kv-cli pubsub mode when subscribing to the same channel" {
         set fd [open_cli]
 
         write_cli $fd ":get pubsub"
@@ -767,7 +767,7 @@ if {!$::tls} { ;# fake_redis_node doesn't support TLS
         close_cli $fd
     }
 
-    test "valkey-cli pubsub mode with multiple subscription types" {
+    test "kv-cli pubsub mode with multiple subscription types" {
         set fd [open_cli]
 
         write_cli $fd ":get pubsub"
@@ -828,13 +828,13 @@ if {!$::tls} { ;# fake_redis_node doesn't support TLS
         close_cli $fd
     }
 
-    test "valkey-cli make sure selected db survives connection drops" {    
+    test "kv-cli make sure selected db survives connection drops" {    
         set fd [open_cli]
                 
         # Select the database        
         assert_equal "OK" [run_command $fd "select $::dbnum"]
 
-        # Kill all normal clients, to disconnect valkey-cli client
+        # Kill all normal clients, to disconnect kv-cli client
         r client kill type normal
         after 10
 
@@ -854,28 +854,28 @@ if {!$::tls} { ;# fake_redis_node doesn't support TLS
     }
 
     test "Valid Connection Scheme: redis://" {
-        set cmdline [valkeycliuri "redis://" [srv host] [srv port]]
+        set cmdline [kvcliuri "redis://" [srv host] [srv port]]
         assert_equal {PONG} [exec {*}$cmdline PING]
     }
 
-    test "Valid Connection Scheme: valkey://" {
-        set cmdline [valkeycliuri "valkey://" [srv host] [srv port]]
+    test "Valid Connection Scheme: kv://" {
+        set cmdline [kvcliuri "kv://" [srv host] [srv port]]
         assert_equal {PONG} [exec {*}$cmdline PING]
     }
 
     if {$::tls} {
         test "Valid Connection Scheme: rediss://" {
-            set cmdline [valkeycliuri "rediss://" [srv host] [srv port]]
+            set cmdline [kvcliuri "rediss://" [srv host] [srv port]]
             assert_equal {PONG} [exec {*}$cmdline PING]
         }
 
-        test "Valid Connection Scheme: valkeys://" {
-            set cmdline [valkeycliuri "valkeys://" [srv host] [srv port]]
+        test "Valid Connection Scheme: kvs://" {
+            set cmdline [kvcliuri "kvs://" [srv host] [srv port]]
             assert_equal {PONG} [exec {*}$cmdline PING]
         }
     }
 
-    test "valkey-cli command table hint will not leak memory when COMMAND fails due to auth" {
+    test "kv-cli command table hint will not leak memory when COMMAND fails due to auth" {
         # Enable auth of server.
         set fd [open_cli]
         assert_equal "OK" [run_command $fd "CONFIG SET requirepass 12345"]

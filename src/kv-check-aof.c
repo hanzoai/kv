@@ -203,7 +203,7 @@ int processAnnotations(FILE *fp, char *filename, int last_file) {
                    filename, to_timestamp, (long int)epos);
             printf(
                 "If you insist, please delete all files after this file according to the manifest "
-                "file and delete the corresponding records in manifest file manually. Then re-run valkey-check-aof.\n");
+                "file and delete the corresponding records in manifest file manually. Then re-run kv-check-aof.\n");
             exit(1);
         }
         /* Truncate remaining AOF if exceeding 'to_timestamp' */
@@ -233,8 +233,8 @@ int checkSingleAof(char *aof_filename, char *aof_filepath, int last_file, int fi
         exit(1);
     }
 
-    struct valkey_stat sb;
-    if (valkey_fstat(fileno(fp), &sb) == -1) {
+    struct kv_stat sb;
+    if (kv_fstat(fileno(fp), &sb) == -1) {
         printf("Cannot stat file: %s, aborting...\n", aof_filename);
         fclose(fp);
         exit(1);
@@ -345,8 +345,8 @@ int fileIsRDB(char *filepath) {
         exit(1);
     }
 
-    struct valkey_stat sb;
-    if (valkey_fstat(fileno(fp), &sb) == -1) {
+    struct kv_stat sb;
+    if (kv_fstat(fileno(fp), &sb) == -1) {
         printf("Cannot stat file: %s\n", filepath);
         fclose(fp);
         exit(1);
@@ -381,8 +381,8 @@ int fileIsManifest(char *filepath) {
         exit(1);
     }
 
-    struct valkey_stat sb;
-    if (valkey_fstat(fileno(fp), &sb) == -1) {
+    struct kv_stat sb;
+    if (kv_fstat(fileno(fp), &sb) == -1) {
         printf("Cannot stat file: %s\n", filepath);
         fclose(fp);
         exit(1);
@@ -427,7 +427,7 @@ int fileIsManifest(char *filepath) {
  * AOF_RDB_PREAMBLE: Old-style RDB-preamble AOF
  * AOF_MULTI_PART: manifest in Multi Part AOF
  *
- * valkey-check-aof tool will automatically perform different
+ * kv-check-aof tool will automatically perform different
  * verification logic according to different file formats.
  * */
 input_file_type getInputFileType(char *filepath) {
@@ -526,7 +526,7 @@ int redis_check_aof_main(int argc, char **argv) {
     } else if (argc == 2) {
         if (!strcmp(argv[1], "-v") || !strcmp(argv[1], "--version")) {
             sds version = getVersion();
-            printf("valkey-check-aof %s\n", version);
+            printf("kv-check-aof %s\n", version);
             sdsfree(version);
             exit(0);
         }

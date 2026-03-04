@@ -1,5 +1,5 @@
 /* ==========================================================================
- * rdma-test.c - a simple test client for Valkey Over RDMA (Linux only)
+ * rdma-test.c - a simple test client for KV Over RDMA (Linux only)
  * --------------------------------------------------------------------------
  * Copyright (C) 2021-2024  zhenwei pi <pizhenwei@bytedance.com>
  *
@@ -33,7 +33,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-typedef struct valkeyRdmaFeature {
+typedef struct kvRdmaFeature {
     /* defined as following Opcodes */
     uint16_t opcode;
     /* select features */
@@ -41,15 +41,15 @@ typedef struct valkeyRdmaFeature {
     uint8_t rsvd[20];
     /* feature bits */
     uint64_t features;
-} valkeyRdmaFeature;
+} kvRdmaFeature;
 
-typedef struct valkeyRdmaKeepalive {
+typedef struct kvRdmaKeepalive {
     /* defined as following Opcodes */
     uint16_t opcode;
     uint8_t rsvd[30];
-} valkeyRdmaKeepalive;
+} kvRdmaKeepalive;
 
-typedef struct valkeyRdmaMemory {
+typedef struct kvRdmaMemory {
     /* defined as following Opcodes */
     uint16_t opcode;
     uint8_t rsvd[14];
@@ -60,27 +60,27 @@ typedef struct valkeyRdmaMemory {
     uint32_t length;
     /* the RDMA remote key of 'RX buffer' */
     uint32_t key;
-} valkeyRdmaMemory;
+} kvRdmaMemory;
 
-typedef union valkeyRdmaCmd {
-    valkeyRdmaFeature feature;
-    valkeyRdmaKeepalive keepalive;
-    valkeyRdmaMemory memory;
-} valkeyRdmaCmd;
+typedef union kvRdmaCmd {
+    kvRdmaFeature feature;
+    kvRdmaKeepalive keepalive;
+    kvRdmaMemory memory;
+} kvRdmaCmd;
 
-typedef enum valkeyRdmaOpcode {
+typedef enum kvRdmaOpcode {
     GetServerFeature = 0,
     SetClientFeature = 1,
     Keepalive = 2,
     RegisterXferMemory = 3,
-} valkeyRdmaOpcode;
+} kvRdmaOpcode;
 
 #define MAX_THREADS 32
 #define UNUSED(x) (void)(x)
 #define MIN(a, b) (a) < (b) ? a : b
-#define VALKEY_RDMA_MAX_WQE 1024
-#define VALKEY_RDMA_DEFAULT_RX_LEN  (1024*1024)
-#define VALKEY_RDMA_INVALID_OPCODE 0xffff
+#define KV_RDMA_MAX_WQE 1024
+#define KV_RDMA_DEFAULT_RX_LEN  (1024*1024)
+#define KV_RDMA_INVALID_OPCODE 0xffff
 
 typedef struct RdmaContext {
     struct rdma_cm_id *cm_id;
@@ -107,13 +107,13 @@ typedef struct RdmaContext {
     unsigned int recv_offset;
     struct ibv_mr *recv_mr;
 
-    /* CMD 0 ~ VALKEY_RDMA_MAX_WQE for recv buffer
-     * VALKEY_RDMA_MAX_WQE ~ 2 * VALKEY_RDMA_MAX_WQE -1 for send buffer */
-    valkeyRdmaCmd *cmd_buf;
+    /* CMD 0 ~ KV_RDMA_MAX_WQE for recv buffer
+     * KV_RDMA_MAX_WQE ~ 2 * KV_RDMA_MAX_WQE -1 for send buffer */
+    kvRdmaCmd *cmd_buf;
     struct ibv_mr *cmd_mr;
 } RdmaContext;
 
-static int valkeySetFdBlocking(int fd, int blocking) {
+static int kvSetFdBlocking(int fd, int blocking) {
     int flags;
 
     flags = fcntl(fd, F_GETFL);
@@ -135,7 +135,7 @@ static int valkeySetFdBlocking(int fd, int blocking) {
         assert(0);                                              \
     } while (0)
 
-static inline long valkeyNowMs(void) {
+static inline long kvNowMs(void) {
     struct timeval tv;
 
     if (gettimeofday(&tv, NULL) < 0)
@@ -144,9 +144,9 @@ static inline long valkeyNowMs(void) {
     return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
-static int rdmaPostRecv(RdmaContext *ctx, struct rdma_cm_id *cm_id, valkeyRdmaCmd *cmd) {
+static int rdmaPostRecv(RdmaContext *ctx, struct rdma_cm_id *cm_id, kvRdmaCmd *cmd) {
     struct ibv_sge sge;
-    size_t length = sizeof(valkeyRdmaCmd);
+    size_t length = sizeof(kvRdmaCmd);
     struct ibv_recv_wr recv_wr, *bad_wr;
 
 
@@ -194,8 +194,8 @@ static void rdmaDestroyIoBuf(RdmaContext *ctx) {
 
 static int rdmaSetupIoBuf(RdmaContext *ctx, struct rdma_cm_id *cm_id) {
     int access = IBV_ACCESS_LOCAL_WRITE;
-    size_t length = sizeof(valkeyRdmaCmd) * VALKEY_RDMA_MAX_WQE * 2;
-    valkeyRdmaCmd *cmd;
+    size_t length = sizeof(kvRdmaCmd) * KV_RDMA_MAX_WQE * 2;
+    kvRdmaCmd *cmd;
     int i;
 
     /* setup CMD buf & MR */
@@ -206,7 +206,7 @@ static int rdmaSetupIoBuf(RdmaContext *ctx, struct rdma_cm_id *cm_id) {
         goto destroy_iobuf;
     }
 
-    for (i = 0; i < VALKEY_RDMA_MAX_WQE; i++) {
+    for (i = 0; i < KV_RDMA_MAX_WQE; i++) {
         cmd = ctx->cmd_buf + i;
 
         if (rdmaPostRecv(ctx, cm_id, cmd) == -1) {
@@ -215,14 +215,14 @@ static int rdmaSetupIoBuf(RdmaContext *ctx, struct rdma_cm_id *cm_id) {
         }
     }
 
-    for (i = VALKEY_RDMA_MAX_WQE; i < VALKEY_RDMA_MAX_WQE * 2; i++) {
+    for (i = KV_RDMA_MAX_WQE; i < KV_RDMA_MAX_WQE * 2; i++) {
         cmd = ctx->cmd_buf + i;
-        cmd->keepalive.opcode = VALKEY_RDMA_INVALID_OPCODE;
+        cmd->keepalive.opcode = KV_RDMA_INVALID_OPCODE;
     }
 
     /* setup recv buf & MR */
     access = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
-    length = VALKEY_RDMA_DEFAULT_RX_LEN;
+    length = KV_RDMA_DEFAULT_RX_LEN;
     ctx->recv_buf = calloc(length, 1);
     ctx->recv_length = length;
     ctx->recv_mr = ibv_reg_mr(ctx->pd, ctx->recv_buf, length, access);
@@ -268,26 +268,26 @@ static int rdmaAdjustSendbuf(RdmaContext *ctx, unsigned int length) {
 }
 
 
-static int rdmaSendCommand(RdmaContext *ctx, struct rdma_cm_id *cm_id, valkeyRdmaCmd *cmd) {
+static int rdmaSendCommand(RdmaContext *ctx, struct rdma_cm_id *cm_id, kvRdmaCmd *cmd) {
     struct ibv_send_wr send_wr, *bad_wr;
     struct ibv_sge sge;
-    valkeyRdmaCmd *_cmd;
+    kvRdmaCmd *_cmd;
     int i;
     int ret;
 
     /* find an unused cmd buffer */
-    for (i = VALKEY_RDMA_MAX_WQE; i < 2 * VALKEY_RDMA_MAX_WQE; i++) {
+    for (i = KV_RDMA_MAX_WQE; i < 2 * KV_RDMA_MAX_WQE; i++) {
         _cmd = ctx->cmd_buf + i;
-        if (_cmd->keepalive.opcode == VALKEY_RDMA_INVALID_OPCODE) {
+        if (_cmd->keepalive.opcode == KV_RDMA_INVALID_OPCODE) {
             break;
         }
     }
 
-    assert(i < 2 * VALKEY_RDMA_MAX_WQE);
+    assert(i < 2 * KV_RDMA_MAX_WQE);
 
-    memcpy(_cmd, cmd, sizeof(valkeyRdmaCmd));
+    memcpy(_cmd, cmd, sizeof(kvRdmaCmd));
     sge.addr = (uint64_t)(uintptr_t)_cmd;
-    sge.length = sizeof(valkeyRdmaCmd);
+    sge.length = sizeof(kvRdmaCmd);
     sge.lkey = ctx->cmd_mr->lkey;
 
     send_wr.sg_list = &sge;
@@ -305,7 +305,7 @@ static int rdmaSendCommand(RdmaContext *ctx, struct rdma_cm_id *cm_id, valkeyRdm
 }
 
 static int connRdmaRegisterRx(RdmaContext *ctx, struct rdma_cm_id *cm_id) {
-    valkeyRdmaCmd cmd = { 0 };
+    kvRdmaCmd cmd = { 0 };
 
     cmd.memory.opcode = htons(RegisterXferMemory);
     cmd.memory.addr = htobe64((uint64_t)(uintptr_t)ctx->recv_buf);
@@ -318,8 +318,8 @@ static int connRdmaRegisterRx(RdmaContext *ctx, struct rdma_cm_id *cm_id) {
     return rdmaSendCommand(ctx, cm_id, &cmd);
 }
 
-static int connRdmaHandleRecv(RdmaContext *ctx, struct rdma_cm_id *cm_id, valkeyRdmaCmd *cmd, uint32_t byte_len) {
-    if (byte_len != sizeof(valkeyRdmaCmd)) {
+static int connRdmaHandleRecv(RdmaContext *ctx, struct rdma_cm_id *cm_id, kvRdmaCmd *cmd, uint32_t byte_len) {
+    if (byte_len != sizeof(kvRdmaCmd)) {
         rdmaFatal("RDMA: FATAL error, recv corrupted cmd");
         return -1;
     }
@@ -344,17 +344,17 @@ static int connRdmaHandleRecv(RdmaContext *ctx, struct rdma_cm_id *cm_id, valkey
     return rdmaPostRecv(ctx, cm_id, cmd);
 }
 
-static int connRdmaHandleRecvImm(RdmaContext *ctx, struct rdma_cm_id *cm_id, valkeyRdmaCmd *cmd, uint32_t byte_len) {
+static int connRdmaHandleRecvImm(RdmaContext *ctx, struct rdma_cm_id *cm_id, kvRdmaCmd *cmd, uint32_t byte_len) {
     assert(byte_len + ctx->rx_offset <= ctx->recv_length);
     ctx->rx_offset += byte_len;
 
     return rdmaPostRecv(ctx, cm_id, cmd);
 }
 
-static int connRdmaHandleSend(valkeyRdmaCmd *cmd) {
+static int connRdmaHandleSend(kvRdmaCmd *cmd) {
     /* mark this cmd has already sent */
     memset(cmd, 0x00, sizeof(*cmd));
-    cmd->keepalive.opcode = VALKEY_RDMA_INVALID_OPCODE;
+    cmd->keepalive.opcode = KV_RDMA_INVALID_OPCODE;
 
     return 0;
 }
@@ -371,7 +371,7 @@ static int connRdmaHandleCq(RdmaContext *ctx) {
     struct ibv_cq *ev_cq = NULL;
     void *ev_ctx = NULL;
     struct ibv_wc wc = {0};
-    valkeyRdmaCmd *cmd;
+    kvRdmaCmd *cmd;
     int ret;
 
     if (ibv_get_cq_event(ctx->comp_channel, &ev_cq, &ev_ctx) < 0) {
@@ -405,7 +405,7 @@ pollcq:
 
     switch (wc.opcode) {
     case IBV_WC_RECV:
-        cmd = (valkeyRdmaCmd *)(uintptr_t)wc.wr_id;
+        cmd = (kvRdmaCmd *)(uintptr_t)wc.wr_id;
         if (connRdmaHandleRecv(ctx, cm_id, cmd, wc.byte_len) == -1) {
             return -1;
         }
@@ -413,7 +413,7 @@ pollcq:
         break;
 
     case IBV_WC_RECV_RDMA_WITH_IMM:
-        cmd = (valkeyRdmaCmd *)(uintptr_t)wc.wr_id;
+        cmd = (kvRdmaCmd *)(uintptr_t)wc.wr_id;
         if (connRdmaHandleRecvImm(ctx, cm_id, cmd, ntohl(wc.imm_data)) == -1) {
             return -1;
         }
@@ -426,7 +426,7 @@ pollcq:
 
         break;
     case IBV_WC_SEND:
-        cmd = (valkeyRdmaCmd *)(uintptr_t)wc.wr_id;
+        cmd = (kvRdmaCmd *)(uintptr_t)wc.wr_id;
         if (connRdmaHandleSend(cmd) == -1) {
             return -1;
         }
@@ -442,11 +442,11 @@ pollcq:
     return 0;
 }
 
-static ssize_t valkeyRdmaRead(RdmaContext *ctx, char *buf, size_t data_len) {
+static ssize_t kvRdmaRead(RdmaContext *ctx, char *buf, size_t data_len) {
     struct rdma_cm_id *cm_id = ctx->cm_id;
     struct pollfd pfd;
     long timed = 1000;
-    long start = valkeyNowMs();
+    long start = kvNowMs();
     uint32_t toread, remained;
 
 copy:
@@ -481,7 +481,7 @@ pollcq:
         return -1;
     }
 
-    if ((valkeyNowMs() - start) < timed) {
+    if ((kvNowMs() - start) < timed) {
         goto pollcq;
     }
 
@@ -489,11 +489,11 @@ pollcq:
     return -1;
 }
 
-static ssize_t valkeyRdmaReadFull(RdmaContext *ctx, char *buf, size_t data_len) {
+static ssize_t kvRdmaReadFull(RdmaContext *ctx, char *buf, size_t data_len) {
     size_t inbytes = 0;
 
     do {
-        inbytes += valkeyRdmaRead(ctx, buf + inbytes, data_len - inbytes);
+        inbytes += kvRdmaRead(ctx, buf + inbytes, data_len - inbytes);
     } while (inbytes < data_len);
 
     return data_len;
@@ -517,7 +517,7 @@ static size_t connRdmaSend(RdmaContext *ctx, struct rdma_cm_id *cm_id, const voi
     send_wr.sg_list = &sge;
     send_wr.num_sge = 1;
     send_wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
-    send_wr.send_flags = (++ctx->send_ops % VALKEY_RDMA_MAX_WQE) ? 0 : IBV_SEND_SIGNALED;
+    send_wr.send_flags = (++ctx->send_ops % KV_RDMA_MAX_WQE) ? 0 : IBV_SEND_SIGNALED;
     send_wr.imm_data = htonl(data_len);
     send_wr.wr.rdma.remote_addr = (uint64_t)(uintptr_t)remote_addr;
     send_wr.wr.rdma.rkey = ctx->tx_key;
@@ -532,11 +532,11 @@ static size_t connRdmaSend(RdmaContext *ctx, struct rdma_cm_id *cm_id, const voi
     return data_len;
 }
 
-static ssize_t valkeyRdmaWrite(RdmaContext *ctx, char *buf, size_t data_len) {
+static ssize_t kvRdmaWrite(RdmaContext *ctx, char *buf, size_t data_len) {
     struct rdma_cm_id *cm_id = ctx->cm_id;
     struct pollfd pfd;
     long timed = 1000;
-    long start = valkeyNowMs();
+    long start = kvNowMs();
     uint32_t towrite, wrote = 0;
     size_t ret;
 
@@ -573,7 +573,7 @@ pollcq:
         return data_len;
     }
 
-    if ((valkeyNowMs() - start) < timed) {
+    if ((kvNowMs() - start) < timed) {
         goto waitcq;
     }
 
@@ -582,7 +582,7 @@ pollcq:
     return -1;
 }
 
-static void valkeyRdmaClose(RdmaContext *ctx) {
+static void kvRdmaClose(RdmaContext *ctx) {
     struct rdma_cm_id *cm_id = ctx->cm_id;
 
     connRdmaHandleCq(ctx);
@@ -597,14 +597,14 @@ static void valkeyRdmaClose(RdmaContext *ctx) {
     rdma_destroy_event_channel(ctx->cm_channel);
 }
 
-static void valkeyRdmaFree(void *privctx) {
+static void kvRdmaFree(void *privctx) {
     if (!privctx)
         return;
 
     free(privctx);
 }
 
-static int valkeyRdmaConnect(RdmaContext *ctx, struct rdma_cm_id *cm_id) {
+static int kvRdmaConnect(RdmaContext *ctx, struct rdma_cm_id *cm_id) {
     struct ibv_comp_channel *comp_channel = NULL;
     struct ibv_cq *cq = NULL;
     struct ibv_pd *pd = NULL;
@@ -623,12 +623,12 @@ static int valkeyRdmaConnect(RdmaContext *ctx, struct rdma_cm_id *cm_id) {
         goto error;
     }
 
-    if (valkeySetFdBlocking(comp_channel->fd, 0) != 0) {
+    if (kvSetFdBlocking(comp_channel->fd, 0) != 0) {
         rdmaFatal("RDMA: set recv comp channel fd non-block failed");
         goto error;
     }
 
-    cq = ibv_create_cq(cm_id->verbs, VALKEY_RDMA_MAX_WQE * 2, ctx, comp_channel, 0);
+    cq = ibv_create_cq(cm_id->verbs, KV_RDMA_MAX_WQE * 2, ctx, comp_channel, 0);
     if (!cq) {
         rdmaFatal("RDMA: create send cq failed");
         goto error;
@@ -640,8 +640,8 @@ static int valkeyRdmaConnect(RdmaContext *ctx, struct rdma_cm_id *cm_id) {
     }
 
     /* create qp with attr */
-    init_attr.cap.max_send_wr = VALKEY_RDMA_MAX_WQE;
-    init_attr.cap.max_recv_wr = VALKEY_RDMA_MAX_WQE;
+    init_attr.cap.max_send_wr = KV_RDMA_MAX_WQE;
+    init_attr.cap.max_recv_wr = KV_RDMA_MAX_WQE;
     init_attr.cap.max_send_sge = 1;
     init_attr.cap.max_recv_sge = 1;
     init_attr.qp_type = IBV_QPT_RC;
@@ -687,7 +687,7 @@ error:
     return -1;
 }
 
-static int valkeyRdmaEstablished(RdmaContext *ctx, struct rdma_cm_id *cm_id) {
+static int kvRdmaEstablished(RdmaContext *ctx, struct rdma_cm_id *cm_id) {
 
     /* it's time to tell redis we have already connected */
     ctx->connected = true;
@@ -695,7 +695,7 @@ static int valkeyRdmaEstablished(RdmaContext *ctx, struct rdma_cm_id *cm_id) {
     return connRdmaRegisterRx(ctx, cm_id);
 }
 
-static int valkeyRdmaCM(RdmaContext *ctx, int timeout) {
+static int kvRdmaCM(RdmaContext *ctx, int timeout) {
     struct rdma_cm_event *event;
     char errorstr[128];
     int ret = -1;
@@ -712,10 +712,10 @@ static int valkeyRdmaCM(RdmaContext *ctx, int timeout) {
             }
             break;
         case RDMA_CM_EVENT_ROUTE_RESOLVED:
-            ret = valkeyRdmaConnect(ctx, event->id);
+            ret = kvRdmaConnect(ctx, event->id);
             break;
         case RDMA_CM_EVENT_ESTABLISHED:
-            ret = valkeyRdmaEstablished(ctx, event->id);
+            ret = kvRdmaEstablished(ctx, event->id);
             break;
         case RDMA_CM_EVENT_TIMEWAIT_EXIT:
             ret = -1;
@@ -741,10 +741,10 @@ static int valkeyRdmaCM(RdmaContext *ctx, int timeout) {
     return ret;
 }
 
-static int valkeyRdmaWaitConn(RdmaContext *ctx, long timeout) {
+static int kvRdmaWaitConn(RdmaContext *ctx, long timeout) {
     int timed;
     struct pollfd pfd;
-    long now = valkeyNowMs();
+    long now = kvNowMs();
     long start = now;
 
     while (now - start < timeout) {
@@ -757,7 +757,7 @@ static int valkeyRdmaWaitConn(RdmaContext *ctx, long timeout) {
             return -1;
         }
 
-        if (valkeyRdmaCM(ctx, timed) == -1) {
+        if (kvRdmaCM(ctx, timed) == -1) {
             return -1;
         }
 
@@ -765,19 +765,19 @@ static int valkeyRdmaWaitConn(RdmaContext *ctx, long timeout) {
             return 0;
         }
 
-        now = valkeyNowMs();
+        now = kvNowMs();
     }
 
     return -1;
 }
 
-static RdmaContext *valkeyContextConnectRdma(const char *addr, int port, int timeout) {
+static RdmaContext *kvContextConnectRdma(const char *addr, int port, int timeout) {
     int ret;
     char _port[6];  /* strlen("65535"); */
     struct addrinfo hints, *servinfo = NULL, *p;
     RdmaContext *ctx = NULL;
     struct sockaddr_storage saddr;
-    long start = valkeyNowMs(), timed;
+    long start = kvNowMs(), timed;
 
     snprintf(_port, 6, "%d", port);
     memset(&hints, 0, sizeof(hints));
@@ -809,7 +809,7 @@ static RdmaContext *valkeyContextConnectRdma(const char *addr, int port, int tim
         goto free_rdma;
     }
 
-    if ((valkeySetFdBlocking(ctx->cm_channel->fd, 0) != 0)) {
+    if ((kvSetFdBlocking(ctx->cm_channel->fd, 0) != 0)) {
         rdmaFatal("RDMA: set cm channel fd non-block failed");
         goto free_rdma;
     }
@@ -831,8 +831,8 @@ static RdmaContext *valkeyContextConnectRdma(const char *addr, int port, int tim
             continue;
         }
 
-        timed = timeout - (valkeyNowMs() - start);
-        if ((valkeyRdmaWaitConn(ctx, timed) == 0) && ctx->connected) {
+        timed = timeout - (kvNowMs() - start);
+        if ((kvRdmaWaitConn(ctx, timed) == 0) && ctx->connected) {
             ret = 0;
             goto end;
         }
@@ -879,7 +879,7 @@ static void *test_routine(void *arg) {
     struct test_kv_pair *kv_pairs = NULL, *kv_pair;
     int keys;
 
-    ctx = valkeyContextConnectRdma(host, port, 1000);
+    ctx = kvContextConnectRdma(host, port, 1000);
     if (!ctx) {
          rdmaFatal("RDMA connect failed");
     }
@@ -893,10 +893,10 @@ static void *test_routine(void *arg) {
     char *pingcmd = "*1\r\n$4\r\nPING\r\n";
     char *pingresp = "+PONG\r\n";
 
-    valkeyRdmaWrite(ctx, pingcmd, strlen(pingcmd));
-    inbytes = valkeyRdmaReadFull(ctx, inbuf, strlen(pingresp));
+    kvRdmaWrite(ctx, pingcmd, strlen(pingcmd));
+    inbytes = kvRdmaReadFull(ctx, inbuf, strlen(pingresp));
     assert(!strncmp(pingresp, inbuf, inbytes));
-    printf("Valkey Over RDMA test thread[%d] PING/PONG [OK]\n", tid);
+    printf("KV Over RDMA test thread[%d] PING/PONG [OK]\n", tid);
 
     /* prepare random KV for SET/GET */
     keys = random() % (maxkeys - minkeys) + minkeys;
@@ -910,7 +910,7 @@ static void *test_routine(void *arg) {
             kv_pair->value[k] = 'A' + random() % 26; /* generate upper case string */
         }
     }
-    printf("Valkey Over RDMA test thread[%d] prepare %d KVs [OK]\n", tid, keys);
+    printf("KV Over RDMA test thread[%d] prepare %d KVs [OK]\n", tid, keys);
 
     /* # round 2, test SET */
     char *okresp = "+OK\r\n";
@@ -921,11 +921,11 @@ static void *test_routine(void *arg) {
         outbytes = sprintf(outbuf, "*3\r\n$3\r\nSET\r\n$%ld\r\n%s\r\n$%ld\r\n%s\r\n",
                            strlen(kv_pair->key), kv_pair->key,
                            strlen(kv_pair->value), kv_pair->value);
-        valkeyRdmaWrite(ctx, outbuf, outbytes);
-        inbytes = valkeyRdmaReadFull(ctx, inbuf, strlen(okresp));
+        kvRdmaWrite(ctx, outbuf, outbytes);
+        inbytes = kvRdmaReadFull(ctx, inbuf, strlen(okresp));
         assert(!strncmp("+OK\r\n", inbuf, inbytes));
     }
-    printf("Valkey Over RDMA test thread[%d] SET %d KVs [OK]\n", tid, keys);
+    printf("KV Over RDMA test thread[%d] SET %d KVs [OK]\n", tid, keys);
 
     /* # round 3, test BGSAVE, to avoid "-ERR Background save already", run BGSAVE only once */
     char *bgsavecmd = "*1\r\n$6\r\nBGSAVE\r\n";
@@ -933,10 +933,10 @@ static void *test_routine(void *arg) {
     static int bgsaved;
 
     if (!__atomic_fetch_add(&bgsaved, 1, __ATOMIC_SEQ_CST)) {
-        valkeyRdmaWrite(ctx, bgsavecmd, strlen(bgsavecmd));
-        inbytes = valkeyRdmaReadFull(ctx, inbuf, strlen(bgsaveresp));
+        kvRdmaWrite(ctx, bgsavecmd, strlen(bgsavecmd));
+        inbytes = kvRdmaReadFull(ctx, inbuf, strlen(bgsaveresp));
         assert(!strncmp(bgsaveresp, inbuf, inbytes));
-        printf("Valkey Over RDMA test thread[%d] BGSAVE [OK]\n", tid);
+        printf("KV Over RDMA test thread[%d] BGSAVE [OK]\n", tid);
     }
 
     /* # round 4, test GET. also verify all the value already set */
@@ -948,12 +948,12 @@ static void *test_routine(void *arg) {
         /* build GET command */
         outbytes = sprintf(outbuf, "*2\r\n$3\r\nGET\r\n$%ld\r\n%s\r\n",
                            strlen(kv_pair->key), kv_pair->key);
-        valkeyRdmaWrite(ctx, outbuf, outbytes);
-        inbytes = valkeyRdmaReadFull(ctx, inbuf, getrespprexlen + strlen(kv_pair->value) + 2);
+        kvRdmaWrite(ctx, outbuf, outbytes);
+        inbytes = kvRdmaReadFull(ctx, inbuf, getrespprexlen + strlen(kv_pair->value) + 2);
         assert(!strncmp(getrespprex, inbuf, getrespprexlen));
         assert(!strncmp(kv_pair->value, inbuf + getrespprexlen, strlen(kv_pair->value)));
     }
-    printf("Valkey Over RDMA test thread[%d] GET %d KVs [OK]\n", tid, keys);
+    printf("KV Over RDMA test thread[%d] GET %d KVs [OK]\n", tid, keys);
 
     return NULL;
 }
@@ -1054,7 +1054,7 @@ int main(int argc, char *argv[])
         pthread_join(threads[i], NULL);
     }
 
-    printf("Valkey Over RDMA test [OK]\n");
+    printf("KV Over RDMA test [OK]\n");
 
     return 0;
 }

@@ -20,56 +20,56 @@ int test_string2ll(int argc, char **argv, int flags) {
     long long v;
 
     /* May not start with +. */
-    valkey_strlcpy(buf, "+1", sizeof(buf));
+    kv_strlcpy(buf, "+1", sizeof(buf));
     TEST_ASSERT(string2ll(buf, strlen(buf), &v) == 0);
 
     /* Leading space. */
-    valkey_strlcpy(buf, " 1", sizeof(buf));
+    kv_strlcpy(buf, " 1", sizeof(buf));
     TEST_ASSERT(string2ll(buf, strlen(buf), &v) == 0);
 
     /* Trailing space. */
-    valkey_strlcpy(buf, "1 ", sizeof(buf));
+    kv_strlcpy(buf, "1 ", sizeof(buf));
     TEST_ASSERT(string2ll(buf, strlen(buf), &v) == 0);
 
     /* May not start with 0. */
-    valkey_strlcpy(buf, "01", sizeof(buf));
+    kv_strlcpy(buf, "01", sizeof(buf));
     TEST_ASSERT(string2ll(buf, strlen(buf), &v) == 0);
 
-    valkey_strlcpy(buf, "-1", sizeof(buf));
+    kv_strlcpy(buf, "-1", sizeof(buf));
     TEST_ASSERT(string2ll(buf, strlen(buf), &v) == 1);
     TEST_ASSERT(v == -1);
 
-    valkey_strlcpy(buf, "0", sizeof(buf));
+    kv_strlcpy(buf, "0", sizeof(buf));
     TEST_ASSERT(string2ll(buf, strlen(buf), &v) == 1);
     TEST_ASSERT(v == 0);
 
-    valkey_strlcpy(buf, "1", sizeof(buf));
+    kv_strlcpy(buf, "1", sizeof(buf));
     TEST_ASSERT(string2ll(buf, strlen(buf), &v) == 1);
     TEST_ASSERT(v == 1);
 
-    valkey_strlcpy(buf, "99", sizeof(buf));
+    kv_strlcpy(buf, "99", sizeof(buf));
     TEST_ASSERT(string2ll(buf, strlen(buf), &v) == 1);
     TEST_ASSERT(v == 99);
 
-    valkey_strlcpy(buf, "-99", sizeof(buf));
+    kv_strlcpy(buf, "-99", sizeof(buf));
     TEST_ASSERT(string2ll(buf, strlen(buf), &v) == 1);
     TEST_ASSERT(v == -99);
 
-    valkey_strlcpy(buf, "-9223372036854775808", sizeof(buf));
+    kv_strlcpy(buf, "-9223372036854775808", sizeof(buf));
     TEST_ASSERT(string2ll(buf, strlen(buf), &v) == 1);
     TEST_ASSERT(v == LLONG_MIN);
 
-    valkey_strlcpy(buf, "-9223372036854775809", sizeof(buf)); /* overflow */
+    kv_strlcpy(buf, "-9223372036854775809", sizeof(buf)); /* overflow */
     TEST_ASSERT(string2ll(buf, strlen(buf), &v) == 0);
 
-    valkey_strlcpy(buf, "9223372036854775807", sizeof(buf));
+    kv_strlcpy(buf, "9223372036854775807", sizeof(buf));
     TEST_ASSERT(string2ll(buf, strlen(buf), &v) == 1);
     TEST_ASSERT(v == LLONG_MAX);
 
-    valkey_strlcpy(buf, "9223372036854775808", sizeof(buf)); /* overflow */
+    kv_strlcpy(buf, "9223372036854775808", sizeof(buf)); /* overflow */
     TEST_ASSERT(string2ll(buf, strlen(buf), &v) == 0);
 
-    valkey_strlcpy(buf, "18446744073709551615", sizeof(buf)); /* overflow */
+    kv_strlcpy(buf, "18446744073709551615", sizeof(buf)); /* overflow */
     TEST_ASSERT(string2ll(buf, strlen(buf), &v) == 0);
 
     return 0;
@@ -84,46 +84,46 @@ int test_string2l(int argc, char **argv, int flags) {
     long v;
 
     /* May not start with +. */
-    valkey_strlcpy(buf, "+1", sizeof(buf));
+    kv_strlcpy(buf, "+1", sizeof(buf));
     TEST_ASSERT(string2l(buf, strlen(buf), &v) == 0);
 
     /* May not start with 0. */
-    valkey_strlcpy(buf, "01", sizeof(buf));
+    kv_strlcpy(buf, "01", sizeof(buf));
     TEST_ASSERT(string2l(buf, strlen(buf), &v) == 0);
 
-    valkey_strlcpy(buf, "-1", sizeof(buf));
+    kv_strlcpy(buf, "-1", sizeof(buf));
     TEST_ASSERT(string2l(buf, strlen(buf), &v) == 1);
     TEST_ASSERT(v == -1);
 
-    valkey_strlcpy(buf, "0", sizeof(buf));
+    kv_strlcpy(buf, "0", sizeof(buf));
     TEST_ASSERT(string2l(buf, strlen(buf), &v) == 1);
     TEST_ASSERT(v == 0);
 
-    valkey_strlcpy(buf, "1", sizeof(buf));
+    kv_strlcpy(buf, "1", sizeof(buf));
     TEST_ASSERT(string2l(buf, strlen(buf), &v) == 1);
     TEST_ASSERT(v == 1);
 
-    valkey_strlcpy(buf, "99", sizeof(buf));
+    kv_strlcpy(buf, "99", sizeof(buf));
     TEST_ASSERT(string2l(buf, strlen(buf), &v) == 1);
     TEST_ASSERT(v == 99);
 
-    valkey_strlcpy(buf, "-99", sizeof(buf));
+    kv_strlcpy(buf, "-99", sizeof(buf));
     TEST_ASSERT(string2l(buf, strlen(buf), &v) == 1);
     TEST_ASSERT(v == -99);
 
 #if LONG_MAX != LLONG_MAX
-    valkey_strlcpy(buf, "-2147483648", sizeof(buf));
+    kv_strlcpy(buf, "-2147483648", sizeof(buf));
     TEST_ASSERT(string2l(buf, strlen(buf), &v) == 1);
     TEST_ASSERT(v == LONG_MIN);
 
-    valkey_strlcpy(buf, "-2147483649", sizeof(buf)); /* overflow */
+    kv_strlcpy(buf, "-2147483649", sizeof(buf)); /* overflow */
     TEST_ASSERT(string2l(buf, strlen(buf), &v) == 0);
 
-    valkey_strlcpy(buf, "2147483647", sizeof(buf));
+    kv_strlcpy(buf, "2147483647", sizeof(buf));
     TEST_ASSERT(string2l(buf, strlen(buf), &v) == 1);
     TEST_ASSERT(v == LONG_MAX);
 
-    valkey_strlcpy(buf, "2147483648", sizeof(buf)); /* overflow */
+    kv_strlcpy(buf, "2147483648", sizeof(buf)); /* overflow */
     TEST_ASSERT(string2l(buf, strlen(buf), &v) == 0);
 #endif
 
@@ -316,7 +316,7 @@ int test_reclaimFilePageCache(int argc, char **argv, int flags) {
     char buf[4] = "foo";
     TEST_ASSERT(write(fd, buf, sizeof(buf)) > 0);
     TEST_ASSERT(cache_exist(fd));
-    TEST_ASSERT(valkey_fsync(fd) == 0);
+    TEST_ASSERT(kv_fsync(fd) == 0);
     TEST_ASSERT(reclaimFilePageCache(fd, 0, 0) == 0);
     TEST_ASSERT(!cache_exist(fd));
 

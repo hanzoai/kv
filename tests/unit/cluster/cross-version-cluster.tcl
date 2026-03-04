@@ -4,7 +4,7 @@
 
 # To run this test use the `--other-server-path` parameter and pass in a compatible server path.
 #
-# ./runtest --single unit/cluster/cross-version-cluster --other-server-path tests/tmp/valkey-7-2/valkey-server
+# ./runtest --single unit/cluster/cross-version-cluster --other-server-path tests/tmp/kv-7-2/kv-server
 
 tags {external:skip needs:other-server cluster singledb} {
     test "Cross version cluster - failover" {
@@ -19,7 +19,7 @@ tags {external:skip needs:other-server cluster singledb} {
             start_server {config "minimal-cluster.conf" start-other-server 1 overrides {cluster-ping-interval 1000}} {
                 set version [dict get [r hello] version]
                 if {![version_greater_or_equal $version 8.1.0]} {
-                    skip "Requires Valkey 8.1 or above"
+                    skip "Requires KV 8.1 or above"
                 }
                 r config set rdb-version-check relaxed
                 # Add a replica of the old version to the cluster

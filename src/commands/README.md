@@ -8,7 +8,7 @@ Each JSON file contains all the information about the command itself. It is the
 
 These JSON files were originally not intended to be used directly, since they
 contain internals and some fields like "acl_categories" that are not the final
-ACL categories. (Valkey will apply some implicit rules to compute the final ACL
+ACL categories. (KV will apply some implicit rules to compute the final ACL
 categories.) However, people see JSON files and use them directly anyway.
 
 Any third party who needs access to command information were originally supposed
@@ -44,13 +44,13 @@ following keys. To be safe, assume all of them are optional.
   * `"string"`
   * `"transactions"`
 * `"since"`: a string with a version number, like "7.0.0". It's the version
-  (Redis OSS or Valkey) where the command was introduced.
+  (Redis OSS or KV) where the command was introduced.
 * `"arity"`: The number of arguments, including the command name itself. A
   negative number means "at least", e.g. -3 means at least 3.
 * `"container"`: Only present for subcommands. See below.
 * `"history"`: An array of changes, each change represented by a 2-element array
   on the form `[VERSION, DESCRIPTION]`. Omit if empty. Don't add an empty array.
-* `"function"`: The name of the C function in Valkey's source code implementing
+* `"function"`: The name of the C function in KV's source code implementing
   the command. (Don't use it for anything else.)
 * `"command_flags"`: An array of flags represented as strings. Command flags:
   * `"ADMIN"`
@@ -94,7 +94,7 @@ following keys. To be safe, assume all of them are optional.
   * `"STREAM"`
   * `"STRING"`
   * `"TRANSACTION"`
-* `"get_dbid_args"`: The name of the C function in Valkey's source code
+* `"get_dbid_args"`: The name of the C function in KV's source code
   implementing retrieval of database ID arguments from commands that accept
   database ID as an argument.
 * `"command_tips"`: Optional. A list of one or more of these strings:

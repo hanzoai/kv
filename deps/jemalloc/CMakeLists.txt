@@ -18,7 +18,7 @@ if (NOT EXISTS ${JEMALLOC_INSTALL_DIR}/lib/libjemalloc.a)
         message(FATAL_ERROR "Jemalloc configure failed")
     endif ()
 
-    execute_process(COMMAND make -j${VALKEY_PROCESSOR_COUNT} lib/libjemalloc.a install
+    execute_process(COMMAND make -j${KV_PROCESSOR_COUNT} lib/libjemalloc.a install
                     WORKING_DIRECTORY "${JEMALLOC_SRC_DIR}" RESULTS_VARIABLE MAKE_RESULT)
 
     if (NOT ${MAKE_RESULT} EQUAL 0)

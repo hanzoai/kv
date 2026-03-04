@@ -56,7 +56,7 @@ start_cluster 1 1 {tags {external:skip cluster}} {
     
     test "SSUBSCRIBE client killed during transaction" {
         # Create two clients
-        set rd1 [valkey_deferring_client $primary_id]
+        set rd1 [kv_deferring_client $primary_id]
         
         # Get client 1 ID
         $rd1 client id

@@ -36,7 +36,7 @@ ifneq ($(shell sh -c '[ -f .make-ldflags ] && cat .make-ldflags || echo none'), 
 endif
 
 distclean:
-	-(cd libvalkey && $(MAKE) clean) > /dev/null || true
+	-(cd libkv && $(MAKE) clean) > /dev/null || true
 	-(cd linenoise && $(MAKE) clean) > /dev/null || true
 	-(cd lua && $(MAKE) clean) > /dev/null || true
 	-(cd jemalloc && [ -f Makefile ] && $(MAKE) distclean) > /dev/null || true
@@ -47,20 +47,20 @@ distclean:
 
 .PHONY: distclean
 
-LIBVALKEY_MAKE_FLAGS = SDS_INCLUDE_DIR=../../src/ DICT_INCLUDE_DIR=../../src/
+LIBKV_MAKE_FLAGS = SDS_INCLUDE_DIR=../../src/ DICT_INCLUDE_DIR=../../src/
 ifneq (,$(filter $(BUILD_TLS),yes module))
-    LIBVALKEY_MAKE_FLAGS += USE_TLS=1
+    LIBKV_MAKE_FLAGS += USE_TLS=1
 endif
 
 ifneq (,$(filter $(BUILD_RDMA),yes module))
-    LIBVALKEY_MAKE_FLAGS += USE_RDMA=1
+    LIBKV_MAKE_FLAGS += USE_RDMA=1
 endif
 
-libvalkey: .make-prerequisites
+libkv: .make-prerequisites
 	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
-	cd libvalkey && $(MAKE) static $(LIBVALKEY_MAKE_FLAGS)
+	cd libkv && $(MAKE) static $(LIBKV_MAKE_FLAGS)
 
-.PHONY: libvalkey
+.PHONY: libkv
 
 linenoise: .make-prerequisites
 	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)

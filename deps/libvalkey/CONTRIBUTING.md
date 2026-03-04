@@ -43,7 +43,7 @@ By making a contribution to this project, I certify that:
     involved.
 ```
 
-We require that every contribution to libvalkey to be signed with a DCO. We require the
+We require that every contribution to libkv to be signed with a DCO. We require the
 usage of known identity (such as a real or preferred name). We do not accept anonymous
 contributors nor those utilizing pseudonyms. A DCO signed commit will contain a line like:
 
@@ -56,7 +56,7 @@ user.name and user.email are set in your git configs, you can use `git commit` w
 or `--signoff` to add the `Signed-off-by` line to the end of the commit message. We also
 require revert commits to include a DCO.
 
-If you're contributing code to the libvalkey project in any other form, including
+If you're contributing code to the libkv project in any other form, including
 sending a code fragment or patch via private email or public discussion groups,
 you need to ensure that the contribution is in accordance with the DCO.
 
@@ -75,11 +75,11 @@ This repository is currently using `clang-format` 18.1.3 to format the code, whi
 
 Prerequisites:
 
-* Build `libvalkey` using CMake.
+* Build `libkv` using CMake.
 * Perl with [JSON module](https://metacpan.org/pod/JSON). Can be installed using `sudo cpan JSON`.
 * [Docker](https://docs.docker.com/engine/install/)
 
-Some tests needs a Valkey Cluster which can be setup using build targets.
+Some tests needs a KV Cluster which can be setup using build targets.
 The clusters will be setup using Docker and it may take a while for them to be ready and accepting requests.
 Run `make start` to start the clusters and then wait a few seconds before running `make test`.
 To stop the running cluster containers run `make stop`.

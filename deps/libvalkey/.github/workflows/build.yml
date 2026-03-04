@@ -13,7 +13,7 @@ jobs:
       - name: Install dependencies
         run: |
           dnf -y install epel-release
-          dnf -y install gcc make cmake3 openssl openssl-devel libevent-devel procps-ng valkey
+          dnf -y install gcc make cmake3 openssl openssl-devel libevent-devel procps-ng kv
 
       - name: Build using cmake
         env:
@@ -43,7 +43,7 @@ jobs:
           dnf -y install https://rpms.remirepo.net/enterprise/remi-release-8.rpm
           dnf -y module install redis:remi-6.0
           dnf -y group install "Development Tools"
-          dnf -y install openssl-devel cmake libevent-devel valkey
+          dnf -y install openssl-devel cmake libevent-devel kv
 
       - name: Build using cmake
         env:

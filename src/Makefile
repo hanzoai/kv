@@ -1,12 +1,12 @@
-# Valkey Makefile
+# KV Makefile
 # Copyright (C) 2009 Redis Ltd.
 # This file is released under the BSD license, see the COPYING file
 #
 # The Makefile composes the final FINAL_CFLAGS and FINAL_LDFLAGS using
-# what is needed for Valkey plus the standard CFLAGS and LDFLAGS passed.
-# However when building the dependencies (Jemalloc, Lua, libvalkey, ...)
+# what is needed for KV plus the standard CFLAGS and LDFLAGS passed.
+# However when building the dependencies (Jemalloc, Lua, libkv, ...)
 # CFLAGS and LDFLAGS are propagated to the dependencies, so to pass
-# flags only to be used when compiling / linking Valkey itself SERVER_CFLAGS
+# flags only to be used when compiling / linking KV itself SERVER_CFLAGS
 # and SERVER_LDFLAGS are used instead (this is the case of 'make gcov').
 #
 # Dependencies are stored in the Makefile.dep file. To rebuild this file
@@ -31,7 +31,7 @@ endif
 ifneq ($(OPTIMIZATION),-O0)
 	OPTIMIZATION+=-fno-omit-frame-pointer
 endif
-DEPENDENCY_TARGETS=libvalkey linenoise hdr_histogram fpconv
+DEPENDENCY_TARGETS=libkv linenoise hdr_histogram fpconv
 NODEPS:=clean distclean
 
 # Default settings
@@ -77,7 +77,7 @@ ifeq ($(uname_S),Linux)
 	MALLOC=jemalloc
 endif
 
-# To get ARM stack traces if Valkey crashes we need a special C flag.
+# To get ARM stack traces if KV crashes we need a special C flag.
 ifneq (,$(filter aarch64 armv%,$(uname_M)))
         CFLAGS+=-funwind-tables
 endif
@@ -251,10 +251,10 @@ ifdef OPENSSL_PREFIX
 endif
 
 # Include paths to dependencies
-FINAL_CFLAGS+= -I../deps/libvalkey/include -I../deps/linenoise -I../deps/hdr_histogram -I../deps/fpconv
+FINAL_CFLAGS+= -I../deps/libkv/include -I../deps/linenoise -I../deps/hdr_histogram -I../deps/fpconv
 
 # Lua scripting engine module
-LUA_MODULE_NAME:=modules/lua/libvalkeylua.so
+LUA_MODULE_NAME:=modules/lua/libkvlua.so
 ifeq ($(BUILD_LUA),no)
 	LUA_MODULE=
 	LUA_MODULE_INSTALL=
@@ -263,7 +263,7 @@ else
 	LUA_MODULE_INSTALL=install-lua-module
 
 	current_dir = $(shell pwd)
-	FINAL_CFLAGS+=-DLUA_ENABLED -DLUA_LIB=libvalkeylua.so
+	FINAL_CFLAGS+=-DLUA_ENABLED -DLUA_LIB=libkvlua.so
 ifeq ($(uname_S),Darwin)
 	FINAL_LDFLAGS+= -Wl,-rpath,$(PREFIX)/lib
 	FINAL_LDFLAGS+= -Wl,-rpath,$(current_dir)/modules/lua
@@ -342,15 +342,15 @@ BUILD_MODULE:=2
 ifeq ($(BUILD_TLS),yes)
 	FINAL_CFLAGS+=-DUSE_OPENSSL=$(BUILD_YES) $(OPENSSL_CFLAGS) -DBUILD_TLS_MODULE=$(BUILD_NO)
 	FINAL_LDFLAGS+=$(OPENSSL_LDFLAGS)
-	FINAL_LIBS += ../deps/libvalkey/lib/libvalkey_tls.a $(LIBSSL_LIBS) $(LIBCRYPTO_LIBS)
+	FINAL_LIBS += ../deps/libkv/lib/libkv_tls.a $(LIBSSL_LIBS) $(LIBCRYPTO_LIBS)
 endif
 
 TLS_MODULE=
-TLS_MODULE_NAME:=valkey-tls$(PROG_SUFFIX).so
+TLS_MODULE_NAME:=kv-tls$(PROG_SUFFIX).so
 TLS_MODULE_CFLAGS:=$(FINAL_CFLAGS)
 ifeq ($(BUILD_TLS),module)
 	FINAL_CFLAGS+=-DUSE_OPENSSL=$(BUILD_MODULE) $(OPENSSL_CFLAGS)
-	TLS_CLIENT_LIBS = ../deps/libvalkey/lib/libvalkey_tls.a $(LIBSSL_LIBS) $(LIBCRYPTO_LIBS)
+	TLS_CLIENT_LIBS = ../deps/libkv/lib/libkv_tls.a $(LIBSSL_LIBS) $(LIBCRYPTO_LIBS)
 	TLS_MODULE=$(TLS_MODULE_NAME)
 	TLS_MODULE_CFLAGS+=-DUSE_OPENSSL=$(BUILD_MODULE) $(OPENSSL_CFLAGS) -DBUILD_TLS_MODULE=$(BUILD_MODULE)
 endif
@@ -365,15 +365,15 @@ endif
 
 ifeq ($(BUILD_RDMA),yes)
 	FINAL_CFLAGS+=-DUSE_RDMA=$(BUILD_YES) -DBUILD_RDMA_MODULE=$(BUILD_NO)
-	FINAL_LIBS += ../deps/libvalkey/lib/libvalkey_rdma.a $(RDMA_LIBS)
+	FINAL_LIBS += ../deps/libkv/lib/libkv_rdma.a $(RDMA_LIBS)
 endif
 
 RDMA_MODULE=
-RDMA_MODULE_NAME:=valkey-rdma$(PROG_SUFFIX).so
+RDMA_MODULE_NAME:=kv-rdma$(PROG_SUFFIX).so
 RDMA_MODULE_CFLAGS:=$(FINAL_CFLAGS)
 ifeq ($(BUILD_RDMA),module)
 	FINAL_CFLAGS+=-DUSE_RDMA=$(BUILD_MODULE)
-	RDMA_CLIENT_LIBS = ../deps/libvalkey/lib/libvalkey_rdma.a $(RDMA_LIBS)
+	RDMA_CLIENT_LIBS = ../deps/libkv/lib/libkv_rdma.a $(RDMA_LIBS)
 	RDMA_MODULE=$(RDMA_MODULE_NAME)
 	RDMA_MODULE_CFLAGS+=-DUSE_RDMA=$(BUILD_MODULE) -DBUILD_RDMA_MODULE=$(BUILD_MODULE) $(RDMA_LIBS)
 endif
@@ -401,7 +401,7 @@ else
 endif
 
 # Determine install/uninstall Redis symlinks for compatibility when
-# installing/uninstalling Valkey binaries (defaulting to `yes`)
+# installing/uninstalling KV binaries (defaulting to `yes`)
 USE_REDIS_SYMLINKS?=yes
 ifeq ($(USE_REDIS_SYMLINKS),yes)
 	MAYBE_INSTALL_REDIS_SYMLINK=$(INSTALL_REDIS_SYMLINK)
@@ -439,7 +439,7 @@ else
 	GEN_COMMANDS_FLAGS=
 endif
 
-ENGINE_NAME=valkey
+ENGINE_NAME=kv
 SERVER_NAME=$(ENGINE_NAME)-server$(PROG_SUFFIX)
 ENGINE_SENTINEL_NAME=$(ENGINE_NAME)-sentinel$(PROG_SUFFIX)
 ENGINE_TRACE_OBJ = \
@@ -553,8 +553,8 @@ ENGINE_SERVER_OBJ = \
     tracking.o \
     unix.o \
     util.o \
-    valkey-check-aof.o \
-    valkey-check-rdb.o \
+    kv-check-aof.o \
+    kv-check-rdb.o \
     vector.o \
     vset.o \
     ziplist.o \
@@ -582,7 +582,7 @@ ENGINE_CLI_OBJ = \
     siphash.o \
     strl.o \
     util.o \
-    valkey-cli.o \
+    kv-cli.o \
     zmalloc.o
 ENGINE_BENCHMARK_NAME=$(ENGINE_NAME)-benchmark$(PROG_SUFFIX)
 ENGINE_BENCHMARK_OBJ = \
@@ -606,7 +606,7 @@ ENGINE_BENCHMARK_OBJ = \
     siphash.o \
     strl.o \
     util.o \
-    valkey-benchmark.o \
+    kv-benchmark.o \
     zmalloc.o
 ENGINE_CHECK_RDB_NAME=$(ENGINE_NAME)-check-rdb$(PROG_SUFFIX)
 ENGINE_CHECK_AOF_NAME=$(ENGINE_NAME)-check-aof$(PROG_SUFFIX)
@@ -618,7 +618,7 @@ ALL_SOURCES=$(sort $(patsubst %.o,%.c,$(ENGINE_SERVER_OBJ) $(ENGINE_CLI_OBJ) $(E
 
 USE_FAST_FLOAT?=no
 ifeq ($(USE_FAST_FLOAT),yes)
-	# valkey_strtod.h uses this flag to switch valkey_strtod function to fast_float_strtod,
+	# kv_strtod.h uses this flag to switch kv_strtod function to fast_float_strtod,
 	# therefore let's pass it to compiler for preprocessing.
 	FINAL_CFLAGS += -D USE_FAST_FLOAT
 	# next, let's build and add actual library containing fast_float_strtod function for linking.
@@ -691,35 +691,35 @@ ifneq ($(strip $(PREV_FINAL_LDFLAGS)), $(strip $(FINAL_LDFLAGS)))
 .make-prerequisites: persist-settings
 endif
 
-# valkey-server
+# kv-server
 $(SERVER_NAME): $(ENGINE_SERVER_OBJ)
-	$(SERVER_LD) -o $@ $^ ../deps/libvalkey/lib/libvalkey.a ../deps/hdr_histogram/libhdrhistogram.a ../deps/fpconv/libfpconv.a $(FINAL_LIBS)
+	$(SERVER_LD) -o $@ $^ ../deps/libkv/lib/libkv.a ../deps/hdr_histogram/libhdrhistogram.a ../deps/fpconv/libfpconv.a $(FINAL_LIBS)
 
-# Valkey static library, used to compile against for unit testing
+# KV static library, used to compile against for unit testing
 $(ENGINE_LIB_NAME): $(ENGINE_SERVER_OBJ)
 	$(SERVER_AR) rcs $@ $^
 
-# valkey-unit-tests
+# kv-unit-tests
 $(ENGINE_UNIT_TESTS): $(ENGINE_TEST_OBJ) $(ENGINE_LIB_NAME)
-	$(SERVER_LD) -o $@ $^ ../deps/libvalkey/lib/libvalkey.a ../deps/hdr_histogram/libhdrhistogram.a ../deps/fpconv/libfpconv.a $(FINAL_LIBS)
+	$(SERVER_LD) -o $@ $^ ../deps/libkv/lib/libkv.a ../deps/hdr_histogram/libhdrhistogram.a ../deps/fpconv/libfpconv.a $(FINAL_LIBS)
 
-# valkey-sentinel
+# kv-sentinel
 $(ENGINE_SENTINEL_NAME): $(SERVER_NAME)
 	$(ENGINE_INSTALL) $(SERVER_NAME) $(ENGINE_SENTINEL_NAME)
 
-# valkey-check-rdb
+# kv-check-rdb
 $(ENGINE_CHECK_RDB_NAME): $(SERVER_NAME)
 	$(ENGINE_INSTALL) $(SERVER_NAME) $(ENGINE_CHECK_RDB_NAME)
 
-# valkey-check-aof
+# kv-check-aof
 $(ENGINE_CHECK_AOF_NAME): $(SERVER_NAME)
 	$(ENGINE_INSTALL) $(SERVER_NAME) $(ENGINE_CHECK_AOF_NAME)
 
-# valkey-tls.so
+# kv-tls.so
 $(TLS_MODULE_NAME): $(SERVER_NAME)
 	$(QUIET_CC)$(CC) -o $@ tls.c -shared -fPIC $(TLS_MODULE_CFLAGS) $(TLS_CLIENT_LIBS)
 
-# valkey-rdma.so
+# kv-rdma.so
 $(RDMA_MODULE_NAME): $(SERVER_NAME)
 	$(QUIET_CC)$(CC) -o $@ rdma.c -shared -fPIC $(RDMA_MODULE_CFLAGS)
 
@@ -727,13 +727,13 @@ $(RDMA_MODULE_NAME): $(SERVER_NAME)
 $(LUA_MODULE_NAME): $(SERVER_NAME)
 	cd modules/lua && $(MAKE) OPTIMIZATION="$(OPTIMIZATION)"
 
-# valkey-cli
+# kv-cli
 $(ENGINE_CLI_NAME): $(ENGINE_CLI_OBJ)
-	$(SERVER_LD) -o $@ $^ ../deps/libvalkey/lib/libvalkey.a ../deps/linenoise/linenoise.o ../deps/fpconv/libfpconv.a $(FINAL_LIBS) $(TLS_CLIENT_LIBS) $(RDMA_CLIENT_LIBS)
+	$(SERVER_LD) -o $@ $^ ../deps/libkv/lib/libkv.a ../deps/linenoise/linenoise.o ../deps/fpconv/libfpconv.a $(FINAL_LIBS) $(TLS_CLIENT_LIBS) $(RDMA_CLIENT_LIBS)
 
-# valkey-benchmark
+# kv-benchmark
 $(ENGINE_BENCHMARK_NAME): $(ENGINE_BENCHMARK_OBJ)
-	$(SERVER_LD) -o $@ $^ ../deps/libvalkey/lib/libvalkey.a ../deps/hdr_histogram/libhdrhistogram.a ../deps/fpconv/libfpconv.a $(FINAL_LIBS) $(TLS_CLIENT_LIBS) $(RDMA_CLIENT_LIBS)
+	$(SERVER_LD) -o $@ $^ ../deps/libkv/lib/libkv.a ../deps/hdr_histogram/libhdrhistogram.a ../deps/fpconv/libfpconv.a $(FINAL_LIBS) $(TLS_CLIENT_LIBS) $(RDMA_CLIENT_LIBS)
 
 DEP = $(ENGINE_SERVER_OBJ:%.o=%.d) $(ENGINE_CLI_OBJ:%.o=%.d) $(ENGINE_BENCHMARK_OBJ:%.o=%.d)
 -include $(DEP)
@@ -770,7 +770,7 @@ endif
 commands.c: $(COMMANDS_DEF_FILENAME).def
 
 clean:
-	rm -rf $(SERVER_NAME) $(ENGINE_SENTINEL_NAME) $(ENGINE_CLI_NAME) $(ENGINE_BENCHMARK_NAME) $(ENGINE_CHECK_RDB_NAME) $(ENGINE_CHECK_AOF_NAME) $(ENGINE_UNIT_TESTS) $(ENGINE_LIB_NAME) unit/*.o unit/*.d trace/*.o trace/*.d *.o *.gcda *.gcno *.gcov valkey.info lcov-html Makefile.dep *.so
+	rm -rf $(SERVER_NAME) $(ENGINE_SENTINEL_NAME) $(ENGINE_CLI_NAME) $(ENGINE_BENCHMARK_NAME) $(ENGINE_CHECK_RDB_NAME) $(ENGINE_CHECK_AOF_NAME) $(ENGINE_UNIT_TESTS) $(ENGINE_LIB_NAME) unit/*.o unit/*.d trace/*.o trace/*.d *.o *.gcda *.gcno *.gcov kv.info lcov-html Makefile.dep *.so
 	rm -f $(DEP)
 	-(cd modules/lua && $(MAKE) clean)
 
@@ -785,7 +785,7 @@ distclean: clean
 .PHONY: distclean
 
 test: $(ALL_BUILD_PREREQUISITES)
-	@(cd ..; VALKEY_PROG_SUFFIX="$(PROG_SUFFIX)" ./runtest)
+	@(cd ..; KV_PROG_SUFFIX="$(PROG_SUFFIX)" ./runtest)
 
 test-unit: $(ENGINE_UNIT_TESTS)
 	./$(ENGINE_UNIT_TESTS)
@@ -805,8 +805,8 @@ lcov:
 	@lcov --version
 	$(MAKE) gcov
 	@(set -e; cd ..; ./runtest)
-	@geninfo -o valkey.info .
-	@genhtml --legend -o lcov-html valkey.info
+	@geninfo -o kv.info .
+	@genhtml --legend -o lcov-html kv.info
 
 .PHONY: lcov
 

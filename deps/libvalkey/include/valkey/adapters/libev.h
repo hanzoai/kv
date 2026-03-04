@@ -28,46 +28,46 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef VALKEY_ADAPTERS_LIBEV_H
-#define VALKEY_ADAPTERS_LIBEV_H
+#ifndef KV_ADAPTERS_LIBEV_H
+#define KV_ADAPTERS_LIBEV_H
 #include "../async.h"
 #include "../cluster.h"
-#include "../valkey.h"
+#include "../kv.h"
 
 #include <ev.h>
 #include <stdlib.h>
 #include <sys/types.h>
 
-typedef struct valkeyLibevEvents {
-    valkeyAsyncContext *context;
+typedef struct kvLibevEvents {
+    kvAsyncContext *context;
     struct ev_loop *loop;
     int reading, writing;
     ev_io rev, wev;
     ev_timer timer;
-} valkeyLibevEvents;
+} kvLibevEvents;
 
-static void valkeyLibevReadEvent(EV_P_ ev_io *watcher, int revents) {
+static void kvLibevReadEvent(EV_P_ ev_io *watcher, int revents) {
 #if EV_MULTIPLICITY
     ((void)EV_A);
 #endif
     ((void)revents);
 
-    valkeyLibevEvents *e = (valkeyLibevEvents *)watcher->data;
-    valkeyAsyncHandleRead(e->context);
+    kvLibevEvents *e = (kvLibevEvents *)watcher->data;
+    kvAsyncHandleRead(e->context);
 }
 
-static void valkeyLibevWriteEvent(EV_P_ ev_io *watcher, int revents) {
+static void kvLibevWriteEvent(EV_P_ ev_io *watcher, int revents) {
 #if EV_MULTIPLICITY
     ((void)EV_A);
 #endif
     ((void)revents);
 
-    valkeyLibevEvents *e = (valkeyLibevEvents *)watcher->data;
-    valkeyAsyncHandleWrite(e->context);
+    kvLibevEvents *e = (kvLibevEvents *)watcher->data;
+    kvAsyncHandleWrite(e->context);
 }
 
-static void valkeyLibevAddRead(void *privdata) {
-    valkeyLibevEvents *e = (valkeyLibevEvents *)privdata;
+static void kvLibevAddRead(void *privdata) {
+    kvLibevEvents *e = (kvLibevEvents *)privdata;
 #if EV_MULTIPLICITY
     struct ev_loop *loop = e->loop;
 #endif
@@ -77,8 +77,8 @@ static void valkeyLibevAddRead(void *privdata) {
     }
 }
 
-static void valkeyLibevDelRead(void *privdata) {
-    valkeyLibevEvents *e = (valkeyLibevEvents *)privdata;
+static void kvLibevDelRead(void *privdata) {
+    kvLibevEvents *e = (kvLibevEvents *)privdata;
 #if EV_MULTIPLICITY
     struct ev_loop *loop = e->loop;
 #endif
@@ -88,8 +88,8 @@ static void valkeyLibevDelRead(void *privdata) {
     }
 }
 
-static void valkeyLibevAddWrite(void *privdata) {
-    valkeyLibevEvents *e = (valkeyLibevEvents *)privdata;
+static void kvLibevAddWrite(void *privdata) {
+    kvLibevEvents *e = (kvLibevEvents *)privdata;
 #if EV_MULTIPLICITY
     struct ev_loop *loop = e->loop;
 #endif
@@ -99,8 +99,8 @@ static void valkeyLibevAddWrite(void *privdata) {
     }
 }
 
-static void valkeyLibevDelWrite(void *privdata) {
-    valkeyLibevEvents *e = (valkeyLibevEvents *)privdata;
+static void kvLibevDelWrite(void *privdata) {
+    kvLibevEvents *e = (kvLibevEvents *)privdata;
 #if EV_MULTIPLICITY
     struct ev_loop *loop = e->loop;
 #endif
@@ -110,39 +110,39 @@ static void valkeyLibevDelWrite(void *privdata) {
     }
 }
 
-static void valkeyLibevStopTimer(void *privdata) {
-    valkeyLibevEvents *e = (valkeyLibevEvents *)privdata;
+static void kvLibevStopTimer(void *privdata) {
+    kvLibevEvents *e = (kvLibevEvents *)privdata;
 #if EV_MULTIPLICITY
     struct ev_loop *loop = e->loop;
 #endif
     ev_timer_stop(EV_A_ & e->timer);
 }
 
-static void valkeyLibevCleanup(void *privdata) {
-    valkeyLibevEvents *e = (valkeyLibevEvents *)privdata;
-    valkeyLibevDelRead(privdata);
-    valkeyLibevDelWrite(privdata);
-    valkeyLibevStopTimer(privdata);
+static void kvLibevCleanup(void *privdata) {
+    kvLibevEvents *e = (kvLibevEvents *)privdata;
+    kvLibevDelRead(privdata);
+    kvLibevDelWrite(privdata);
+    kvLibevStopTimer(privdata);
     vk_free(e);
 }
 
-static void valkeyLibevTimeout(EV_P_ ev_timer *timer, int revents) {
+static void kvLibevTimeout(EV_P_ ev_timer *timer, int revents) {
 #if EV_MULTIPLICITY
     ((void)EV_A);
 #endif
     ((void)revents);
-    valkeyLibevEvents *e = (valkeyLibevEvents *)timer->data;
-    valkeyAsyncHandleTimeout(e->context);
+    kvLibevEvents *e = (kvLibevEvents *)timer->data;
+    kvAsyncHandleTimeout(e->context);
 }
 
-static void valkeyLibevSetTimeout(void *privdata, struct timeval tv) {
-    valkeyLibevEvents *e = (valkeyLibevEvents *)privdata;
+static void kvLibevSetTimeout(void *privdata, struct timeval tv) {
+    kvLibevEvents *e = (kvLibevEvents *)privdata;
 #if EV_MULTIPLICITY
     struct ev_loop *loop = e->loop;
 #endif
 
     if (!ev_is_active(&e->timer)) {
-        ev_init(&e->timer, valkeyLibevTimeout);
+        ev_init(&e->timer, kvLibevTimeout);
         e->timer.data = e;
     }
 
@@ -150,18 +150,18 @@ static void valkeyLibevSetTimeout(void *privdata, struct timeval tv) {
     ev_timer_again(EV_A_ & e->timer);
 }
 
-static int valkeyLibevAttach(EV_P_ valkeyAsyncContext *ac) {
-    valkeyContext *c = &(ac->c);
-    valkeyLibevEvents *e;
+static int kvLibevAttach(EV_P_ kvAsyncContext *ac) {
+    kvContext *c = &(ac->c);
+    kvLibevEvents *e;
 
     /* Nothing should be attached when something is already attached */
     if (ac->ev.data != NULL)
-        return VALKEY_ERR;
+        return KV_ERR;
 
     /* Create container for context and r/w events */
-    e = (valkeyLibevEvents *)vk_calloc(1, sizeof(*e));
+    e = (kvLibevEvents *)vk_calloc(1, sizeof(*e));
     if (e == NULL)
-        return VALKEY_ERR;
+        return KV_ERR;
 
     e->context = ac;
 #if EV_MULTIPLICITY
@@ -173,35 +173,35 @@ static int valkeyLibevAttach(EV_P_ valkeyAsyncContext *ac) {
     e->wev.data = e;
 
     /* Register functions to start/stop listening for events */
-    ac->ev.addRead = valkeyLibevAddRead;
-    ac->ev.delRead = valkeyLibevDelRead;
-    ac->ev.addWrite = valkeyLibevAddWrite;
-    ac->ev.delWrite = valkeyLibevDelWrite;
-    ac->ev.cleanup = valkeyLibevCleanup;
-    ac->ev.scheduleTimer = valkeyLibevSetTimeout;
+    ac->ev.addRead = kvLibevAddRead;
+    ac->ev.delRead = kvLibevDelRead;
+    ac->ev.addWrite = kvLibevAddWrite;
+    ac->ev.delWrite = kvLibevDelWrite;
+    ac->ev.cleanup = kvLibevCleanup;
+    ac->ev.scheduleTimer = kvLibevSetTimeout;
     ac->ev.data = e;
 
     /* Initialize read/write events */
-    ev_io_init(&e->rev, valkeyLibevReadEvent, c->fd, EV_READ);
-    ev_io_init(&e->wev, valkeyLibevWriteEvent, c->fd, EV_WRITE);
-    return VALKEY_OK;
+    ev_io_init(&e->rev, kvLibevReadEvent, c->fd, EV_READ);
+    ev_io_init(&e->wev, kvLibevWriteEvent, c->fd, EV_WRITE);
+    return KV_OK;
 }
 
 /* Internal adapter function with correct function signature. */
-static int valkeyLibevAttachAdapter(valkeyAsyncContext *ac, void *loop) {
-    return valkeyLibevAttach((struct ev_loop *)loop, ac);
+static int kvLibevAttachAdapter(kvAsyncContext *ac, void *loop) {
+    return kvLibevAttach((struct ev_loop *)loop, ac);
 }
 
-VALKEY_UNUSED
-static int valkeyClusterOptionsUseLibev(valkeyClusterOptions *options,
+KV_UNUSED
+static int kvClusterOptionsUseLibev(kvClusterOptions *options,
                                         struct ev_loop *loop) {
     if (options == NULL || loop == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    options->attach_fn = valkeyLibevAttachAdapter;
+    options->attach_fn = kvLibevAttachAdapter;
     options->attach_data = loop;
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-#endif /* VALKEY_ADAPTERS_LIBEV_H */
+#endif /* KV_ADAPTERS_LIBEV_H */
