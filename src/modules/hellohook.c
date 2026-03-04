@@ -30,35 +30,35 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "../valkeymodule.h"
+#include "../kvmodule.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
 
 /* Client state change callback. */
-void clientChangeCallback(ValkeyModuleCtx *ctx, ValkeyModuleEvent e, uint64_t sub, void *data) {
-    VALKEYMODULE_NOT_USED(ctx);
-    VALKEYMODULE_NOT_USED(e);
+void clientChangeCallback(KVModuleCtx *ctx, KVModuleEvent e, uint64_t sub, void *data) {
+    KVMODULE_NOT_USED(ctx);
+    KVMODULE_NOT_USED(e);
 
-    ValkeyModuleClientInfo *ci = data;
+    KVModuleClientInfo *ci = data;
     printf("Client %s event for client #%llu %s:%d\n",
-           (sub == VALKEYMODULE_SUBEVENT_CLIENT_CHANGE_CONNECTED) ? "connection" : "disconnection",
+           (sub == KVMODULE_SUBEVENT_CLIENT_CHANGE_CONNECTED) ? "connection" : "disconnection",
            (unsigned long long)ci->id, ci->addr, ci->port);
 }
 
-void flushdbCallback(ValkeyModuleCtx *ctx, ValkeyModuleEvent e, uint64_t sub, void *data) {
-    VALKEYMODULE_NOT_USED(ctx);
-    VALKEYMODULE_NOT_USED(e);
+void flushdbCallback(KVModuleCtx *ctx, KVModuleEvent e, uint64_t sub, void *data) {
+    KVMODULE_NOT_USED(ctx);
+    KVMODULE_NOT_USED(e);
 
-    ValkeyModuleFlushInfo *fi = data;
-    if (sub == VALKEYMODULE_SUBEVENT_FLUSHDB_START) {
+    KVModuleFlushInfo *fi = data;
+    if (sub == KVMODULE_SUBEVENT_FLUSHDB_START) {
         if (fi->dbnum != -1) {
-            ValkeyModuleCallReply *reply;
-            reply = ValkeyModule_Call(ctx, "DBSIZE", "");
-            long long numkeys = ValkeyModule_CallReplyInteger(reply);
+            KVModuleCallReply *reply;
+            reply = KVModule_Call(ctx, "DBSIZE", "");
+            long long numkeys = KVModule_CallReplyInteger(reply);
             printf("FLUSHDB event of database %d started (%lld keys in DB)\n", fi->dbnum, numkeys);
-            ValkeyModule_FreeCallReply(reply);
+            KVModule_FreeCallReply(reply);
         } else {
             printf("FLUSHALL event started\n");
         }
@@ -71,25 +71,25 @@ void flushdbCallback(ValkeyModuleCtx *ctx, ValkeyModuleEvent e, uint64_t sub, vo
     }
 }
 
-void authenticationAttemptCallback(ValkeyModuleCtx *ctx, ValkeyModuleEvent e, uint64_t sub, void *data) {
-    VALKEYMODULE_NOT_USED(ctx);
-    VALKEYMODULE_NOT_USED(e);
+void authenticationAttemptCallback(KVModuleCtx *ctx, KVModuleEvent e, uint64_t sub, void *data) {
+    KVMODULE_NOT_USED(ctx);
+    KVMODULE_NOT_USED(e);
 
-    ValkeyModuleAuthenticationInfo *ai = data;
+    KVModuleAuthenticationInfo *ai = data;
     printf("Authentication attempt for client #%llu with username=%s module=%s success=%d\n",
-           (unsigned long long)ai->client_id, ai->username, ai->module_name, ai->result == VALKEYMODULE_AUTH_RESULT_GRANTED);
+           (unsigned long long)ai->client_id, ai->username, ai->module_name, ai->result == KVMODULE_AUTH_RESULT_GRANTED);
 }
 
 /* This function must be present on each module. It is used in order to
  * register the commands into the server. */
-int ValkeyModule_OnLoad(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
-    VALKEYMODULE_NOT_USED(argv);
-    VALKEYMODULE_NOT_USED(argc);
+int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+    KVMODULE_NOT_USED(argv);
+    KVMODULE_NOT_USED(argc);
 
-    if (ValkeyModule_Init(ctx, "hellohook", 1, VALKEYMODULE_APIVER_1) == VALKEYMODULE_ERR) return VALKEYMODULE_ERR;
+    if (KVModule_Init(ctx, "hellohook", 1, KVMODULE_APIVER_1) == KVMODULE_ERR) return KVMODULE_ERR;
 
-    ValkeyModule_SubscribeToServerEvent(ctx, ValkeyModuleEvent_ClientChange, clientChangeCallback);
-    ValkeyModule_SubscribeToServerEvent(ctx, ValkeyModuleEvent_FlushDB, flushdbCallback);
-    ValkeyModule_SubscribeToServerEvent(ctx, ValkeyModuleEvent_AuthenticationAttempt, authenticationAttemptCallback);
-    return VALKEYMODULE_OK;
+    KVModule_SubscribeToServerEvent(ctx, KVModuleEvent_ClientChange, clientChangeCallback);
+    KVModule_SubscribeToServerEvent(ctx, KVModuleEvent_FlushDB, flushdbCallback);
+    KVModule_SubscribeToServerEvent(ctx, KVModuleEvent_AuthenticationAttempt, authenticationAttemptCallback);
+    return KVMODULE_OK;
 }

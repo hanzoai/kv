@@ -398,7 +398,7 @@ proc wait_server_started {executable config_file stdout stderr pid} {
         # Configuration errors are unexpected, but it's helpful to fail fast
         # to give the feedback to the test runner.
         if {[regexp {FATAL CONFIG FILE ERROR} [exec cat $stderr]]} {
-            start_server_error $executable $config_file "Configuration issue prevented Valkey startup"
+            start_server_error $executable $config_file "Configuration issue prevented KV startup"
             break
         }
     }
@@ -420,7 +420,7 @@ proc run_external_server_test {code overrides} {
     set srv {}
     dict set srv "host" $::host
     dict set srv "port" $::port
-    set client [valkey $::host $::port 0 $::tls]
+    set client [kv $::host $::port 0 $::tls]
     dict set srv "client" $client
     if {!$::singledb} {
         $client select 9
@@ -565,7 +565,7 @@ proc start_server {options {code undefined}} {
     if {$start_other_server} {
         set executable $::other_server_path
     } else {
-        set executable $::VALKEY_SERVER_BIN
+        set executable $::KV_SERVER_BIN
     }
     if {![file executable $executable]} {
         error "Server executable file not found or not executable: $executable"
@@ -575,13 +575,13 @@ proc start_server {options {code undefined}} {
     set config {}
     if {$::tls} {
         if {$::tls_module} {
-            lappend config_lines [list "loadmodule" $::VALKEY_TLS_MODULE]
+            lappend config_lines [list "loadmodule" $::KV_TLS_MODULE]
         }
         dict set config "tls-cert-file" [format "%s/tests/tls/server.crt" [pwd]]
         dict set config "tls-key-file" [format "%s/tests/tls/server.key" [pwd]]
         dict set config "tls-client-cert-file" [format "%s/tests/tls/client.crt" [pwd]]
         dict set config "tls-client-key-file" [format "%s/tests/tls/client.key" [pwd]]
-        dict set config "tls-dh-params-file" [format "%s/tests/tls/valkey.dh" [pwd]]
+        dict set config "tls-dh-params-file" [format "%s/tests/tls/kv.dh" [pwd]]
         dict set config "tls-ca-cert-file" [format "%s/tests/tls/ca.crt" [pwd]]
         dict set config "loglevel" "debug"
     }
@@ -638,7 +638,7 @@ proc start_server {options {code undefined}} {
     }
 
     # write new configuration to temporary file
-    set config_file [tmpfile valkey.conf]
+    set config_file [tmpfile kv.conf]
     create_server_config_file $config_file $config $config_lines
 
     set stdout [format "%s/%s" [dict get $config "dir"] "stdout"]

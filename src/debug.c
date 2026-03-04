@@ -47,7 +47,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-#include "valkey_strtod.h"
+#include "kv_strtod.h"
 
 #ifdef HAVE_BACKTRACE
 #include <execinfo.h>
@@ -267,7 +267,7 @@ void xorObjectDigest(serverDb *db, robj *keyobj, unsigned char *digest, robj *o)
         }
         streamIteratorStop(&si);
     } else if (o->type == OBJ_MODULE) {
-        ValkeyModuleDigest md = {{0}, {0}, keyobj, db->id};
+        KVModuleDigest md = {{0}, {0}, keyobj, db->id};
         moduleValue *mv = objectGetVal(o);
         moduleType *mt = mv->type;
         moduleInitDigestContext(&md);
@@ -878,7 +878,7 @@ void debugCommand(client *c) {
                              "string|integer|double|bignum|null|array|set|map|attrib|push|verbatim|true|false");
         }
     } else if (!strcasecmp(objectGetVal(c->argv[1]), "sleep") && c->argc == 3) {
-        double dtime = valkey_strtod(objectGetVal(c->argv[2]), NULL);
+        double dtime = kv_strtod(objectGetVal(c->argv[2]), NULL);
         long long utime = dtime * 1000000;
         struct timespec tv;
 
@@ -1207,7 +1207,7 @@ int bugReportStart(void) {
     pthread_mutex_lock(&bug_report_start_mutex);
     if (bug_report_start == 0) {
         serverLog(LL_WARNING | LL_RAW, "\n\n=== %s BUG REPORT START: Cut & paste starting from here ===\n",
-                  server.extended_redis_compat ? "REDIS" : "VALKEY");
+                  server.extended_redis_compat ? "REDIS" : "KV");
         bug_report_start = 1;
         pthread_mutex_unlock(&bug_report_start_mutex);
         return 1;
@@ -1314,7 +1314,7 @@ static void *getAndSetMcontextEip(ucontext_t *uc, void *eip) {
 #undef NOT_SUPPORTED
 }
 
-VALKEY_NO_SANITIZE("address")
+KV_NO_SANITIZE("address")
 void logStackContent(void **sp) {
     if (server.hide_user_data_from_log) {
         serverLog(LL_NOTICE, "hide-user-data-from-log is on, skip logging stack content to avoid spilling user data.");
@@ -1992,7 +1992,7 @@ void logServerInfo(void) {
     robj *argv[1];
     argv[0] = createStringObject("all", strlen("all"));
     dict *section_dict = genInfoSectionDict(argv, 1, NULL, &all, &everything);
-    infostring = genValkeyInfoString(section_dict, all, everything);
+    infostring = genKVInfoString(section_dict, all, everything);
     if (server.cluster_enabled) {
         infostring = genClusterDebugString(infostring);
     }
@@ -2246,7 +2246,7 @@ __attribute__((noinline)) static void sigsegvHandler(int sig, siginfo_t *info, v
     }
 
     bugReportStart();
-    serverLog(LL_WARNING, SERVER_NAME " %s crashed by signal: %d, si_code: %d", VALKEY_VERSION, sig, info->si_code);
+    serverLog(LL_WARNING, SERVER_NAME " %s crashed by signal: %d, si_code: %d", KV_VERSION, sig, info->si_code);
     if (sig == SIGSEGV || sig == SIGBUS) {
         serverLog(LL_WARNING, "Accessing address: %p", (void *)info->si_addr);
     }
@@ -2374,11 +2374,11 @@ void bugReportEnd(int killViaSignal, int sig) {
     serverLogFromHandler(LL_WARNING | LL_RAW,
                          "\n=== %s BUG REPORT END. Make sure to include from START to END. ===\n\n"
                          "       Please report the crash by opening an issue on github:\n\n"
-                         "           https://github.com/valkey-io/valkey/issues\n\n"
+                         "           https://github.com/kv-io/kv/issues\n\n"
                          "  If a module was involved, please open in the module's repo instead.\n\n"
-                         "  Suspect RAM error? Use valkey-server --test-memory to verify it.\n\n"
-                         "  Some other issues could be detected by valkey-server --check-system\n",
-                         server.extended_redis_compat ? "REDIS" : "VALKEY");
+                         "  Suspect RAM error? Use kv-server --test-memory to verify it.\n\n"
+                         "  Some other issues could be detected by kv-server --check-system\n",
+                         server.extended_redis_compat ? "REDIS" : "KV");
 
     /* free(messages); Don't call free() with possibly corrupted memory. */
     if (server.daemonize && server.supervised == 0 && server.pidfile) unlink(server.pidfile);

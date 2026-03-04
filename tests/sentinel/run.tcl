@@ -22,7 +22,7 @@ proc main {} {
         "enable-debug-command yes"
     } "../tests/includes/sentinel.conf"
 
-    spawn_instance valkey $::valkey_base_port $::instances_count {
+    spawn_instance kv $::kv_base_port $::instances_count {
         "enable-protected-configs yes"
         "enable-debug-command yes"
         "save ''"

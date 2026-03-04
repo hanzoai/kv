@@ -29,8 +29,8 @@
  */
 
 
-#ifndef VALKEY_RIO_H
-#define VALKEY_RIO_H
+#ifndef KV_RIO_H
+#define KV_RIO_H
 
 #include <stdio.h>
 #include <stdint.h>

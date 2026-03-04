@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -7,7 +7,7 @@
 /* A space/time efficient First-In, First-Out queue of pointers.
  *
  * Implemented with an unrolled single-linked list, the implementation packs multiple pointers into
- * a single block.  This increases space efficiency and cache locality over the Valkey `list` for the
+ * a single block.  This increases space efficiency and cache locality over the KV `list` for the
  * purpose of a simple fifo.
  *
  * IMPORTANT: NULL fifo are NOT supported by these APIs.

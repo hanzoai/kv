@@ -11,8 +11,8 @@ typedef struct luaEngineCtx {
     char *redis_version;
     uint32_t redis_version_num;
     char *server_name;
-    char *valkey_version;
-    uint32_t valkey_version_num;
+    char *kv_version;
+    uint32_t kv_version_num;
 
     int lua_enable_insecure_api;
 } luaEngineCtx;

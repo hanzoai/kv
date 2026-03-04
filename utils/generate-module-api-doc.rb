@@ -13,13 +13,13 @@ def markdown(s)
     newlines = []
     # Fix some markdown
     lines.each{|l|
-        # Rewrite VM_Xyz() to ValkeyModule_Xyz().
-        l = l.gsub(/(?<![A-Z_])VM_(?=[A-Z])/, 'ValkeyModule_')
+        # Rewrite VM_Xyz() to KVModule_Xyz().
+        l = l.gsub(/(?<![A-Z_])VM_(?=[A-Z])/, 'KVModule_')
         # Fix more markdown, except in code blocks indented by 4 spaces, which we
         # don't want to mess with.
         if not l.start_with?('    ')
-            # Add backquotes around ValkeyModule functions and type where missing.
-            l = l.gsub(/(?<!`)ValkeyModule[A-z]+(?:\*?\(\))?/){|x| "`#{x}`"}
+            # Add backquotes around KVModule functions and type where missing.
+            l = l.gsub(/(?<!`)KVModule[A-z]+(?:\*?\(\))?/){|x| "`#{x}`"}
             # Add backquotes around c functions like malloc() where missing.
             l = l.gsub(/(?<![`A-z.])[a-z_]+\(\)/, '`\0`')
             # Add backquotes around macro and var names containing underscores.
@@ -31,7 +31,7 @@ def markdown(s)
             l = l.gsub(/ -- /, ' – ')
         end
         # Link function names to their definition within the page
-        l = l.gsub(/`(ValkeyModule_[A-z0-9]+)[()]*`/) {|x|
+        l = l.gsub(/`(KVModule_[A-z0-9]+)[()]*`/) {|x|
             $index[$1] ? "[#{x}](\##{$1})" : x
         }
         newlines << l
@@ -122,7 +122,7 @@ end
 def docufy(src,i)
     m = /VM_[A-z0-9]+/.match(src[i])
     shortname = m[0].sub("VM_","")
-    name = "ValkeyModule_" ++ shortname
+    name = "KVModule_" ++ shortname
     
     # Build the complete function prototype by reading until we find the opening brace
     proto_lines = []
@@ -146,8 +146,8 @@ def docufy(src,i)
     # Remove extra whitespace and normalize
     proto = proto.gsub(/\s+/, " ").strip
     
-    # Replace VM_ with ValkeyModule_
-    proto = proto.sub("VM_","ValkeyModule_")
+    # Replace VM_ with KVModule_
+    proto = proto.sub("VM_","KVModule_")
     
     # Add semicolon if not present
     proto += ";" unless proto.end_with?(";")
@@ -221,7 +221,7 @@ puts "---\n"
 puts "title: \"Modules API reference\"\n"
 puts "linkTitle: \"API reference\"\n"
 puts "description: >\n"
-puts "    Reference for the Valkey Modules API\n"
+puts "    Reference for the KV Modules API\n"
 puts "---\n"
 puts "\n"
 puts "<!-- This file is generated from module.c using\n"
@@ -233,7 +233,7 @@ $index = {}
 src.each_with_index do |line,i|
     if is_func_line(src, i)
         line =~ /VM_([A-z0-9]+)/
-        name = "ValkeyModule_#{$1}"
+        name = "KVModule_#{$1}"
         $index[name] = true
     end
 end

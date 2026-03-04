@@ -617,11 +617,11 @@ int redis_check_rdb(char *rdbfilename, FILE *fp) {
     rdb.update_cksum = rdbLoadProgressCallback;
     if (rioRead(&rdb, buf, 9) == 0) goto eoferr;
     buf[9] = '\0';
-    bool is_valkey_magic = false, is_redis_magic = false;
+    bool is_kv_magic = false, is_redis_magic = false;
     if (memcmp(buf, "REDIS0", 6) == 0) {
         is_redis_magic = true;
-    } else if (memcmp(buf, "VALKEY", 6) == 0) {
-        is_valkey_magic = true;
+    } else if (memcmp(buf, "KV", 6) == 0) {
+        is_kv_magic = true;
     } else {
         rdbCheckError("Wrong signature trying to load DB from file");
         goto err;
@@ -629,7 +629,7 @@ int redis_check_rdb(char *rdbfilename, FILE *fp) {
     rdbver = atoi(buf + 6);
     if (rdbver < 1 ||
         (rdbver < RDB_FOREIGN_VERSION_MIN && !is_redis_magic) ||
-        (rdbver > RDB_FOREIGN_VERSION_MAX && !is_valkey_magic)) {
+        (rdbver > RDB_FOREIGN_VERSION_MAX && !is_kv_magic)) {
         rdbCheckError("Can't handle RDB format version %d", rdbver);
         goto err;
     } else if (rdbver > RDB_VERSION) {
@@ -854,7 +854,7 @@ void parseCheckRdbOptions(int argc, char **argv, FILE *fp) {
         lastarg = (i == (argc - 1));
         if (!strcmp(argv[1], "-v") || !strcmp(argv[1], "--version")) {
             sds version = getVersion();
-            printf("valkey-check-rdb %s\n", version);
+            printf("kv-check-rdb %s\n", version);
             sdsfree(version);
             exit(0);
         } else if (!strcmp(argv[i], "--stats")) {
@@ -889,7 +889,7 @@ checkRdbUsage:
 }
 
 /* RDB check main: called form server.c when the server is executed with the
- * valkey-check-rdb alias, on during RDB loading errors.
+ * kv-check-rdb alias, on during RDB loading errors.
  *
  * The function works in two ways: can be called with argc/argv as a
  * standalone executable, or called with a non NULL 'fp' argument if we

@@ -26,6 +26,7 @@
 - **Streams** -- append-only log data structure for event sourcing
 - **Cluster mode** -- horizontal scaling with automatic sharding
 - **Modules** -- extensible plugin system for custom data structures
+- **ZAP native** -- built-in [ZAP binary protocol](https://github.com/luxfi/zap) on port 9653 (17x faster than JSON-RPC)
 - **Multi-arch** -- linux/amd64 and linux/arm64
 
 ## Quick Start
@@ -81,6 +82,46 @@ Or set options via command line:
 
 ```bash
 kv-server --port 6379 --maxmemory 256mb --appendonly yes
+```
+
+## ZAP Binary Protocol
+
+Hanzo KV speaks [ZAP](https://github.com/luxfi/zap) natively on port **9653** — no sidecar needed.
+
+ZAP is a zero-copy binary protocol that's 17x faster than JSON-RPC with 11x less memory usage.
+
+### Enable ZAP
+
+ZAP is enabled by default. Load the module:
+
+```bash
+kv-server --loadmodule /path/to/zap.so
+# or with custom port:
+kv-server --loadmodule /path/to/zap.so PORT 9653
+```
+
+### ZAP Operations
+
+| Path | Body | Description |
+|------|------|-------------|
+| `/get` | `{"key":"mykey"}` | GET a key |
+| `/set` | `{"key":"mykey","value":"myval"}` | SET a key |
+| `/del` | `{"key":"mykey"}` | DEL a key |
+| `/cmd` | `{"cmd":"PING","args":[]}` | Execute any command |
+
+### Module API
+
+Develop custom modules using the KV Module API:
+
+```c
+#include "kvmodule.h"
+
+int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+    if (KVModule_Init(ctx, "mymod", 1, KVMODULE_APIVER_1) == KVMODULE_ERR)
+        return KVMODULE_ERR;
+    // register commands...
+    return KVMODULE_OK;
+}
 ```
 
 ## Client SDKs

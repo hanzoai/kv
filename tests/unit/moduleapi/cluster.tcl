@@ -54,7 +54,7 @@ start_cluster 3 0 [list config_lines $modules] {
 
     test "Run blocking command (blocked on key) on cluster node3" {
         # key9184688 is mapped to slot 10923 (first slot of node 3)
-        set node3_rd [valkey_deferring_client -2]
+        set node3_rd [kv_deferring_client -2]
         $node3_rd fsl.bpop key9184688 0
         $node3_rd flush
         wait_for_condition 50 100 {
@@ -65,7 +65,7 @@ start_cluster 3 0 [list config_lines $modules] {
     }
 
     test "Run blocking command (no keys) on cluster node2" {
-        set node2_rd [valkey_deferring_client -1]
+        set node2_rd [kv_deferring_client -1]
         $node2_rd block.block 0
         $node2_rd flush
 
@@ -78,7 +78,7 @@ start_cluster 3 0 [list config_lines $modules] {
 
 
     test "Perform a Resharding" {
-        exec $::VALKEY_CLI_BIN --cluster-yes --cluster reshard 127.0.0.1:[srv -2 port] \
+        exec $::KV_CLI_BIN --cluster-yes --cluster reshard 127.0.0.1:[srv -2 port] \
                            --cluster-to [$node1 cluster myid] \
                            --cluster-from [$node3 cluster myid] \
                            --cluster-slots 1
@@ -104,9 +104,9 @@ start_cluster 3 0 [list config_lines $modules] {
 
     test "Wait for cluster to be stable" {
         wait_for_condition 1000 50 {
-            [catch {exec $::VALKEY_CLI_BIN --cluster check 127.0.0.1:[srv 0 port]}] == 0 &&
-            [catch {exec $::VALKEY_CLI_BIN --cluster check 127.0.0.1:[srv -1 port]}] == 0 &&
-            [catch {exec $::VALKEY_CLI_BIN --cluster check 127.0.0.1:[srv -2 port]}] == 0 &&
+            [catch {exec $::KV_CLI_BIN --cluster check 127.0.0.1:[srv 0 port]}] == 0 &&
+            [catch {exec $::KV_CLI_BIN --cluster check 127.0.0.1:[srv -1 port]}] == 0 &&
+            [catch {exec $::KV_CLI_BIN --cluster check 127.0.0.1:[srv -2 port]}] == 0 &&
             [CI 0 cluster_state] eq {ok} &&
             [CI 1 cluster_state] eq {ok} &&
             [CI 2 cluster_state] eq {ok}
@@ -118,7 +118,7 @@ start_cluster 3 0 [list config_lines $modules] {
     test "Sanity test push cmd after resharding" {
         assert_error {*MOVED*} {$node3 fsl.push key9184688 1}
 
-        set node1_rd [valkey_deferring_client 0]
+        set node1_rd [kv_deferring_client 0]
         $node1_rd fsl.bpop key9184688 0
         $node1_rd flush
 
@@ -141,7 +141,7 @@ start_cluster 3 0 [list config_lines $modules] {
     test "Run blocking command (blocked on key) again on cluster node1" {
         $node1 del key9184688
         # key9184688 is mapped to slot 10923 which has been moved to node1
-        set node1_rd [valkey_deferring_client 0]
+        set node1_rd [kv_deferring_client 0]
         $node1_rd fsl.bpop key9184688 0
         $node1_rd flush
 
@@ -153,7 +153,7 @@ start_cluster 3 0 [list config_lines $modules] {
     }
 
     test "Run blocking command (no keys) again on cluster node2" {
-        set node2_rd [valkey_deferring_client -1]
+        set node2_rd [kv_deferring_client -1]
 
         $node2_rd block.block 0
         $node2_rd flush

@@ -52,8 +52,8 @@ KiB
 libc
 libev
 libevent
-libvalkey
-Libvalkey
+libkv
+Libkv
 localhost
 Lua
 michael
@@ -99,7 +99,7 @@ txt
 unparsed
 UNSPEC
 URI
-valkey
-Valkey
-VALKEY
+kv
+KV
+KV
 variadic

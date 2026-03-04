@@ -22,19 +22,19 @@ def prepare_ib():
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
     if p.wait():
         outs, _ = p.communicate()
-        print("Valkey Over RDMA probe modules of IB [FAILED]")
+        print("KV Over RDMA probe modules of IB [FAILED]")
         print("---------------\n" + outs.decode() + "---------------\n")
         os._exit(1);
 
-    print("Valkey Over RDMA probe modules of IB [OK]")
+    print("KV Over RDMA probe modules of IB [OK]")
 
 
 def prepare_rxe(interface):
     # is there any builtin rdma_rxe.ko?
     p = subprocess.Popen("modprobe rdma_rxe 2> /dev/null", shell=True, stdout=subprocess.PIPE)
     if p.wait():
-        valkeydir = os.path.dirname(os.path.abspath(__file__)) + "/../.."
-        rxedir = valkeydir + "/tests/rdma/rxe"
+        kvdir = os.path.dirname(os.path.abspath(__file__)) + "/../.."
+        rxedir = kvdir + "/tests/rdma/rxe"
         rxekmod = rxedir + "/rdma_rxe.ko"
         print(rxedir)
         print(rxekmod)
@@ -52,18 +52,18 @@ def prepare_rxe(interface):
         if p.wait():
             os._exit(1);
 
-    print("Valkey Over RDMA install RXE [OK]")
+    print("KV Over RDMA install RXE [OK]")
 
     softrdma = "rxe_" + interface
     cmd = "rdma link add " + softrdma + " type rxe netdev " + interface
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
     if p.wait():
         outs, _ = p.communicate()
-        print("Valkey Over RDMA install RXE [FAILED]")
+        print("KV Over RDMA install RXE [FAILED]")
         print("---------------\n" + outs.decode() + "---------------\n")
         os._exit(1);
 
-    print("Valkey Over RDMA add RXE device <%s> [OK]" % softrdma)
+    print("KV Over RDMA add RXE device <%s> [OK]" % softrdma)
 
 
 # find any IPv4 available networking interface

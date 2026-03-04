@@ -1,14 +1,14 @@
 /* This module emulates a linked list for lazyfree testing of modules, which
  is a simplified version of 'hellotype.c'
  */
-#include "valkeymodule.h"
+#include "kvmodule.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
 #include <stdint.h>
 
-static ValkeyModuleType *LazyFreeLinkType;
+static KVModuleType *LazyFreeLinkType;
 
 struct LazyFreeLinkNode {
     int64_t value;
@@ -22,7 +22,7 @@ struct LazyFreeLinkObject {
 
 struct LazyFreeLinkObject *createLazyFreeLinkObject(void) {
     struct LazyFreeLinkObject *o;
-    o = ValkeyModule_Alloc(sizeof(*o));
+    o = KVModule_Alloc(sizeof(*o));
     o->head = NULL;
     o->len = 0;
     return o;
@@ -35,7 +35,7 @@ void LazyFreeLinkInsert(struct LazyFreeLinkObject *o, int64_t ele) {
         prev = next;
         next = next->next;
     }
-    newnode = ValkeyModule_Alloc(sizeof(*newnode));
+    newnode = KVModule_Alloc(sizeof(*newnode));
     newnode->value = ele;
     newnode->next = next;
     if (prev) {
@@ -51,94 +51,94 @@ void LazyFreeLinkReleaseObject(struct LazyFreeLinkObject *o) {
     cur = o->head;
     while(cur) {
         next = cur->next;
-        ValkeyModule_Free(cur);
+        KVModule_Free(cur);
         cur = next;
     }
-    ValkeyModule_Free(o);
+    KVModule_Free(o);
 }
 
 /* LAZYFREELINK.INSERT key value */
-int LazyFreeLinkInsert_RedisCommand(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
-    ValkeyModule_AutoMemory(ctx); /* Use automatic memory management. */
+int LazyFreeLinkInsert_RedisCommand(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+    KVModule_AutoMemory(ctx); /* Use automatic memory management. */
 
-    if (argc != 3) return ValkeyModule_WrongArity(ctx);
-    ValkeyModuleKey *key = ValkeyModule_OpenKey(ctx,argv[1],
-        VALKEYMODULE_READ|VALKEYMODULE_WRITE);
-    int type = ValkeyModule_KeyType(key);
-    if (type != VALKEYMODULE_KEYTYPE_EMPTY &&
-        ValkeyModule_ModuleTypeGetType(key) != LazyFreeLinkType)
+    if (argc != 3) return KVModule_WrongArity(ctx);
+    KVModuleKey *key = KVModule_OpenKey(ctx,argv[1],
+        KVMODULE_READ|KVMODULE_WRITE);
+    int type = KVModule_KeyType(key);
+    if (type != KVMODULE_KEYTYPE_EMPTY &&
+        KVModule_ModuleTypeGetType(key) != LazyFreeLinkType)
     {
-        return ValkeyModule_ReplyWithError(ctx,VALKEYMODULE_ERRORMSG_WRONGTYPE);
+        return KVModule_ReplyWithError(ctx,KVMODULE_ERRORMSG_WRONGTYPE);
     }
 
     long long value;
-    if ((ValkeyModule_StringToLongLong(argv[2],&value) != VALKEYMODULE_OK)) {
-        return ValkeyModule_ReplyWithError(ctx,"ERR invalid value: must be a signed 64 bit integer");
+    if ((KVModule_StringToLongLong(argv[2],&value) != KVMODULE_OK)) {
+        return KVModule_ReplyWithError(ctx,"ERR invalid value: must be a signed 64 bit integer");
     }
 
     struct LazyFreeLinkObject *hto;
-    if (type == VALKEYMODULE_KEYTYPE_EMPTY) {
+    if (type == KVMODULE_KEYTYPE_EMPTY) {
         hto = createLazyFreeLinkObject();
-        ValkeyModule_ModuleTypeSetValue(key,LazyFreeLinkType,hto);
+        KVModule_ModuleTypeSetValue(key,LazyFreeLinkType,hto);
     } else {
-        hto = ValkeyModule_ModuleTypeGetValue(key);
+        hto = KVModule_ModuleTypeGetValue(key);
     }
 
     LazyFreeLinkInsert(hto,value);
-    ValkeyModule_SignalKeyAsReady(ctx,argv[1]);
+    KVModule_SignalKeyAsReady(ctx,argv[1]);
 
-    ValkeyModule_ReplyWithLongLong(ctx,hto->len);
-    ValkeyModule_ReplicateVerbatim(ctx);
-    return VALKEYMODULE_OK;
+    KVModule_ReplyWithLongLong(ctx,hto->len);
+    KVModule_ReplicateVerbatim(ctx);
+    return KVMODULE_OK;
 }
 
 /* LAZYFREELINK.LEN key */
-int LazyFreeLinkLen_RedisCommand(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
-    ValkeyModule_AutoMemory(ctx); /* Use automatic memory management. */
+int LazyFreeLinkLen_RedisCommand(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+    KVModule_AutoMemory(ctx); /* Use automatic memory management. */
 
-    if (argc != 2) return ValkeyModule_WrongArity(ctx);
-    ValkeyModuleKey *key = ValkeyModule_OpenKey(ctx,argv[1],
-                                              VALKEYMODULE_READ);
-    int type = ValkeyModule_KeyType(key);
-    if (type != VALKEYMODULE_KEYTYPE_EMPTY &&
-        ValkeyModule_ModuleTypeGetType(key) != LazyFreeLinkType)
+    if (argc != 2) return KVModule_WrongArity(ctx);
+    KVModuleKey *key = KVModule_OpenKey(ctx,argv[1],
+                                              KVMODULE_READ);
+    int type = KVModule_KeyType(key);
+    if (type != KVMODULE_KEYTYPE_EMPTY &&
+        KVModule_ModuleTypeGetType(key) != LazyFreeLinkType)
     {
-        return ValkeyModule_ReplyWithError(ctx,VALKEYMODULE_ERRORMSG_WRONGTYPE);
+        return KVModule_ReplyWithError(ctx,KVMODULE_ERRORMSG_WRONGTYPE);
     }
 
-    struct LazyFreeLinkObject *hto = ValkeyModule_ModuleTypeGetValue(key);
-    ValkeyModule_ReplyWithLongLong(ctx,hto ? hto->len : 0);
-    return VALKEYMODULE_OK;
+    struct LazyFreeLinkObject *hto = KVModule_ModuleTypeGetValue(key);
+    KVModule_ReplyWithLongLong(ctx,hto ? hto->len : 0);
+    return KVMODULE_OK;
 }
 
-void *LazyFreeLinkRdbLoad(ValkeyModuleIO *rdb, int encver) {
+void *LazyFreeLinkRdbLoad(KVModuleIO *rdb, int encver) {
     if (encver != 0) {
         return NULL;
     }
-    uint64_t elements = ValkeyModule_LoadUnsigned(rdb);
+    uint64_t elements = KVModule_LoadUnsigned(rdb);
     struct LazyFreeLinkObject *hto = createLazyFreeLinkObject();
     while(elements--) {
-        int64_t ele = ValkeyModule_LoadSigned(rdb);
+        int64_t ele = KVModule_LoadSigned(rdb);
         LazyFreeLinkInsert(hto,ele);
     }
     return hto;
 }
 
-void LazyFreeLinkRdbSave(ValkeyModuleIO *rdb, void *value) {
+void LazyFreeLinkRdbSave(KVModuleIO *rdb, void *value) {
     struct LazyFreeLinkObject *hto = value;
     struct LazyFreeLinkNode *node = hto->head;
-    ValkeyModule_SaveUnsigned(rdb,hto->len);
+    KVModule_SaveUnsigned(rdb,hto->len);
     while(node) {
-        ValkeyModule_SaveSigned(rdb,node->value);
+        KVModule_SaveSigned(rdb,node->value);
         node = node->next;
     }
 }
 
-void LazyFreeLinkAofRewrite(ValkeyModuleIO *aof, ValkeyModuleString *key, void *value) {
+void LazyFreeLinkAofRewrite(KVModuleIO *aof, KVModuleString *key, void *value) {
     struct LazyFreeLinkObject *hto = value;
     struct LazyFreeLinkNode *node = hto->head;
     while(node) {
-        ValkeyModule_EmitAOF(aof,"LAZYFREELINK.INSERT","sl",key,node->value);
+        KVModule_EmitAOF(aof,"LAZYFREELINK.INSERT","sl",key,node->value);
         node = node->next;
     }
 }
@@ -147,32 +147,32 @@ void LazyFreeLinkFree(void *value) {
     LazyFreeLinkReleaseObject(value);
 }
 
-size_t LazyFreeLinkFreeEffort(ValkeyModuleString *key, const void *value) {
-    VALKEYMODULE_NOT_USED(key);
+size_t LazyFreeLinkFreeEffort(KVModuleString *key, const void *value) {
+    KVMODULE_NOT_USED(key);
     const struct LazyFreeLinkObject *hto = value;
     return hto->len;
 }
 
-void LazyFreeLinkUnlink(ValkeyModuleString *key, const void *value) {
-    VALKEYMODULE_NOT_USED(key);
-    VALKEYMODULE_NOT_USED(value);
+void LazyFreeLinkUnlink(KVModuleString *key, const void *value) {
+    KVMODULE_NOT_USED(key);
+    KVMODULE_NOT_USED(value);
     /* Here you can know which key and value is about to be freed. */
 }
 
-int ValkeyModule_OnLoad(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
-    VALKEYMODULE_NOT_USED(argv);
-    VALKEYMODULE_NOT_USED(argc);
+int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+    KVMODULE_NOT_USED(argv);
+    KVMODULE_NOT_USED(argc);
 
-    if (ValkeyModule_Init(ctx,"lazyfreetest",1,VALKEYMODULE_APIVER_1)
-        == VALKEYMODULE_ERR) return VALKEYMODULE_ERR;
+    if (KVModule_Init(ctx,"lazyfreetest",1,KVMODULE_APIVER_1)
+        == KVMODULE_ERR) return KVMODULE_ERR;
 
     /* We only allow our module to be loaded when the core version is greater than the version of my module */
-    if (ValkeyModule_GetTypeMethodVersion() < VALKEYMODULE_TYPE_METHOD_VERSION) {
-        return VALKEYMODULE_ERR;
+    if (KVModule_GetTypeMethodVersion() < KVMODULE_TYPE_METHOD_VERSION) {
+        return KVMODULE_ERR;
     }
 
-    ValkeyModuleTypeMethods tm = {
-        .version = VALKEYMODULE_TYPE_METHOD_VERSION,
+    KVModuleTypeMethods tm = {
+        .version = KVMODULE_TYPE_METHOD_VERSION,
         .rdb_load = LazyFreeLinkRdbLoad,
         .rdb_save = LazyFreeLinkRdbSave,
         .aof_rewrite = LazyFreeLinkAofRewrite,
@@ -181,16 +181,16 @@ int ValkeyModule_OnLoad(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int arg
         .unlink = LazyFreeLinkUnlink,
     };
 
-    LazyFreeLinkType = ValkeyModule_CreateDataType(ctx,"test_lazy",0,&tm);
-    if (LazyFreeLinkType == NULL) return VALKEYMODULE_ERR;
+    LazyFreeLinkType = KVModule_CreateDataType(ctx,"test_lazy",0,&tm);
+    if (LazyFreeLinkType == NULL) return KVMODULE_ERR;
 
-    if (ValkeyModule_CreateCommand(ctx,"lazyfreelink.insert",
-        LazyFreeLinkInsert_RedisCommand,"write deny-oom",1,1,1) == VALKEYMODULE_ERR)
-        return VALKEYMODULE_ERR;
+    if (KVModule_CreateCommand(ctx,"lazyfreelink.insert",
+        LazyFreeLinkInsert_RedisCommand,"write deny-oom",1,1,1) == KVMODULE_ERR)
+        return KVMODULE_ERR;
 
-    if (ValkeyModule_CreateCommand(ctx,"lazyfreelink.len",
-        LazyFreeLinkLen_RedisCommand,"readonly",1,1,1) == VALKEYMODULE_ERR)
-        return VALKEYMODULE_ERR;
+    if (KVModule_CreateCommand(ctx,"lazyfreelink.len",
+        LazyFreeLinkLen_RedisCommand,"readonly",1,1,1) == KVMODULE_ERR)
+        return KVMODULE_ERR;
 
-    return VALKEYMODULE_OK;
+    return KVMODULE_OK;
 }

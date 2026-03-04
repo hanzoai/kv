@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   coverity:
-    if: github.repository == 'valkey-io/libvalkey'
+    if: github.repository == 'kv-io/libkv'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -25,7 +25,7 @@ jobs:
     - name: Build, scan and report
       uses: vapier/coverity-scan-action@2068473c7bdf8c2fb984a6a40ae76ee7facd7a85 # v1.8.0
       with:
-        project: libvalkey
+        project: libkv
         token: ${{ secrets.COVERITY_TOKEN }}
         email: bjorn.a.svensson@est.tech
         working-directory: build

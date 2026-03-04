@@ -1,4 +1,4 @@
-/* Testcases that simulates allocation failures during libvalkeycluster API calls
+/* Testcases that simulates allocation failures during libkvcluster API calls
  * which verifies the handling of out of memory scenarios (OOM).
  *
  * These testcases overrides the default allocators by injecting own functions
@@ -8,7 +8,7 @@
  * count the number of calls before it start to return OOM failures, like
  * malloc() returning NULL.
  *
- * Tests will call a libvalkeycluster API-function while iterating on a number,
+ * Tests will call a libkvcluster API-function while iterating on a number,
  * the number of successful allocations during the call before it hits an OOM.
  * The result and the error code is then checked to show "Out of memory".
  * As a last step the correct number of allocations is prepared to get a
@@ -74,14 +74,14 @@ static void *vk_realloc_fail(void *ptr, size_t size) {
  * Configures the allocator functions with the number of allocations
  * that will succeed before simulating an out of memory scenario.
  * Additionally it resets errors in the cluster context. */
-void prepare_allocation_test(valkeyClusterContext *cc,
+void prepare_allocation_test(kvClusterContext *cc,
                              int _successfulAllocations) {
     successfulAllocations = _successfulAllocations;
     cc->err = 0;
     memset(cc->errstr, '\0', strlen(cc->errstr));
 }
 
-void prepare_allocation_test_async(valkeyClusterAsyncContext *acc,
+void prepare_allocation_test_async(kvClusterAsyncContext *acc,
                                    int _successfulAllocations) {
     successfulAllocations = _successfulAllocations;
     acc->err = 0;
@@ -89,11 +89,11 @@ void prepare_allocation_test_async(valkeyClusterAsyncContext *acc,
 }
 
 /* Helper */
-valkeyClusterNode *getNodeByPort(valkeyClusterContext *cc, int port) {
-    valkeyClusterNodeIterator ni;
-    valkeyClusterInitNodeIterator(&ni, cc);
-    valkeyClusterNode *node;
-    while ((node = valkeyClusterNodeNext(&ni)) != NULL) {
+kvClusterNode *getNodeByPort(kvClusterContext *cc, int port) {
+    kvClusterNodeIterator ni;
+    kvClusterInitNodeIterator(&ni, cc);
+    kvClusterNode *node;
+    while ((node = kvClusterNodeNext(&ni)) != NULL) {
         if (node->port == port)
             return node;
     }
@@ -104,7 +104,7 @@ valkeyClusterNode *getNodeByPort(valkeyClusterContext *cc, int port) {
 /* Test of allocation handling in the blocking API */
 void test_alloc_failure_handling(void) {
     int result;
-    valkeyAllocFuncs ha = {
+    kvAllocFuncs ha = {
         .mallocFn = vk_malloc_fail,
         .callocFn = vk_calloc_fail,
         .reallocFn = vk_realloc_fail,
@@ -112,159 +112,159 @@ void test_alloc_failure_handling(void) {
         .freeFn = free,
     };
     // Override allocators
-    valkeySetAllocators(&ha);
+    kvSetAllocators(&ha);
 
     struct timeval timeout = {0, 500000};
 
-    valkeyClusterOptions options = {0};
+    kvClusterOptions options = {0};
     options.initial_nodes = CLUSTER_NODE;
-    options.options = VALKEY_OPT_USE_REPLICAS;
+    options.options = KV_OPT_USE_REPLICAS;
     options.connect_timeout = &timeout;
     options.command_timeout = &timeout;
 
     // Connect
-    valkeyClusterContext *cc;
+    kvClusterContext *cc;
     {
         successfulAllocations = 0;
-        cc = valkeyClusterConnectWithOptions(&options);
+        cc = kvClusterConnectWithOptions(&options);
         assert(cc == NULL);
 
         for (int i = 1; i < 100; ++i) {
             successfulAllocations = i;
-            cc = valkeyClusterConnectWithOptions(&options);
+            cc = kvClusterConnectWithOptions(&options);
             assert(cc);
             ASSERT_STR_EQ(cc->errstr, "Out of memory");
-            valkeyClusterFree(cc);
+            kvClusterFree(cc);
         }
         // Skip iteration 100 to 159 since sdscatfmt give leak warnings during OOM.
 
         successfulAllocations = 160;
-        cc = valkeyClusterConnectWithOptions(&options);
+        cc = kvClusterConnectWithOptions(&options);
         assert(cc && cc->err == 0);
     }
 
     // Command
     {
-        valkeyReply *reply;
+        kvReply *reply;
         const char *cmd = "SET key value";
 
         for (int i = 0; i < 33; ++i) {
             prepare_allocation_test(cc, i);
-            reply = (valkeyReply *)valkeyClusterCommand(cc, cmd);
+            reply = (kvReply *)kvClusterCommand(cc, cmd);
             assert(reply == NULL);
             ASSERT_STR_EQ(cc->errstr, "Out of memory");
         }
 
         prepare_allocation_test(cc, 33);
-        reply = (valkeyReply *)valkeyClusterCommand(cc, cmd);
+        reply = (kvReply *)kvClusterCommand(cc, cmd);
         CHECK_REPLY_OK(cc, reply);
         freeReplyObject(reply);
     }
 
     // Command to node
     {
-        valkeyReply *reply;
+        kvReply *reply;
         const char *cmd = "SET key value";
 
-        valkeyClusterNode *node = valkeyClusterGetNodeByKey(cc, (char *)"key");
+        kvClusterNode *node = kvClusterGetNodeByKey(cc, (char *)"key");
         assert(node);
 
         // OOM failing commands
         for (int i = 0; i < 32; ++i) {
             prepare_allocation_test(cc, i);
-            reply = valkeyClusterCommandToNode(cc, node, cmd);
+            reply = kvClusterCommandToNode(cc, node, cmd);
             assert(reply == NULL);
             ASSERT_STR_EQ(cc->errstr, "Out of memory");
         }
 
         // Successful command
         prepare_allocation_test(cc, 32);
-        reply = valkeyClusterCommandToNode(cc, node, cmd);
+        reply = kvClusterCommandToNode(cc, node, cmd);
         CHECK_REPLY_OK(cc, reply);
         freeReplyObject(reply);
     }
 
     // Append command
     {
-        valkeyReply *reply;
+        kvReply *reply;
         const char *cmd = "SET foo one";
 
         for (int i = 0; i < 33; ++i) {
             prepare_allocation_test(cc, i);
-            result = valkeyClusterAppendCommand(cc, cmd);
-            assert(result == VALKEY_ERR);
+            result = kvClusterAppendCommand(cc, cmd);
+            assert(result == KV_ERR);
             ASSERT_STR_EQ(cc->errstr, "Out of memory");
 
-            valkeyClusterReset(cc);
+            kvClusterReset(cc);
         }
 
         for (int i = 0; i < 4; ++i) {
-            // Appended command lost when receiving error from valkey
+            // Appended command lost when receiving error from kv
             // during a GetReply, needs a new append for each test loop
             prepare_allocation_test(cc, 33);
-            result = valkeyClusterAppendCommand(cc, cmd);
-            assert(result == VALKEY_OK);
+            result = kvClusterAppendCommand(cc, cmd);
+            assert(result == KV_OK);
 
             prepare_allocation_test(cc, i);
-            result = valkeyClusterGetReply(cc, (void *)&reply);
-            assert(result == VALKEY_ERR);
+            result = kvClusterGetReply(cc, (void *)&reply);
+            assert(result == KV_ERR);
             ASSERT_STR_EQ(cc->errstr, "Out of memory");
 
-            valkeyClusterReset(cc);
+            kvClusterReset(cc);
         }
 
         prepare_allocation_test(cc, 34);
-        result = valkeyClusterAppendCommand(cc, cmd);
-        assert(result == VALKEY_OK);
+        result = kvClusterAppendCommand(cc, cmd);
+        assert(result == KV_OK);
 
         prepare_allocation_test(cc, 4);
-        result = valkeyClusterGetReply(cc, (void *)&reply);
-        assert(result == VALKEY_OK);
+        result = kvClusterGetReply(cc, (void *)&reply);
+        assert(result == KV_OK);
         CHECK_REPLY_OK(cc, reply);
         freeReplyObject(reply);
     }
 
     // Append command to node
     {
-        valkeyReply *reply;
+        kvReply *reply;
         const char *cmd = "SET foo one";
 
-        valkeyClusterNode *node = valkeyClusterGetNodeByKey(cc, (char *)"foo");
+        kvClusterNode *node = kvClusterGetNodeByKey(cc, (char *)"foo");
         assert(node);
 
         // OOM failing appends
         for (int i = 0; i < 34; ++i) {
             prepare_allocation_test(cc, i);
-            result = valkeyClusterAppendCommandToNode(cc, node, cmd);
-            assert(result == VALKEY_ERR);
+            result = kvClusterAppendCommandToNode(cc, node, cmd);
+            assert(result == KV_ERR);
             ASSERT_STR_EQ(cc->errstr, "Out of memory");
 
-            valkeyClusterReset(cc);
+            kvClusterReset(cc);
         }
 
         // OOM failing GetResults
         for (int i = 0; i < 4; ++i) {
             // First a successful append
             prepare_allocation_test(cc, 34);
-            result = valkeyClusterAppendCommandToNode(cc, node, cmd);
-            assert(result == VALKEY_OK);
+            result = kvClusterAppendCommandToNode(cc, node, cmd);
+            assert(result == KV_OK);
 
             prepare_allocation_test(cc, i);
-            result = valkeyClusterGetReply(cc, (void *)&reply);
-            assert(result == VALKEY_ERR);
+            result = kvClusterGetReply(cc, (void *)&reply);
+            assert(result == KV_ERR);
             ASSERT_STR_EQ(cc->errstr, "Out of memory");
 
-            valkeyClusterReset(cc);
+            kvClusterReset(cc);
         }
 
         // Successful append and GetReply
         prepare_allocation_test(cc, 35);
-        result = valkeyClusterAppendCommandToNode(cc, node, cmd);
-        assert(result == VALKEY_OK);
+        result = kvClusterAppendCommandToNode(cc, node, cmd);
+        assert(result == KV_OK);
 
         prepare_allocation_test(cc, 4);
-        result = valkeyClusterGetReply(cc, (void *)&reply);
-        assert(result == VALKEY_OK);
+        result = kvClusterGetReply(cc, (void *)&reply);
+        assert(result == KV_OK);
         CHECK_REPLY_OK(cc, reply);
         freeReplyObject(reply);
     }
@@ -277,42 +277,42 @@ void test_alloc_failure_handling(void) {
         prepare_allocation_test(cc, 1000);
 
         /* Get the source information for the migration. */
-        unsigned int slot = valkeyClusterGetSlotByKey((char *)"foo");
-        valkeyClusterNode *srcNode = valkeyClusterGetNodeByKey(cc, (char *)"foo");
+        unsigned int slot = kvClusterGetSlotByKey((char *)"foo");
+        kvClusterNode *srcNode = kvClusterGetNodeByKey(cc, (char *)"foo");
         int srcPort = srcNode->port;
 
         /* Get a destination node to migrate the slot to. */
-        valkeyClusterNode *dstNode;
-        valkeyClusterNodeIterator ni;
-        valkeyClusterInitNodeIterator(&ni, cc);
-        while ((dstNode = valkeyClusterNodeNext(&ni)) != NULL) {
+        kvClusterNode *dstNode;
+        kvClusterNodeIterator ni;
+        kvClusterInitNodeIterator(&ni, cc);
+        while ((dstNode = kvClusterNodeNext(&ni)) != NULL) {
             if (dstNode != srcNode)
                 break;
         }
         assert(dstNode && dstNode != srcNode);
         int dstPort = dstNode->port;
 
-        valkeyReply *reply, *replySrcId, *replyDstId;
+        kvReply *reply, *replySrcId, *replyDstId;
 
         /* Get node id's */
-        replySrcId = valkeyClusterCommandToNode(cc, srcNode, "CLUSTER MYID");
-        CHECK_REPLY_TYPE(replySrcId, VALKEY_REPLY_STRING);
+        replySrcId = kvClusterCommandToNode(cc, srcNode, "CLUSTER MYID");
+        CHECK_REPLY_TYPE(replySrcId, KV_REPLY_STRING);
 
-        replyDstId = valkeyClusterCommandToNode(cc, dstNode, "CLUSTER MYID");
-        CHECK_REPLY_TYPE(replyDstId, VALKEY_REPLY_STRING);
+        replyDstId = kvClusterCommandToNode(cc, dstNode, "CLUSTER MYID");
+        CHECK_REPLY_TYPE(replyDstId, KV_REPLY_STRING);
 
         /* Migrate slot */
-        reply = valkeyClusterCommandToNode(cc, srcNode,
+        reply = kvClusterCommandToNode(cc, srcNode,
                                            "CLUSTER SETSLOT %d MIGRATING %s",
                                            slot, replyDstId->str);
         CHECK_REPLY_OK(cc, reply);
         freeReplyObject(reply);
-        reply = valkeyClusterCommandToNode(cc, dstNode,
+        reply = kvClusterCommandToNode(cc, dstNode,
                                            "CLUSTER SETSLOT %d IMPORTING %s",
                                            slot, replySrcId->str);
         CHECK_REPLY_OK(cc, reply);
         freeReplyObject(reply);
-        reply = valkeyClusterCommandToNode(
+        reply = kvClusterCommandToNode(
             cc, srcNode, "MIGRATE 127.0.0.1 %d foo 0 5000", dstPort);
         CHECK_REPLY_OK(cc, reply);
         freeReplyObject(reply);
@@ -320,14 +320,14 @@ void test_alloc_failure_handling(void) {
         /* Test ASK reply handling with OOM */
         for (int i = 0; i < 45; ++i) {
             prepare_allocation_test(cc, i);
-            reply = valkeyClusterCommand(cc, "GET foo");
+            reply = kvClusterCommand(cc, "GET foo");
             assert(reply == NULL);
             ASSERT_STR_EQ(cc->errstr, "Out of memory");
         }
 
         /* Test ASK reply handling without OOM */
         prepare_allocation_test(cc, 45);
-        reply = valkeyClusterCommand(cc, "GET foo");
+        reply = kvClusterCommand(cc, "GET foo");
         CHECK_REPLY_STR(cc, reply, "one");
         freeReplyObject(reply);
 
@@ -335,13 +335,13 @@ void test_alloc_failure_handling(void) {
          * allowing a high number of allocations. */
         prepare_allocation_test(cc, 1000);
         /* Fetch the nodes again, in case the slotmap has been reloaded. */
-        srcNode = valkeyClusterGetNodeByKey(cc, (char *)"foo");
+        srcNode = kvClusterGetNodeByKey(cc, (char *)"foo");
         dstNode = getNodeByPort(cc, dstPort);
-        reply = valkeyClusterCommandToNode(
+        reply = kvClusterCommandToNode(
             cc, srcNode, "CLUSTER SETSLOT %d NODE %s", slot, replyDstId->str);
         CHECK_REPLY_OK(cc, reply);
         freeReplyObject(reply);
-        reply = valkeyClusterCommandToNode(
+        reply = kvClusterCommandToNode(
             cc, dstNode, "CLUSTER SETSLOT %d NODE %s", slot, replyDstId->str);
         CHECK_REPLY_OK(cc, reply);
         freeReplyObject(reply);
@@ -349,14 +349,14 @@ void test_alloc_failure_handling(void) {
         /* Test MOVED reply handling with OOM */
         for (int i = 0; i < 32; ++i) {
             prepare_allocation_test(cc, i);
-            reply = valkeyClusterCommand(cc, "GET foo");
+            reply = kvClusterCommand(cc, "GET foo");
             assert(reply == NULL);
             ASSERT_STR_EQ(cc->errstr, "Out of memory");
         }
 
         /* Test MOVED reply handling without OOM */
         prepare_allocation_test(cc, 32);
-        reply = valkeyClusterCommand(cc, "GET foo");
+        reply = kvClusterCommand(cc, "GET foo");
         CHECK_REPLY_STR(cc, reply, "one");
         freeReplyObject(reply);
 
@@ -369,25 +369,25 @@ void test_alloc_failure_handling(void) {
         /* Migrate back slot, required by the next testcase. Skip OOM testing
          * during these final steps by allowing a high number of allocations. */
         prepare_allocation_test(cc, 1000);
-        reply = valkeyClusterCommandToNode(cc, dstNode,
+        reply = kvClusterCommandToNode(cc, dstNode,
                                            "CLUSTER SETSLOT %d MIGRATING %s",
                                            slot, replySrcId->str);
         CHECK_REPLY_OK(cc, reply);
         freeReplyObject(reply);
-        reply = valkeyClusterCommandToNode(cc, srcNode,
+        reply = kvClusterCommandToNode(cc, srcNode,
                                            "CLUSTER SETSLOT %d IMPORTING %s",
                                            slot, replyDstId->str);
         CHECK_REPLY_OK(cc, reply);
         freeReplyObject(reply);
-        reply = valkeyClusterCommandToNode(
+        reply = kvClusterCommandToNode(
             cc, dstNode, "MIGRATE 127.0.0.1 %d foo 0 5000", srcPort);
         CHECK_REPLY_OK(cc, reply);
         freeReplyObject(reply);
-        reply = valkeyClusterCommandToNode(
+        reply = kvClusterCommandToNode(
             cc, dstNode, "CLUSTER SETSLOT %d NODE %s", slot, replySrcId->str);
         CHECK_REPLY_OK(cc, reply);
         freeReplyObject(reply);
-        reply = valkeyClusterCommandToNode(
+        reply = kvClusterCommandToNode(
             cc, srcNode, "CLUSTER SETSLOT %d NODE %s", slot, replySrcId->str);
         CHECK_REPLY_OK(cc, reply);
         freeReplyObject(reply);
@@ -396,8 +396,8 @@ void test_alloc_failure_handling(void) {
         freeReplyObject(replyDstId);
     }
 
-    valkeyClusterFree(cc);
-    valkeyResetAllocators();
+    kvClusterFree(cc);
+    kvResetAllocators();
 }
 
 //------------------------------------------------------------------------------
@@ -410,33 +410,33 @@ typedef struct ExpectedResult {
     bool disconnect;
 } ExpectedResult;
 
-// Callback for Valkey connects and disconnects
-void connectCallback(valkeyAsyncContext *ac, int status) {
+// Callback for KV connects and disconnects
+void connectCallback(kvAsyncContext *ac, int status) {
     UNUSED(ac);
-    assert(status == VALKEY_OK);
+    assert(status == KV_OK);
 }
-void disconnectCallback(const valkeyAsyncContext *ac, int status) {
+void disconnectCallback(const kvAsyncContext *ac, int status) {
     UNUSED(ac);
-    assert(status == VALKEY_OK);
+    assert(status == KV_OK);
 }
 
-// Callback for async commands, verifies the valkeyReply
-void commandCallback(valkeyClusterAsyncContext *cc, void *r, void *privdata) {
-    valkeyReply *reply = (valkeyReply *)r;
+// Callback for async commands, verifies the kvReply
+void commandCallback(kvClusterAsyncContext *cc, void *r, void *privdata) {
+    kvReply *reply = (kvReply *)r;
     ExpectedResult *expect = (ExpectedResult *)privdata;
     assert(reply != NULL);
     assert(reply->type == expect->type);
     assert(strcmp(reply->str, expect->str) == 0);
 
     if (expect->disconnect) {
-        valkeyClusterAsyncDisconnect(cc);
+        kvClusterAsyncDisconnect(cc);
     }
 }
 
 // Test of allocation handling in async context
 void test_alloc_failure_handling_async(void) {
     int result;
-    valkeyAllocFuncs ha = {
+    kvAllocFuncs ha = {
         .mallocFn = vk_malloc_fail,
         .callocFn = vk_calloc_fail,
         .reallocFn = vk_realloc_fail,
@@ -444,49 +444,49 @@ void test_alloc_failure_handling_async(void) {
         .freeFn = free,
     };
     // Override allocators
-    valkeySetAllocators(&ha);
+    kvSetAllocators(&ha);
 
     struct event_base *base = event_base_new();
     assert(base);
 
-    valkeyClusterOptions options = {0};
+    kvClusterOptions options = {0};
     options.initial_nodes = CLUSTER_NODE;
-    options.options = VALKEY_OPT_USE_REPLICAS |
-                      VALKEY_OPT_BLOCKING_INITIAL_UPDATE;
+    options.options = KV_OPT_USE_REPLICAS |
+                      KV_OPT_BLOCKING_INITIAL_UPDATE;
     options.async_connect_callback = connectCallback;
     options.async_disconnect_callback = disconnectCallback;
-    valkeyClusterOptionsUseLibevent(&options, base);
+    kvClusterOptionsUseLibevent(&options, base);
 
     // Connect
-    valkeyClusterAsyncContext *acc;
+    kvClusterAsyncContext *acc;
     {
         successfulAllocations = 0;
-        acc = valkeyClusterAsyncConnectWithOptions(&options);
+        acc = kvClusterAsyncConnectWithOptions(&options);
         assert(acc == NULL);
 
         for (int i = 1; i < 100; ++i) {
             successfulAllocations = i;
-            acc = valkeyClusterAsyncConnectWithOptions(&options);
+            acc = kvClusterAsyncConnectWithOptions(&options);
             assert(acc != NULL);
             ASSERT_STR_EQ(acc->errstr, "Out of memory");
-            valkeyClusterAsyncFree(acc);
+            kvClusterAsyncFree(acc);
         }
         // Skip iteration 100 to 156 since sdscatfmt give leak warnings during OOM.
 
         successfulAllocations = 157;
-        acc = valkeyClusterAsyncConnectWithOptions(&options);
+        acc = kvClusterAsyncConnectWithOptions(&options);
         assert(acc && acc->err == 0);
     }
 
     // Async command 1
-    ExpectedResult r1 = {.type = VALKEY_REPLY_STATUS, .str = "OK"};
+    ExpectedResult r1 = {.type = KV_REPLY_STATUS, .str = "OK"};
     {
         const char *cmd1 = "SET foo one";
 
         for (int i = 0; i < 36; ++i) {
             prepare_allocation_test_async(acc, i);
-            result = valkeyClusterAsyncCommand(acc, commandCallback, &r1, cmd1);
-            assert(result == VALKEY_ERR);
+            result = kvClusterAsyncCommand(acc, commandCallback, &r1, cmd1);
+            assert(result == KV_ERR);
             if (i != 34) {
                 ASSERT_STR_EQ(acc->errstr, "Out of memory");
             } else {
@@ -495,33 +495,33 @@ void test_alloc_failure_handling_async(void) {
         }
 
         prepare_allocation_test_async(acc, 35);
-        result = valkeyClusterAsyncCommand(acc, commandCallback, &r1, cmd1);
-        ASSERT_MSG(result == VALKEY_OK, acc->errstr);
+        result = kvClusterAsyncCommand(acc, commandCallback, &r1, cmd1);
+        ASSERT_MSG(result == KV_OK, acc->errstr);
     }
 
     // Async command 2
     ExpectedResult r2 = {
-        .type = VALKEY_REPLY_STRING, .str = "one", .disconnect = true};
+        .type = KV_REPLY_STRING, .str = "one", .disconnect = true};
     {
         const char *cmd2 = "GET foo";
 
         for (int i = 0; i < 12; ++i) {
             prepare_allocation_test_async(acc, i);
-            result = valkeyClusterAsyncCommand(acc, commandCallback, &r2, cmd2);
-            assert(result == VALKEY_ERR);
+            result = kvClusterAsyncCommand(acc, commandCallback, &r2, cmd2);
+            assert(result == KV_ERR);
             ASSERT_STR_EQ(acc->errstr, "Out of memory");
         }
 
-        /* Skip iteration 12, errstr not set by libvalkey when valkeyFormatSdsCommandArgv() fails. */
+        /* Skip iteration 12, errstr not set by libkv when kvFormatSdsCommandArgv() fails. */
 
         prepare_allocation_test_async(acc, 13);
-        result = valkeyClusterAsyncCommand(acc, commandCallback, &r2, cmd2);
-        ASSERT_MSG(result == VALKEY_OK, acc->errstr);
+        result = kvClusterAsyncCommand(acc, commandCallback, &r2, cmd2);
+        ASSERT_MSG(result == KV_OK, acc->errstr);
     }
 
     prepare_allocation_test_async(acc, 7);
     event_base_dispatch(base);
-    valkeyClusterAsyncFree(acc);
+    kvClusterAsyncFree(acc);
     event_base_free(base);
 }
 

@@ -46,13 +46,13 @@
 #define MAC_OS_10_6_DETECTED
 #endif
 
-/* Define valkey_fstat to fstat or fstat64() */
+/* Define kv_fstat to fstat or fstat64() */
 #if defined(__APPLE__) && !defined(MAC_OS_10_6_DETECTED)
-#define valkey_fstat fstat64
-#define valkey_stat stat64
+#define kv_fstat fstat64
+#define kv_stat stat64
 #else
-#define valkey_fstat fstat
-#define valkey_stat stat
+#define kv_fstat fstat
+#define kv_stat stat
 #endif
 
 /* Test for proc filesystem */
@@ -125,13 +125,13 @@
 #endif
 #endif
 
-/* Define valkey_fsync to fdatasync() in Linux and fsync() for all the rest */
+/* Define kv_fsync to fdatasync() in Linux and fsync() for all the rest */
 #if defined(__linux__)
-#define valkey_fsync(fd) fdatasync(fd)
+#define kv_fsync(fd) fdatasync(fd)
 #elif defined(__APPLE__)
-#define valkey_fsync(fd) fcntl(fd, F_FULLFSYNC)
+#define kv_fsync(fd) fcntl(fd, F_FULLFSYNC)
 #else
-#define valkey_fsync(fd) fsync(fd)
+#define kv_fsync(fd) fsync(fd)
 #endif
 
 #if defined(__FreeBSD__)
@@ -149,10 +149,10 @@
 #endif
 
 #if __GNUC__ >= 5 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 5)
-#define valkey_unreachable __builtin_unreachable
+#define kv_unreachable __builtin_unreachable
 #else
 #include <stdlib.h>
-#define valkey_unreachable abort
+#define kv_unreachable abort
 #endif
 
 #if __GNUC__ >= 3
@@ -165,20 +165,20 @@
 
 #if defined(__has_attribute)
 #if __has_attribute(no_sanitize)
-#define VALKEY_NO_SANITIZE(sanitizer) __attribute__((no_sanitize(sanitizer)))
+#define KV_NO_SANITIZE(sanitizer) __attribute__((no_sanitize(sanitizer)))
 #endif
 #endif
-#if !defined(VALKEY_NO_SANITIZE)
-#define VALKEY_NO_SANITIZE(sanitizer)
+#if !defined(KV_NO_SANITIZE)
+#define KV_NO_SANITIZE(sanitizer)
 #endif
 
 #if defined(__SANITIZE_ADDRESS__)
 /* GCC */
-#define VALKEY_ADDRESS_SANITIZER 1
+#define KV_ADDRESS_SANITIZER 1
 #elif defined(__has_feature)
 #if __has_feature(address_sanitizer)
 /* Clang */
-#define VALKEY_ADDRESS_SANITIZER 1
+#define KV_ADDRESS_SANITIZER 1
 #endif
 #endif
 
@@ -313,26 +313,26 @@ void setproctitle(const char *fmt, ...);
 #define USE_ALIGNED_ACCESS
 #endif
 
-/* Define for valkey_set_thread_title */
+/* Define for kv_set_thread_title */
 #ifdef __linux__
-#define valkey_set_thread_title(name) pthread_setname_np(pthread_self(), name)
+#define kv_set_thread_title(name) pthread_setname_np(pthread_self(), name)
 #else
 #if (defined __FreeBSD__ || defined __OpenBSD__)
 #include <pthread_np.h>
-#define valkey_set_thread_title(name) pthread_set_name_np(pthread_self(), name)
+#define kv_set_thread_title(name) pthread_set_name_np(pthread_self(), name)
 #elif defined __NetBSD__
 #include <pthread.h>
-#define valkey_set_thread_title(name) pthread_setname_np(pthread_self(), "%s", name)
+#define kv_set_thread_title(name) pthread_setname_np(pthread_self(), "%s", name)
 #elif defined __HAIKU__
 #include <kernel/OS.h>
-#define valkey_set_thread_title(name) rename_thread(find_thread(0), name)
+#define kv_set_thread_title(name) rename_thread(find_thread(0), name)
 #else
 #if (defined __APPLE__ && defined(MAC_OS_X_VERSION_MAX_ALLOWED) && MAC_OS_X_VERSION_MAX_ALLOWED >= 1070)
 int pthread_setname_np(const char *name);
 #include <pthread.h>
-#define valkey_set_thread_title(name) pthread_setname_np(name)
+#define kv_set_thread_title(name) pthread_setname_np(name)
 #else
-#define valkey_set_thread_title(name)
+#define kv_set_thread_title(name)
 #endif
 #endif
 #endif
@@ -369,9 +369,9 @@ void setcpuaffinity(const char *cpulist);
 #endif
 
 #if HAS_BUILTIN_PREFETCH
-#define valkey_prefetch(addr) __builtin_prefetch(addr)
+#define kv_prefetch(addr) __builtin_prefetch(addr)
 #else
-#define valkey_prefetch(addr) ((void)(addr))
+#define kv_prefetch(addr) ((void)(addr))
 #endif
 
 /* Check if we can compile x86 SIMD code */
