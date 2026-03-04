@@ -10,7 +10,7 @@ $(BIN): rdma-test.c
 	@$(CC) $^ -o $@ $(RDMA_LIBS) -lpthread -g
 	@echo "\nHint: please check the RDMA environment:"
 	@echo "\t~# rdma res show"
-	@echo "\n      Then launch valkey-server with RDMA support, Run ./"$(BIN) "to test ..."
+	@echo "\n      Then launch kv-server with RDMA support, Run ./"$(BIN) "to test ..."
 
 clean:
 	rm -rf $(BIN)

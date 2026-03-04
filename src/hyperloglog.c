@@ -29,7 +29,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -435,7 +435,7 @@ static int simd_enabled = 1;
 /* Our hash function is MurmurHash2, 64 bit version.
  * It was modified in order to provide the same result in
  * big and little endian archs (endian neutral). */
-VALKEY_NO_SANITIZE("alignment")
+KV_NO_SANITIZE("alignment")
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
     const uint64_t m = 0xc6a4a7935bd1e995;
     const int r = 47;

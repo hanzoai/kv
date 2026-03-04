@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -17,22 +17,22 @@
 #ifdef USE_LTTNG
 
 #undef LTTNG_UST_TRACEPOINT_PROVIDER
-#define LTTNG_UST_TRACEPOINT_PROVIDER valkey_rdb
+#define LTTNG_UST_TRACEPOINT_PROVIDER kv_rdb
 
 #undef LTTNG_UST_TRACEPOINT_INCLUDE
 #define LTTNG_UST_TRACEPOINT_INCLUDE "./trace_rdb.h"
 
-#if !defined(__VALKEY_TRACE_SYS_H__) || defined(LTTNG_UST_TRACEPOINT_HEADER_MULTI_READ)
-#define __VALKEY_TRACE_SYS_H__
+#if !defined(__KV_TRACE_SYS_H__) || defined(LTTNG_UST_TRACEPOINT_HEADER_MULTI_READ)
+#define __KV_TRACE_SYS_H__
 
 #include <lttng/tracepoint.h>
 
 LTTNG_UST_TRACEPOINT_EVENT_CLASS(
     /* Tracepoint class provider name */
-    valkey_rdb,
+    kv_rdb,
 
     /* Tracepoint class name */
-    valkey_rdb_class,
+    kv_rdb_class,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -47,7 +47,7 @@ LTTNG_UST_TRACEPOINT_EVENT_CLASS(
 
 LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     /* Name of the tracepoint class provider */
-    valkey_rdb, valkey_rdb_class, valkey_rdb, fork,
+    kv_rdb, kv_rdb_class, kv_rdb, fork,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -57,7 +57,7 @@ LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
 
 LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     /* Name of the tracepoint class provider */
-    valkey_rdb, valkey_rdb_class, valkey_rdb, rdb_unlink_temp_file,
+    kv_rdb, kv_rdb_class, kv_rdb, rdb_unlink_temp_file,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -65,25 +65,25 @@ LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     )
 )
 
-#define valkey_rdb_trace(...) lttng_ust_tracepoint(__VA_ARGS__)
+#define kv_rdb_trace(...) lttng_ust_tracepoint(__VA_ARGS__)
 
-#endif /* __VALKEY_TRACE_SYS_H__ */
+#endif /* __KV_TRACE_SYS_H__ */
 
 #include <lttng/tracepoint-event.h>
 
 #else /* USE_LTTNG */
 
-#ifndef __VALKEY_TRACE_SYS_H__
-#define __VALKEY_TRACE_SYS_H__
+#ifndef __KV_TRACE_SYS_H__
+#define __KV_TRACE_SYS_H__
 
 /* avoid compiler warning on empty source file */
-static inline void __valkey_rdb_trace(void) {
+static inline void __kv_rdb_trace(void) {
 }
 
-#define valkey_rdb_trace(...) \
+#define kv_rdb_trace(...) \
     do {                     \
     } while (0)
 
-#endif /* __VALKEY_TRACE_SYS_H__ */
+#endif /* __KV_TRACE_SYS_H__ */
 
 #endif /* USE_LTTNG */

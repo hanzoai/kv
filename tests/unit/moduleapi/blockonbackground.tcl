@@ -96,7 +96,7 @@ start_server {tags {"modules"}} {
     }
 
     test "client unblock works only for modules with timeout support" {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd client id
         set id [$rd read]
 

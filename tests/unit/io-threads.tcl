@@ -2,7 +2,7 @@ proc activate_io_threads_and_wait {} {
     set server_pid [s process_id]
     # Create 16 clients
     for {set i 0} {$i < 16} {incr i} {
-        set rd($i) [valkey_deferring_client]
+        set rd($i) [kv_deferring_client]
     }
     r set a 0
     # Create a batch of commands by suspending the server for a while

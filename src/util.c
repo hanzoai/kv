@@ -52,7 +52,7 @@
 #include "config.h"
 #include "zmalloc.h"
 #include "serverassert.h"
-#include "valkey_strtod.h"
+#include "kv_strtod.h"
 #include "monotonic.h"
 
 #if HAVE_X86_SIMD
@@ -664,7 +664,7 @@ int string2ll(const char *s, size_t slen, long long *value) {
 
 /* Helper function to convert a string to an unsigned long long value.
  * The function attempts to use the faster string2ll() function inside
- * Valkey: if it fails, strtoull() is used instead. The function returns
+ * KV: if it fails, strtoull() is used instead. The function returns
  * 1 if the conversion happened successfully or 0 if the number is
  * invalid or out of range. */
 int string2ull(const char *s, size_t slen, unsigned long long *value) {
@@ -768,7 +768,7 @@ int string2ld(const char *s, size_t slen, long double *dp) {
 int string2d(const char *s, size_t slen, double *dp) {
     errno = 0;
     char *eptr;
-    *dp = valkey_strtod(s, &eptr);
+    *dp = kv_strtod(s, &eptr);
     if (slen == 0 || isspace(((const char *)s)[0]) || (size_t)(eptr - (char *)s) != slen ||
         (errno == ERANGE && (*dp == HUGE_VAL || *dp == -HUGE_VAL || fpclassify(*dp) == FP_ZERO)) || isnan(*dp) || errno == EINVAL) {
         errno = 0;
@@ -1388,7 +1388,7 @@ int fsyncFileDir(const char *filename) {
     }
     /* Some OSs don't allow us to fsync directories at all, so we can ignore
      * those errors. */
-    if (valkey_fsync(dir_fd) == -1 && !(errno == EBADF || errno == EINVAL)) {
+    if (kv_fsync(dir_fd) == -1 && !(errno == EBADF || errno == EINVAL)) {
         int save_errno = errno;
         close(dir_fd);
         errno = save_errno;

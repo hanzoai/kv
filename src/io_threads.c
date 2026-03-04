@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -217,7 +217,7 @@ static void *IOThreadMain(void *myid) {
     char thdname[32];
 
     snprintf(thdname, sizeof(thdname), "io_thd_%ld", id);
-    valkey_set_thread_title(thdname);
+    kv_set_thread_title(thdname);
     serverSetCpuAffinity(server.server_cpulist);
     initSharedQueryBuf();
     pthread_cleanup_push(freeSharedQueryBuf, NULL);

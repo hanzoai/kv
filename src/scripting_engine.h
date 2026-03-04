@@ -2,24 +2,24 @@
 #define _SCRIPTING_ENGINE_H_
 
 #include "server.h"
-#include "valkeymodule.h"
+#include "kvmodule.h"
 
 // Forward declaration of the engine structure.
 typedef struct scriptingEngine scriptingEngine;
 
-/* ValkeyModule type aliases for scripting engine structs and types. */
-typedef struct ValkeyModule ValkeyModule;
-typedef ValkeyModuleScriptingEngineCtx engineCtx;
-typedef ValkeyModuleScriptingEngineServerRuntimeCtx serverRuntimeCtx;
-typedef ValkeyModuleScriptingEngineCompiledFunction compiledFunction;
-typedef ValkeyModuleScriptingEngineSubsystemType subsystemType;
-typedef ValkeyModuleScriptingEngineMemoryInfo engineMemoryInfo;
-typedef ValkeyModuleScriptingEngineCallableLazyEnvReset callableLazyEnvReset;
-typedef ValkeyModuleScriptingEngineDebuggerEnableRet debuggerEnableRet;
-typedef ValkeyModuleScriptingEngineDebuggerCommand debuggerCommand;
-typedef ValkeyModuleScriptingEngineDebuggerCommandParam debuggerCommandParam;
-typedef ValkeyModuleScriptingEngineMethodsV3 engineMethodsV3;
-typedef ValkeyModuleScriptingEngineMethods engineMethods;
+/* KVModule type aliases for scripting engine structs and types. */
+typedef struct KVModule KVModule;
+typedef KVModuleScriptingEngineCtx engineCtx;
+typedef KVModuleScriptingEngineServerRuntimeCtx serverRuntimeCtx;
+typedef KVModuleScriptingEngineCompiledFunction compiledFunction;
+typedef KVModuleScriptingEngineSubsystemType subsystemType;
+typedef KVModuleScriptingEngineMemoryInfo engineMemoryInfo;
+typedef KVModuleScriptingEngineCallableLazyEnvReset callableLazyEnvReset;
+typedef KVModuleScriptingEngineDebuggerEnableRet debuggerEnableRet;
+typedef KVModuleScriptingEngineDebuggerCommand debuggerCommand;
+typedef KVModuleScriptingEngineDebuggerCommandParam debuggerCommandParam;
+typedef KVModuleScriptingEngineMethodsV3 engineMethodsV3;
+typedef KVModuleScriptingEngineMethods engineMethods;
 
 /*
  * Callback function used to iterate the list of engines registered in the
@@ -40,7 +40,7 @@ size_t scriptingEngineManagerGetTotalMemoryOverhead(void);
 size_t scriptingEngineManagerGetNumEngines(void);
 size_t scriptingEngineManagerGetMemoryUsage(void);
 int scriptingEngineManagerRegister(const char *engine_name,
-                                   ValkeyModule *engine_module,
+                                   KVModule *engine_module,
                                    engineCtx *engine_ctx,
                                    engineMethods *engine_methods);
 int scriptingEngineManagerUnregister(const char *engine_name);
@@ -51,7 +51,7 @@ void scriptingEngineManagerForEachEngine(engineIterCallback callback, void *cont
  * Engine API functions.
  */
 sds scriptingEngineGetName(scriptingEngine *engine);
-ValkeyModule *scriptingEngineGetModule(scriptingEngine *engine);
+KVModule *scriptingEngineGetModule(scriptingEngine *engine);
 uint64_t scriptingEngineGetAbiVersion(scriptingEngine *engine);
 
 /*

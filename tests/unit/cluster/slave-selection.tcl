@@ -44,7 +44,7 @@ test "Instance #5 and #10 synced with the master" {
     }
 }
 
-set cluster [valkey_cluster 127.0.0.1:[srv 0 port]]
+set cluster [kv_cluster 127.0.0.1:[srv 0 port]]
 
 test "Slaves are both able to receive and acknowledge writes" {
     for {set j 0} {$j < 100} {incr j} {

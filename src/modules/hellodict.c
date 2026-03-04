@@ -33,37 +33,37 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "../valkeymodule.h"
+#include "../kvmodule.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
 
-static ValkeyModuleDict *Keyspace;
+static KVModuleDict *Keyspace;
 
 /* HELLODICT.SET <key> <value>
  *
  * Set the specified key to the specified value. */
-int cmd_SET(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
-    if (argc != 3) return ValkeyModule_WrongArity(ctx);
-    ValkeyModule_DictSet(Keyspace, argv[1], argv[2]);
+int cmd_SET(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+    if (argc != 3) return KVModule_WrongArity(ctx);
+    KVModule_DictSet(Keyspace, argv[1], argv[2]);
     /* We need to keep a reference to the value stored at the key, otherwise
      * it would be freed when this callback returns. */
-    ValkeyModule_RetainString(NULL, argv[2]);
-    return ValkeyModule_ReplyWithSimpleString(ctx, "OK");
+    KVModule_RetainString(NULL, argv[2]);
+    return KVModule_ReplyWithSimpleString(ctx, "OK");
 }
 
 /* HELLODICT.GET <key>
  *
  * Return the value of the specified key, or a null reply if the key
  * is not defined. */
-int cmd_GET(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
-    if (argc != 2) return ValkeyModule_WrongArity(ctx);
-    ValkeyModuleString *val = ValkeyModule_DictGet(Keyspace, argv[1], NULL);
+int cmd_GET(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+    if (argc != 2) return KVModule_WrongArity(ctx);
+    KVModuleString *val = KVModule_DictGet(Keyspace, argv[1], NULL);
     if (val == NULL) {
-        return ValkeyModule_ReplyWithNull(ctx);
+        return KVModule_ReplyWithNull(ctx);
     } else {
-        return ValkeyModule_ReplyWithString(ctx, val);
+        return KVModule_ReplyWithString(ctx, val);
     }
 }
 
@@ -71,55 +71,55 @@ int cmd_GET(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
  *
  * Return a list of matching keys, lexicographically between startkey
  * and endkey. No more than 'count' items are emitted. */
-int cmd_KEYRANGE(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
-    if (argc != 4) return ValkeyModule_WrongArity(ctx);
+int cmd_KEYRANGE(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+    if (argc != 4) return KVModule_WrongArity(ctx);
 
     /* Parse the count argument. */
     long long count;
-    if (ValkeyModule_StringToLongLong(argv[3], &count) != VALKEYMODULE_OK) {
-        return ValkeyModule_ReplyWithError(ctx, "ERR invalid count");
+    if (KVModule_StringToLongLong(argv[3], &count) != KVMODULE_OK) {
+        return KVModule_ReplyWithError(ctx, "ERR invalid count");
     }
 
     /* Seek the iterator. */
-    ValkeyModuleDictIter *iter = ValkeyModule_DictIteratorStart(Keyspace, ">=", argv[1]);
+    KVModuleDictIter *iter = KVModule_DictIteratorStart(Keyspace, ">=", argv[1]);
 
     /* Reply with the matching items. */
     char *key;
     size_t keylen;
     long long replylen = 0; /* Keep track of the emitted array len. */
-    ValkeyModule_ReplyWithArray(ctx, VALKEYMODULE_POSTPONED_LEN);
-    while ((key = ValkeyModule_DictNextC(iter, &keylen, NULL)) != NULL) {
+    KVModule_ReplyWithArray(ctx, KVMODULE_POSTPONED_LEN);
+    while ((key = KVModule_DictNextC(iter, &keylen, NULL)) != NULL) {
         if (replylen >= count) break;
-        if (ValkeyModule_DictCompare(iter, "<=", argv[2]) == VALKEYMODULE_ERR) break;
-        ValkeyModule_ReplyWithStringBuffer(ctx, key, keylen);
+        if (KVModule_DictCompare(iter, "<=", argv[2]) == KVMODULE_ERR) break;
+        KVModule_ReplyWithStringBuffer(ctx, key, keylen);
         replylen++;
     }
-    ValkeyModule_ReplySetArrayLength(ctx, replylen);
+    KVModule_ReplySetArrayLength(ctx, replylen);
 
     /* Cleanup. */
-    ValkeyModule_DictIteratorStop(iter);
-    return VALKEYMODULE_OK;
+    KVModule_DictIteratorStop(iter);
+    return KVMODULE_OK;
 }
 
 /* This function must be present on each module. It is used in order to
  * register the commands into the server. */
-int ValkeyModule_OnLoad(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
-    VALKEYMODULE_NOT_USED(argv);
-    VALKEYMODULE_NOT_USED(argc);
+int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+    KVMODULE_NOT_USED(argv);
+    KVMODULE_NOT_USED(argc);
 
-    if (ValkeyModule_Init(ctx, "hellodict", 1, VALKEYMODULE_APIVER_1) == VALKEYMODULE_ERR) return VALKEYMODULE_ERR;
+    if (KVModule_Init(ctx, "hellodict", 1, KVMODULE_APIVER_1) == KVMODULE_ERR) return KVMODULE_ERR;
 
-    if (ValkeyModule_CreateCommand(ctx, "hellodict.set", cmd_SET, "write deny-oom", 1, 1, 1) == VALKEYMODULE_ERR)
-        return VALKEYMODULE_ERR;
+    if (KVModule_CreateCommand(ctx, "hellodict.set", cmd_SET, "write deny-oom", 1, 1, 1) == KVMODULE_ERR)
+        return KVMODULE_ERR;
 
-    if (ValkeyModule_CreateCommand(ctx, "hellodict.get", cmd_GET, "readonly", 1, 1, 1) == VALKEYMODULE_ERR)
-        return VALKEYMODULE_ERR;
+    if (KVModule_CreateCommand(ctx, "hellodict.get", cmd_GET, "readonly", 1, 1, 1) == KVMODULE_ERR)
+        return KVMODULE_ERR;
 
-    if (ValkeyModule_CreateCommand(ctx, "hellodict.keyrange", cmd_KEYRANGE, "readonly", 1, 1, 1) == VALKEYMODULE_ERR)
-        return VALKEYMODULE_ERR;
+    if (KVModule_CreateCommand(ctx, "hellodict.keyrange", cmd_KEYRANGE, "readonly", 1, 1, 1) == KVMODULE_ERR)
+        return KVMODULE_ERR;
 
     /* Create our global dictionary. Here we'll set our keys and values. */
-    Keyspace = ValkeyModule_CreateDict(NULL);
+    Keyspace = KVModule_CreateDict(NULL);
 
-    return VALKEYMODULE_OK;
+    return KVMODULE_OK;
 }

@@ -47,7 +47,7 @@ jobs:
     - name: Prepare
       uses: awalsh128/cache-apt-pkgs-action@2c09a5e66da6c8016428a2172bd76e5e4f14bb17 # v1.5.3
       with:
-        packages: libevent-dev libuv1-dev libev-dev libglib2.0-dev valkey-server
+        packages: libevent-dev libuv1-dev libev-dev libglib2.0-dev kv-server
         version: 1.0
     - name: Setup compiler
       uses: aminya/setup-cpp@a276e6e3d1db9160db5edc458e99a30d3b109949 # v1.7.1
@@ -88,7 +88,7 @@ jobs:
       - name: Prepare
         uses: awalsh128/cache-apt-pkgs-action@2c09a5e66da6c8016428a2172bd76e5e4f14bb17 # v1.5.3
         with:
-          packages: libevent-dev valgrind valkey-server
+          packages: libevent-dev valgrind kv-server
           version: 1.0
       - name: Build
         run: USE_TLS=1 TEST_ASYNC=1 make
@@ -114,7 +114,7 @@ jobs:
       - name: Prepare
         uses: awalsh128/cache-apt-pkgs-action@2c09a5e66da6c8016428a2172bd76e5e4f14bb17 # v1.5.3
         with:
-          packages: gcc-multilib valkey-server
+          packages: gcc-multilib kv-server
           version: 1.0
       - name: Build
         run: |
@@ -147,16 +147,16 @@ jobs:
         mkdir build-static && cd build-static
         cmake -DDISABLE_TESTS=ON -DENABLE_TLS=ON -DBUILD_SHARED_LIBS=OFF ..
         make DESTDIR=${{ github.workspace }}/static-cmake-install install
-    - name: Build examples with Makefile using a Makefile-installed libvalkey
+    - name: Build examples with Makefile using a Makefile-installed libkv
       run: |
-        make STLIBNAME="${{ github.workspace }}/make-install/usr/local/lib/libvalkey.a" \
-             TLS_STLIBNAME="${{ github.workspace }}/make-install/usr/local/lib/libvalkey_tls.a" \
+        make STLIBNAME="${{ github.workspace }}/make-install/usr/local/lib/libkv.a" \
+             TLS_STLIBNAME="${{ github.workspace }}/make-install/usr/local/lib/libkv_tls.a" \
              INCLUDE_DIR="${{ github.workspace }}/make-install/usr/local/include" \
              USE_TLS=1 -C examples
-    - name: Build examples with Makefile using a CMake-installed libvalkey
+    - name: Build examples with Makefile using a CMake-installed libkv
       run: |
-        make STLIBNAME="${{ github.workspace }}/static-cmake-install/usr/local/lib/libvalkey.a" \
-             TLS_STLIBNAME="${{ github.workspace }}/static-cmake-install/usr/local/lib/libvalkey_tls.a" \
+        make STLIBNAME="${{ github.workspace }}/static-cmake-install/usr/local/lib/libkv.a" \
+             TLS_STLIBNAME="${{ github.workspace }}/static-cmake-install/usr/local/lib/libkv_tls.a" \
              INCLUDE_DIR="${{ github.workspace }}/static-cmake-install/usr/local/include" \
              USE_TLS=1 -C examples
     - name: Build examples with CMake using CMake-installed dynamic libraries
@@ -217,7 +217,7 @@ jobs:
       - name: Install dependencies
         run: |
           brew update
-          brew install valkey
+          brew install kv
       - name: Build and install using CMake
         run: |
           mkdir build && cd build

@@ -9,11 +9,11 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 # Generate compile_commands.json file for IDEs code completion support
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 
-processorcount(VALKEY_PROCESSOR_COUNT)
-message(STATUS "Processor count: ${VALKEY_PROCESSOR_COUNT}")
+processorcount(KV_PROCESSOR_COUNT)
+message(STATUS "Processor count: ${KV_PROCESSOR_COUNT}")
 
 # Installed executables will have this permissions
-set(VALKEY_EXE_PERMISSIONS
+set(KV_EXE_PERMISSIONS
     OWNER_EXECUTE
     OWNER_WRITE
     OWNER_READ
@@ -22,22 +22,22 @@ set(VALKEY_EXE_PERMISSIONS
     WORLD_EXECUTE
     WORLD_READ)
 
-set(VALKEY_SERVER_CFLAGS "")
-set(VALKEY_SERVER_LDFLAGS "")
+set(KV_SERVER_CFLAGS "")
+set(KV_SERVER_LDFLAGS "")
 
 # ----------------------------------------------------
 # Helper functions & macros
 # ----------------------------------------------------
-macro (add_valkey_server_compiler_options value)
-    set(VALKEY_SERVER_CFLAGS "${VALKEY_SERVER_CFLAGS} ${value}")
+macro (add_kv_server_compiler_options value)
+    set(KV_SERVER_CFLAGS "${KV_SERVER_CFLAGS} ${value}")
 endmacro ()
 
-macro (add_valkey_server_linker_option value)
-    list(APPEND VALKEY_SERVER_LDFLAGS ${value})
+macro (add_kv_server_linker_option value)
+    list(APPEND KV_SERVER_LDFLAGS ${value})
 endmacro ()
 
-macro (get_valkey_server_linker_option return_value)
-    list(JOIN VALKEY_SERVER_LDFLAGS " " ${value} ${return_value})
+macro (get_kv_server_linker_option return_value)
+    list(JOIN KV_SERVER_LDFLAGS " " ${value} ${return_value})
 endmacro ()
 
 set(IS_FREEBSD 0)
@@ -45,11 +45,11 @@ if (CMAKE_SYSTEM_NAME MATCHES "^.*BSD$|DragonFly")
     message(STATUS "Building for FreeBSD compatible system")
     set(IS_FREEBSD 1)
     include_directories("/usr/local/include")
-    add_valkey_server_compiler_options("-DUSE_BACKTRACE")
+    add_kv_server_compiler_options("-DUSE_BACKTRACE")
 endif ()
 
 # Helper function for creating symbolic link so that: link -> source
-macro (valkey_create_symlink source link)
+macro (kv_create_symlink source link)
   add_custom_command(
     TARGET ${source} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E create_symlink
@@ -60,18 +60,18 @@ macro (valkey_create_symlink source link)
 endmacro ()
 
 # Install a binary
-macro (valkey_install_bin target)
+macro (kv_install_bin target)
     # Install cli tool and create a redis symbolic link
     install(
         TARGETS ${target}
         DESTINATION ${CMAKE_INSTALL_BINDIR}
-        PERMISSIONS ${VALKEY_EXE_PERMISSIONS}
-        COMPONENT "valkey")
+        PERMISSIONS ${KV_EXE_PERMISSIONS}
+        COMPONENT "kv")
 endmacro ()
 
 # Helper function that defines, builds and installs `target` In addition, it creates a symbolic link between the target
 # and `link_name`
-macro (valkey_build_and_install_bin target sources ld_flags libs link_name)
+macro (kv_build_and_install_bin target sources ld_flags libs link_name)
     add_executable(${target} ${sources})
 
     if (USE_JEMALLOC
@@ -83,15 +83,15 @@ macro (valkey_build_and_install_bin target sources ld_flags libs link_name)
 
     # Place this line last to ensure that ${ld_flags} is placed last on the linker line
     target_link_libraries(${target} ${libs} ${ld_flags})
-    target_link_libraries(${target} valkey::valkey)
+    target_link_libraries(${target} kv::kv)
     if (USE_TLS)
         # Add required libraries needed for TLS
-        target_link_libraries(${target} OpenSSL::SSL valkey::valkey_tls)
+        target_link_libraries(${target} OpenSSL::SSL kv::kv_tls)
     endif ()
 
     if (USE_RDMA)
         # Add required libraries needed for RDMA
-        target_link_libraries(${target} valkey::valkey_rdma)
+        target_link_libraries(${target} kv::kv_rdma)
     endif ()
 
     if (IS_FREEBSD)
@@ -102,18 +102,18 @@ macro (valkey_build_and_install_bin target sources ld_flags libs link_name)
     target_compile_options(${target} PRIVATE -Werror -Wall)
 
     # Install cli tool and create a redis symbolic link
-    valkey_install_bin(${target})
-    valkey_create_symlink(${target} ${link_name})
+    kv_install_bin(${target})
+    kv_create_symlink(${target} ${link_name})
 endmacro ()
 
 # Determine if we are building in Release or Debug mode
 if (CMAKE_BUILD_TYPE MATCHES Debug OR CMAKE_BUILD_TYPE MATCHES DebugFull)
-    set(VALKEY_DEBUG_BUILD 1)
-    set(VALKEY_RELEASE_BUILD 0)
+    set(KV_DEBUG_BUILD 1)
+    set(KV_RELEASE_BUILD 0)
     message(STATUS "Building in debug mode")
 else ()
-    set(VALKEY_DEBUG_BUILD 0)
-    set(VALKEY_RELEASE_BUILD 1)
+    set(KV_DEBUG_BUILD 0)
+    set(KV_RELEASE_BUILD 1)
     message(STATUS "Building in release mode")
 endif ()
 
@@ -138,21 +138,21 @@ if (BUILD_MALLOC)
     if ("${BUILD_MALLOC}" STREQUAL "jemalloc")
         set(MALLOC_LIB "jemalloc")
         set(ALLOCATOR_LIB "jemalloc")
-        add_valkey_server_compiler_options("-DUSE_JEMALLOC")
+        add_kv_server_compiler_options("-DUSE_JEMALLOC")
         set(USE_JEMALLOC 1)
     elseif ("${BUILD_MALLOC}" STREQUAL "libc")
         set(MALLOC_LIB "libc")
     elseif ("${BUILD_MALLOC}" STREQUAL "tcmalloc")
         set(MALLOC_LIB "tcmalloc")
-        valkey_pkg_config(libtcmalloc ALLOCATOR_LIB)
+        kv_pkg_config(libtcmalloc ALLOCATOR_LIB)
 
-        add_valkey_server_compiler_options("-DUSE_TCMALLOC")
+        add_kv_server_compiler_options("-DUSE_TCMALLOC")
         set(USE_TCMALLOC 1)
     elseif ("${BUILD_MALLOC}" STREQUAL "tcmalloc_minimal")
         set(MALLOC_LIB "tcmalloc_minimal")
-        valkey_pkg_config(libtcmalloc_minimal ALLOCATOR_LIB)
+        kv_pkg_config(libtcmalloc_minimal ALLOCATOR_LIB)
 
-        add_valkey_server_compiler_options("-DUSE_TCMALLOC")
+        add_kv_server_compiler_options("-DUSE_TCMALLOC")
         set(USE_TCMALLOC_MINIMAL 1)
     else ()
         message(FATAL_ERROR "BUILD_MALLOC can be one of: jemalloc, libc, tcmalloc or tcmalloc_minimal")
@@ -163,7 +163,7 @@ message(STATUS "Using ${MALLOC_LIB}")
 
 # TLS support
 if (BUILD_TLS)
-    valkey_parse_build_option(${BUILD_TLS} USE_TLS)
+    kv_parse_build_option(${BUILD_TLS} USE_TLS)
     if (USE_TLS EQUAL 1)
         # Only search for OpenSSL if needed
         find_package(OpenSSL REQUIRED)
@@ -173,8 +173,8 @@ if (BUILD_TLS)
     endif ()
 
     if (USE_TLS EQUAL 1)
-        add_valkey_server_compiler_options("-DUSE_OPENSSL=1")
-        add_valkey_server_compiler_options("-DBUILD_TLS_MODULE=0")
+        add_kv_server_compiler_options("-DUSE_OPENSSL=1")
+        add_kv_server_compiler_options("-DBUILD_TLS_MODULE=0")
     else ()
         # Build TLS as a module RDMA can only be built as a module. So disable it
         message(WARNING "BUILD_TLS can be one of: [ON | OFF | 1 | 0], but '${BUILD_TLS}' was provided")
@@ -191,22 +191,22 @@ if (BUILD_RDMA)
     set(BUILD_RDMA_MODULE 0)
     # RDMA support (Linux only)
     if (LINUX AND NOT APPLE)
-        valkey_parse_build_option(${BUILD_RDMA} USE_RDMA)
+        kv_parse_build_option(${BUILD_RDMA} USE_RDMA)
         find_package(PkgConfig REQUIRED)
         # Locate librdmacm & libibverbs, fail if we can't find them
-        valkey_pkg_config(librdmacm RDMACM_LIBS)
-        valkey_pkg_config(libibverbs IBVERBS_LIBS)
+        kv_pkg_config(librdmacm RDMACM_LIBS)
+        kv_pkg_config(libibverbs IBVERBS_LIBS)
         message(STATUS "${RDMACM_LIBS};${IBVERBS_LIBS}")
         list(APPEND RDMA_LIBS "${RDMACM_LIBS};${IBVERBS_LIBS}")
 
         if (USE_RDMA EQUAL 2) # Module
             message(STATUS "Building RDMA as module")
-            add_valkey_server_compiler_options("-DUSE_RDMA=2")
+            add_kv_server_compiler_options("-DUSE_RDMA=2")
             set(BUILD_RDMA_MODULE 2)
         elseif (USE_RDMA EQUAL 1) # Builtin
             message(STATUS "Building RDMA as builtin")
-            add_valkey_server_compiler_options("-DUSE_RDMA=1")
-            add_valkey_server_compiler_options("-DBUILD_RDMA_MODULE=0")
+            add_kv_server_compiler_options("-DUSE_RDMA=1")
+            add_kv_server_compiler_options("-DBUILD_RDMA_MODULE=0")
             list(APPEND SERVER_LIBS "${RDMA_LIBS}")
         endif ()
     else ()
@@ -231,53 +231,53 @@ endif ()
 
 message(STATUS "Building on ${CMAKE_HOST_SYSTEM_NAME}")
 if (BUILDING_ARM64)
-    message(STATUS "Compiling valkey for ARM64")
-    add_valkey_server_linker_option("-funwind-tables")
+    message(STATUS "Compiling kv for ARM64")
+    add_kv_server_linker_option("-funwind-tables")
 endif ()
 
 if (APPLE)
-    add_valkey_server_linker_option("-rdynamic")
-    add_valkey_server_linker_option("-ldl")
+    add_kv_server_linker_option("-rdynamic")
+    add_kv_server_linker_option("-ldl")
 elseif (UNIX)
-    add_valkey_server_linker_option("-rdynamic")
-    add_valkey_server_linker_option("-pthread")
-    add_valkey_server_linker_option("-ldl")
-    add_valkey_server_linker_option("-lm")
+    add_kv_server_linker_option("-rdynamic")
+    add_kv_server_linker_option("-pthread")
+    add_kv_server_linker_option("-ldl")
+    add_kv_server_linker_option("-lm")
 endif ()
 
-if (VALKEY_DEBUG_BUILD)
+if (KV_DEBUG_BUILD)
     # Debug build, use enable "-fno-omit-frame-pointer"
-    add_valkey_server_compiler_options("-fno-omit-frame-pointer")
+    add_kv_server_compiler_options("-fno-omit-frame-pointer")
 endif ()
 
 # Check for Atomic
 check_include_files(stdatomic.h HAVE_C11_ATOMIC)
 if (HAVE_C11_ATOMIC)
-    add_valkey_server_compiler_options("-std=gnu11")
+    add_kv_server_compiler_options("-std=gnu11")
 else ()
-    add_valkey_server_compiler_options("-std=c99")
+    add_kv_server_compiler_options("-std=c99")
 endif ()
 
 # Sanitizer
 if (BUILD_SANITIZER)
     # Common CFLAGS
-    list(APPEND VALKEY_SANITAIZER_CFLAGS "-fno-sanitize-recover=all")
-    list(APPEND VALKEY_SANITAIZER_CFLAGS "-fno-omit-frame-pointer")
+    list(APPEND KV_SANITAIZER_CFLAGS "-fno-sanitize-recover=all")
+    list(APPEND KV_SANITAIZER_CFLAGS "-fno-omit-frame-pointer")
     if ("${BUILD_SANITIZER}" STREQUAL "address")
-        list(APPEND VALKEY_SANITAIZER_CFLAGS "-fsanitize=address")
-        list(APPEND VALKEY_SANITAIZER_LDFLAGS "-fsanitize=address")
+        list(APPEND KV_SANITAIZER_CFLAGS "-fsanitize=address")
+        list(APPEND KV_SANITAIZER_LDFLAGS "-fsanitize=address")
     elseif ("${BUILD_SANITIZER}" STREQUAL "thread")
-        list(APPEND VALKEY_SANITAIZER_CFLAGS "-fsanitize=thread")
-        list(APPEND VALKEY_SANITAIZER_LDFLAGS "-fsanitize=thread")
+        list(APPEND KV_SANITAIZER_CFLAGS "-fsanitize=thread")
+        list(APPEND KV_SANITAIZER_LDFLAGS "-fsanitize=thread")
     elseif ("${BUILD_SANITIZER}" STREQUAL "undefined")
-        list(APPEND VALKEY_SANITAIZER_CFLAGS "-fsanitize=undefined")
-        list(APPEND VALKEY_SANITAIZER_LDFLAGS "-fsanitize=undefined")
+        list(APPEND KV_SANITAIZER_CFLAGS "-fsanitize=undefined")
+        list(APPEND KV_SANITAIZER_LDFLAGS "-fsanitize=undefined")
     else ()
         message(FATAL_ERROR "Unknown sanitizer: ${BUILD_SANITIZER}")
     endif ()
 endif ()
 
-include_directories("${CMAKE_SOURCE_DIR}/deps/libvalkey/include")
+include_directories("${CMAKE_SOURCE_DIR}/deps/libkv/include")
 include_directories("${CMAKE_SOURCE_DIR}/src/modules/lua")
 include_directories("${CMAKE_SOURCE_DIR}/deps/linenoise")
 include_directories("${CMAKE_SOURCE_DIR}/deps/hdr_histogram")
@@ -291,7 +291,7 @@ if (USE_JEMALLOC)
 endif ()
 
 # Common compiler flags
-add_valkey_server_compiler_options("-pedantic")
+add_kv_server_compiler_options("-pedantic")
 
 if (NOT BUILD_LUA)
     message(STATUS "Lua scripting engine is disabled")
@@ -365,8 +365,8 @@ include(SourceFiles)
 
 # Clear the below variables from the cache
 unset(CMAKE_C_FLAGS CACHE)
-unset(VALKEY_SERVER_LDFLAGS CACHE)
-unset(VALKEY_SERVER_CFLAGS CACHE)
+unset(KV_SERVER_LDFLAGS CACHE)
+unset(KV_SERVER_CFLAGS CACHE)
 unset(PYTHON_EXE CACHE)
 unset(HAVE_C11_ATOMIC CACHE)
 unset(USE_TLS CACHE)

@@ -138,7 +138,7 @@ proc setup_eviction_test {idx policy body} {
 
 proc assert_causes_conn_drop {node_idx body} {
     upvar 1 client vc
-    set vc [valkey_client_by_addr [srv -$node_idx host] [srv -$node_idx port]]
+    set vc [kv_client_by_addr [srv -$node_idx host] [srv -$node_idx port]]
     catch {
         uplevel 1 $body
     } result
@@ -1420,7 +1420,7 @@ start_cluster 3 3 {tags {logreqres:skip external:skip cluster} overrides {cluste
         assert_does_not_resync {
             # Start with a BLPOP that will block for the duration of the migration,
             # BLPOP is expected to block since the list does not exist yet
-            set blpop_client [valkey_deferring_client_by_addr [srv 0 host] [srv 0 port]]
+            set blpop_client [kv_deferring_client_by_addr [srv 0 host] [srv 0 port]]
             $blpop_client BLPOP $0_slot_tag:mylist 0
             $blpop_client flush
             wait_for_blocked_clients_count 1 100 10 0
@@ -1435,12 +1435,12 @@ start_cluster 3 3 {tags {logreqres:skip external:skip cluster} overrides {cluste
             assert_match "write" [s -0 paused_actions]
 
             # While we are blocked, execute a SET on another client
-            set set_client [valkey_deferring_client_by_addr [srv 0 host] [srv 0 port]]
+            set set_client [kv_deferring_client_by_addr [srv 0 host] [srv 0 port]]
             $set_client SET $0_slot_tag:test_key test_value
             $set_client flush
 
             # Also execute a SET that can be served after the migration
-            set set_client_2 [valkey_deferring_client_by_addr [srv 0 host] [srv 0 port]]
+            set set_client_2 [kv_deferring_client_by_addr [srv 0 host] [srv 0 port]]
             $set_client_2 SET $1_slot_tag:test_key test_value
             $set_client_2 flush
 

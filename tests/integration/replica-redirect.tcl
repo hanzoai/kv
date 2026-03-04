@@ -10,7 +10,7 @@ start_server {tags {needs:repl external:skip}} {
         set replica_pid [srv 0 pid]
 
         test {write command inside MULTI is QUEUED, EXEC should be REDIRECT} {
-            set rr [valkey_client]
+            set rr [kv_client]
             $rr client capa redirect
             $rr multi
             assert_equal "QUEUED" [$rr set foo bar]
@@ -29,7 +29,7 @@ start_server {tags {needs:repl external:skip}} {
         }
 
         test {write command inside MULTI is REDIRECT, EXEC should be EXECABORT} {
-            set rr [valkey_client]
+            set rr [kv_client]
             $rr client capa redirect
             $rr multi
             assert_error "REDIRECT*" {$rr set foo bar}
@@ -65,7 +65,7 @@ start_server {tags {needs:repl external:skip}} {
         } {}
 
         test {client paused before and during failover-in-progress} {
-            set rd_blocking [valkey_deferring_client -1]
+            set rd_blocking [kv_deferring_client -1]
             $rd_blocking client capa redirect
             assert_match "OK" [$rd_blocking read]
             $rd_blocking brpop list 0
@@ -82,7 +82,7 @@ start_server {tags {needs:repl external:skip}} {
             } else {
                 fail "Failover from primary to replica did not timeout"
             }
-            set rd [valkey_deferring_client -1]
+            set rd [kv_deferring_client -1]
             $rd client capa redirect
             assert_match "OK" [$rd read]
             $rd get foo
@@ -112,7 +112,7 @@ start_server {tags {needs:repl external:skip}} {
             r replicaof $primary_host $primary_port
             wait_replica_online $primary
 
-            set rd_brpop_before [valkey_deferring_client -1]
+            set rd_brpop_before [kv_deferring_client -1]
             $rd_brpop_before client capa redirect
             assert_match "OK" [$rd_brpop_before read]
             $rd_brpop_before brpop list 0
@@ -120,7 +120,7 @@ start_server {tags {needs:repl external:skip}} {
             wait_for_blocked_clients_count 1 100 10 -1
             pause_process [srv 0 pid]
 
-            set rd_wait [valkey_deferring_client -1]
+            set rd_wait [kv_deferring_client -1]
             $rd_wait client capa redirect
             $rd_wait read ; # Consume the OK reply
             $rd_wait set foo bar
@@ -129,7 +129,7 @@ start_server {tags {needs:repl external:skip}} {
 
             # XREAD is a reading command and thus, should
             # not be redirected if the client is read only.
-            set rd_xread [valkey_deferring_client -1]
+            set rd_xread [kv_deferring_client -1]
             $rd_xread client capa redirect
             assert_match "OK" [$rd_xread read]
             $rd_xread readonly
@@ -144,7 +144,7 @@ start_server {tags {needs:repl external:skip}} {
             # sync.
             assert_equal "waiting-for-sync" [s -1 master_failover_state]
 
-            set rd_brpop_after [valkey_deferring_client -1]
+            set rd_brpop_after [kv_deferring_client -1]
             $rd_brpop_after client capa redirect
             assert_match "OK" [$rd_brpop_after read]
             $rd_brpop_after brpop list 0
@@ -193,13 +193,13 @@ start_server {tags {needs:repl external:skip}} {
             wait_replica_online $primary
 
             # Client blocking on primary
-            set rd0 [valkey_deferring_client -1]
+            set rd0 [kv_deferring_client -1]
             $rd0 CLIENT CAPA REDIRECT
             assert_match "OK" [$rd0 read]
             $rd0 BLPOP mylist 0
 
             # Readonly client blocking on primary
-            set rd0_ro [valkey_deferring_client -1]
+            set rd0_ro [kv_deferring_client -1]
             $rd0_ro CLIENT CAPA REDIRECT
             assert_match "OK" [$rd0_ro read]
             $rd0_ro READONLY
@@ -207,7 +207,7 @@ start_server {tags {needs:repl external:skip}} {
             $rd0_ro XREAD BLOCK 0 STREAMS mystream 0-0
 
             # Readonly client blocking on replica
-            set rd1 [valkey_deferring_client 0]
+            set rd1 [kv_deferring_client 0]
             $rd1 CLIENT CAPA REDIRECT
             assert_match "OK" [$rd1 read]
             $rd1 READONLY

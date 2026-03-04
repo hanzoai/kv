@@ -211,7 +211,7 @@ static void dbAddInternal(serverDb *db, robj *key, robj **valref, int update_if_
         debugServerAssertWithInfo(NULL, key, kvstoreHashtableFindRef(db->keys, dict_index, objectGetVal(key)) == NULL);
     }
 
-    /* Not existing. Convert val to valkey object and insert. */
+    /* Not existing. Convert val to kv object and insert. */
     robj *val = *valref;
     val = objectSetKeyAndExpire(val, objectGetVal(key), -1);
     /* Track hash object if it has volatile fields (for active expiry).
@@ -447,10 +447,10 @@ robj *dbRandomKey(serverDb *db) {
         int randomDictIndex = kvstoreGetFairRandomHashtableIndex(db->keys);
         if (randomDictIndex == KVSTORE_INDEX_NOT_FOUND) return NULL;
         if (!kvstoreHashtableFairRandomEntry(db->keys, randomDictIndex, &entry)) return NULL;
-        robj *valkey = entry;
-        sds key = objectGetKey(valkey);
+        robj *kv = entry;
+        sds key = objectGetKey(kv);
         robj *keyobj = createStringObject(key, sdslen(key));
-        if (objectIsExpired(valkey)) {
+        if (objectIsExpired(kv)) {
             if (allvolatile && (server.primary_host || server.import_mode || isPausedActions(PAUSE_ACTION_EXPIRE)) && --maxtries == 0) {
                 /* If the DB is composed only of keys with an expire set,
                  * it could happen that all the keys are already logically
@@ -462,7 +462,7 @@ robj *dbRandomKey(serverDb *db) {
                  * return a key name that may be already expired. */
                 return keyobj;
             }
-            if (expireIfNeededWithDictIndex(db, keyobj, valkey, 0, randomDictIndex) != KEY_VALID) {
+            if (expireIfNeededWithDictIndex(db, keyobj, kv, 0, randomDictIndex) != KEY_VALID) {
                 decrRefCount(keyobj);
                 continue; /* search for another key. This expired. */
             }
@@ -654,7 +654,7 @@ long long emptyDbStructure(serverDb **dbarray, int dbnum, int async, void(callba
 long long emptyData(int dbnum, int flags, void(callback)(hashtable *)) {
     int async = (flags & EMPTYDB_ASYNC);
     int with_functions = !(flags & EMPTYDB_NOFUNCTIONS);
-    ValkeyModuleFlushInfoV1 fi = {VALKEYMODULE_FLUSHINFO_VERSION, !async, dbnum};
+    KVModuleFlushInfoV1 fi = {KVMODULE_FLUSHINFO_VERSION, !async, dbnum};
     long long removed = 0;
 
     if (dbnum < -1 || dbnum >= server.dbnum) {
@@ -663,7 +663,7 @@ long long emptyData(int dbnum, int flags, void(callback)(hashtable *)) {
     }
 
     /* Fire the flushdb modules event. */
-    moduleFireServerEvent(VALKEYMODULE_EVENT_FLUSHDB, VALKEYMODULE_SUBEVENT_FLUSHDB_START, &fi);
+    moduleFireServerEvent(KVMODULE_EVENT_FLUSHDB, KVMODULE_SUBEVENT_FLUSHDB_START, &fi);
 
     /* Make sure the WATCHed keys are affected by the FLUSH* commands.
      * Note that we need to call the function while the keys are still
@@ -691,7 +691,7 @@ long long emptyData(int dbnum, int flags, void(callback)(hashtable *)) {
 
     /* Also fire the end event. Note that this event will fire almost
      * immediately after the start event if the flush is asynchronous. */
-    moduleFireServerEvent(VALKEYMODULE_EVENT_FLUSHDB, VALKEYMODULE_SUBEVENT_FLUSHDB_END, &fi);
+    moduleFireServerEvent(KVMODULE_EVENT_FLUSHDB, KVMODULE_SUBEVENT_FLUSHDB_END, &fi);
 
     return removed;
 }
@@ -998,7 +998,7 @@ int objectTypeCompare(robj *o, long long target) {
             return 1;
     }
     /* module type compare */
-    long long mt = (long long)VALKEYMODULE_TYPE_SIGN(((moduleValue *)objectGetVal(o))->type->id);
+    long long mt = (long long)KVMODULE_TYPE_SIGN(((moduleValue *)objectGetVal(o))->type->id);
     if (target != -mt)
         return 0;
     else
@@ -1126,7 +1126,7 @@ long long getObjectTypeByName(char *name) {
     }
 
     moduleType *mt = moduleTypeLookupModuleByNameIgnoreCase(name);
-    if (mt != NULL) return -(VALKEYMODULE_TYPE_SIGN(mt->id));
+    if (mt != NULL) return -(KVMODULE_TYPE_SIGN(mt->id));
 
     return LLONG_MAX;
 }
@@ -1828,8 +1828,8 @@ void swapdbCommand(client *c) {
         addReplyError(c, "DB index is out of range");
         return;
     } else {
-        ValkeyModuleSwapDbInfo si = {VALKEYMODULE_SWAPDBINFO_VERSION, id1, id2};
-        moduleFireServerEvent(VALKEYMODULE_EVENT_SWAPDB, 0, &si);
+        KVModuleSwapDbInfo si = {KVMODULE_SWAPDBINFO_VERSION, id1, id2};
+        moduleFireServerEvent(KVMODULE_EVENT_SWAPDB, 0, &si);
         server.dirty++;
         addReply(c, shared.ok);
     }
@@ -2379,7 +2379,7 @@ int getKeysUsingKeySpecs(struct serverCommand *cmd, robj **argv, int argc, int s
                 } else {
                     serverPanic("%s built-in command declared keys positions"
                                 " not matching the arity requirements.",
-                                server.extended_redis_compat ? "Redis" : "Valkey");
+                                server.extended_redis_compat ? "Redis" : "KV");
                 }
             }
             keys[result->numkeys].pos = i;
@@ -2574,7 +2574,7 @@ int getKeysUsingLegacyRangeSpec(struct serverCommand *cmd, robj **argv, int argc
             } else {
                 serverPanic("%s built-in command declared keys positions"
                             " not matching the arity requirements.",
-                            server.extended_redis_compat ? "Redis" : "Valkey");
+                            server.extended_redis_compat ? "Redis" : "KV");
             }
         }
         keys[i].pos = j;

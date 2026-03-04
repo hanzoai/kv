@@ -74,7 +74,7 @@ typedef struct {
 /* Populate the table with code in cmddef.h generated from JSON files. */
 static cmddef server_commands[] = {
 #define COMMAND(_type, _name, _subname, _arity, _keymethod, _keypos) \
-    {.type = CMD_REQ_VALKEY_##_type,                                 \
+    {.type = CMD_REQ_KV_##_type,                                 \
      .name = _name,                                                  \
      .subname = _subname,                                            \
      .firstkeymethod = KEYPOS_##_keymethod,                          \
@@ -97,7 +97,7 @@ static inline void to_upper(char *dst, const char *src, uint32_t len) {
 /* Looks up a command or subcommand in the command table. Arg0 and arg1 are used
  * to lookup the command. The function returns the cmddef for a found command,
  * or NULL on failure. */
-cmddef *valkey_lookup_cmd(const char *arg0, uint32_t arg0_len, const char *arg1,
+cmddef *kv_lookup_cmd(const char *arg0, uint32_t arg0_len, const char *arg1,
                           uint32_t arg1_len) {
     int num_commands = sizeof(server_commands) / sizeof(cmddef);
     /* Compare command name in uppercase. */
@@ -145,7 +145,7 @@ cmddef *valkey_lookup_cmd(const char *arg0, uint32_t arg0_len, const char *arg1,
  * Returns the remaining of the input after consuming the bulk string. The
  * pointers *str and *len are pointed to the parsed string and its length. On
  * parse error, NULL is returned. */
-char *valkey_parse_bulk(char *p, char *end, char **str, uint32_t *len) {
+char *kv_parse_bulk(char *p, char *end, char **str, uint32_t *len) {
     uint32_t length = 0;
     if (p >= end || *p++ != '$')
         return NULL;
@@ -169,9 +169,9 @@ char *valkey_parse_bulk(char *p, char *end, char **str, uint32_t *len) {
 }
 
 /*
- * Reference: https://valkey.io/docs/topics/protocol/
+ * Reference: https://kv.io/docs/topics/protocol/
  *
- * Libvalkey uses the unified protocol to send requests to the Valkey
+ * Libkv uses the unified protocol to send requests to the KV
  * server. In the unified protocol all the arguments sent to the server
  * are binary safe and every request has the following general form:
  *
@@ -183,7 +183,7 @@ char *valkey_parse_bulk(char *p, char *end, char **str, uint32_t *len) {
  *   <argument data> CR LF
  *
  */
-void valkey_parse_cmd(struct cmd *r) {
+void kv_parse_cmd(struct cmd *r) {
     assert(r->cmd != NULL && r->clen > 0);
     char *p = r->cmd;
     char *end = r->cmd + r->clen;
@@ -211,17 +211,17 @@ void valkey_parse_cmd(struct cmd *r) {
         goto error;
 
     /* Parse the first two args. */
-    if ((p = valkey_parse_bulk(p, end, &arg0, &arg0_len)) == NULL)
+    if ((p = kv_parse_bulk(p, end, &arg0, &arg0_len)) == NULL)
         goto error;
     argidx++;
     if (rnarg > 1) {
-        if ((p = valkey_parse_bulk(p, end, &arg1, &arg1_len)) == NULL)
+        if ((p = kv_parse_bulk(p, end, &arg1, &arg1_len)) == NULL)
             goto error;
         argidx++;
     }
 
     /* Lookup command. */
-    if ((info = valkey_lookup_cmd(arg0, arg0_len, arg1, arg1_len)) == NULL)
+    if ((info = kv_lookup_cmd(arg0, arg0_len, arg1, arg1_len)) == NULL)
         goto error; /* Command not found. */
 
     /* Arity check (negative arity means minimum num args) */
@@ -241,14 +241,14 @@ void valkey_parse_cmd(struct cmd *r) {
         /* Keyword-based first key position */
         const char *keyword;
         int startfrom;
-        if (info->type == CMD_REQ_VALKEY_XREAD) {
+        if (info->type == CMD_REQ_KV_XREAD) {
             keyword = "STREAMS";
             startfrom = 1;
-        } else if (info->type == CMD_REQ_VALKEY_XREADGROUP) {
+        } else if (info->type == CMD_REQ_KV_XREADGROUP) {
             keyword = "STREAMS";
             startfrom = 4;
         } else {
-            /* Not reached, but can be reached if Valkey adds more commands. */
+            /* Not reached, but can be reached if KV adds more commands. */
             goto error;
         }
 
@@ -256,13 +256,13 @@ void valkey_parse_cmd(struct cmd *r) {
         arg = arg1;
         arglen = arg1_len;
         while (argidx < (int)rnarg - 1) {
-            if ((p = valkey_parse_bulk(p, end, &arg, &arglen)) == NULL)
+            if ((p = kv_parse_bulk(p, end, &arg, &arglen)) == NULL)
                 goto error; /* Keyword not provided, thus no keys. */
             if (argidx++ < startfrom)
                 continue; /* Keyword can't appear in a position before 'startfrom' */
             if (!strncasecmp(keyword, arg, arglen)) {
                 /* Keyword found. Now the first key is the next arg. */
-                if ((p = valkey_parse_bulk(p, end, &arg, &arglen)) == NULL)
+                if ((p = kv_parse_bulk(p, end, &arg, &arglen)) == NULL)
                     goto error;
                 /* Keep found key. */
                 r->key.start = arg;
@@ -279,7 +279,7 @@ void valkey_parse_cmd(struct cmd *r) {
     arg = arg1;
     arglen = arg1_len;
     for (; argidx < info->firstkeypos; argidx++) {
-        if ((p = valkey_parse_bulk(p, end, &arg, &arglen)) == NULL)
+        if ((p = kv_parse_bulk(p, end, &arg, &arglen)) == NULL)
             goto error;
     }
 
@@ -291,14 +291,14 @@ void valkey_parse_cmd(struct cmd *r) {
         if (!strncmp("0", arg, arglen))
             goto done; /* No args. */
         /* One or more args. The first key is the arg after the 'numkeys' arg. */
-        if ((p = valkey_parse_bulk(p, end, &arg, &arglen)) == NULL)
+        if ((p = kv_parse_bulk(p, end, &arg, &arglen)) == NULL)
             goto error;
         argidx++;
     }
 
     /* Now arg is the first key and arglen is its length. */
 
-    if (info->type == CMD_REQ_VALKEY_MIGRATE && arglen == 0 &&
+    if (info->type == CMD_REQ_KV_MIGRATE && arglen == 0 &&
         info->firstkeymethod == KEYPOS_INDEX && info->firstkeypos == 3) {
         /* MIGRATE host port <key | ""> destination-db timeout [COPY] [REPLACE]
          * [[AUTH password] | [AUTH2 username password]] [KEYS key [key ...]]
