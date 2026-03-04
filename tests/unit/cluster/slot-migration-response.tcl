@@ -9,7 +9,7 @@ test "Cluster is up" {
     wait_for_cluster_state ok
 }
 
-set cluster [valkey_cluster 127.0.0.1:[srv 0 port]]
+set cluster [kv_cluster 127.0.0.1:[srv 0 port]]
 catch {unset nodefrom}
 catch {unset nodeto}
 

@@ -8,12 +8,12 @@
 #   tests/tls/ca-notyet/                         Directory containing not-yet-valid CA certificate.
 #   tests/tls/ca-multi.crt                       CA bundle with multiple certs.
 #   tests/tls/ca-dir/                            CA directory with hashed links.
-#   tests/tls/valkey.{crt,key}                   A certificate with no key usage/policy restrictions.
+#   tests/tls/kv.{crt,key}                   A certificate with no key usage/policy restrictions.
 #   tests/tls/client.{crt,key}                   A certificate restricted for SSL client usage.
 #   tests/tls/client-{expired,notyet}.crt        Invalid certificates restricted for SSL client usage.
 #   tests/tls/server.{crt,key}                   A certificate restricted for SSL server usage.
 #   tests/tls/server-{expired,notyet}.crt        Invalid certificates restricted for SSL server usage.
-#   tests/tls/valkey.dh                          DH Params file.
+#   tests/tls/kv.dh                          DH Params file.
 
 generate_cert() {
     local name=$1
@@ -26,7 +26,7 @@ generate_cert() {
     [ -f $keyfile ] || openssl genrsa -out $keyfile 2048
     openssl req \
         -new -sha256 \
-        -subj "/O=Valkey Test/CN=$cn" \
+        -subj "/O=KV Test/CN=$cn" \
         -key $keyfile | \
         openssl x509 \
             -req -sha256 \
@@ -45,7 +45,7 @@ openssl req \
     -x509 -new -nodes -sha256 \
     -key tests/tls/ca.key \
     -days 3650 \
-    -subj '/O=Valkey Test/CN=Certificate Authority' \
+    -subj '/O=KV Test/CN=Certificate Authority' \
     -out tests/tls/ca.crt
 
 cat > tests/tls/openssl.cnf <<_END_
@@ -60,7 +60,7 @@ _END_
 
 generate_cert server "Server-only" "-extfile tests/tls/openssl.cnf -extensions server_cert"
 generate_cert client "Client-only" "-extfile tests/tls/openssl.cnf -extensions client_cert"
-generate_cert valkey "Generic-cert"
+generate_cert kv "Generic-cert"
 
 # Create a CA bundle and hashed CA directory used by TLS tests.
 # (ca-multi.crt and ca-dir/)
@@ -77,7 +77,7 @@ if [ "$ca_hash_old" != "$ca_hash" ]; then
     ln -sf ca.crt "$ca_dir/${ca_hash_old}.0"
 fi
 
-[ -f tests/tls/valkey.dh ] || openssl dhparam -out tests/tls/valkey.dh 2048
+[ -f tests/tls/kv.dh ] || openssl dhparam -out tests/tls/kv.dh 2048
 
 echo "Generating invalid TLS test certificates for fail-fast testing..."
 
@@ -118,7 +118,7 @@ echo "01" > tests/tls/serial
 
 # Generate expired server cert (valid Jan 1-2, 2020)
 openssl req -new -sha256 \
-  -subj "/O=Valkey Test/CN=Server-expired" \
+  -subj "/O=KV Test/CN=Server-expired" \
   -key tests/tls/server.key \
   -out tests/tls/server-expired.csr
 
@@ -133,7 +133,7 @@ openssl ca -batch -config "$CA_CONFIG" \
 
 # Generate expired client cert (valid Jan 1-2, 2020)
 openssl req -new -sha256 \
-  -subj "/O=Valkey Test/CN=Client-expired" \
+  -subj "/O=KV Test/CN=Client-expired" \
   -key tests/tls/client.key \
   -out tests/tls/client-expired.csr
 
@@ -148,7 +148,7 @@ openssl ca -batch -config "$CA_CONFIG" \
 
 # Generate not-yet-valid server cert (valid Jan 1-31, 2099)
 openssl req -new -sha256 \
-  -subj "/O=Valkey Test/CN=Server-notyet" \
+  -subj "/O=KV Test/CN=Server-notyet" \
   -key tests/tls/server.key \
   -out tests/tls/server-notyet.csr
 
@@ -163,7 +163,7 @@ openssl ca -batch -config "$CA_CONFIG" \
 
 # Generate not-yet-valid client cert (valid Jan 1-31, 2099)
 openssl req -new -sha256 \
-  -subj "/O=Valkey Test/CN=Client-notyet" \
+  -subj "/O=KV Test/CN=Client-notyet" \
   -key tests/tls/client.key \
   -out tests/tls/client-notyet.csr
 
@@ -178,7 +178,7 @@ openssl ca -batch -config "$CA_CONFIG" \
 
 # Generate expired CA certificate (valid Jan 1-2, 2020) using the CA to sign itself
 openssl req -new -sha256 \
-  -subj "/O=Valkey Test/CN=Certificate Authority Expired" \
+  -subj "/O=KV Test/CN=Certificate Authority Expired" \
   -key tests/tls/ca.key \
   -out tests/tls/ca-expired.csr
 
@@ -192,7 +192,7 @@ openssl ca -batch -config "$CA_CONFIG" \
 
 # Generate not-yet-valid CA certificate (valid Jan 1-31, 2099)
 openssl req -new -sha256 \
-  -subj "/O=Valkey Test/CN=Certificate Authority Not Yet Valid" \
+  -subj "/O=KV Test/CN=Certificate Authority Not Yet Valid" \
   -key tests/tls/ca.key \
   -out tests/tls/ca-notyet.csr
 

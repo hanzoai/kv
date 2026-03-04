@@ -31,33 +31,33 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <valkey/async.h>
-#include <valkey/valkey.h>
+#include <kv/async.h>
+#include <kv/kv.h>
 
-#include <valkey/adapters/macosx.h>
+#include <kv/adapters/macosx.h>
 
 #include <stdio.h>
 
-void getCallback(valkeyAsyncContext *c, void *r, void *privdata) {
-    valkeyReply *reply = r;
+void getCallback(kvAsyncContext *c, void *r, void *privdata) {
+    kvReply *reply = r;
     if (reply == NULL)
         return;
     printf("argv[%s]: %s\n", (char *)privdata, reply->str);
 
     /* Disconnect after receiving the reply to GET */
-    valkeyAsyncDisconnect(c);
+    kvAsyncDisconnect(c);
 }
 
-void connectCallback(valkeyAsyncContext *c, int status) {
-    if (status != VALKEY_OK) {
+void connectCallback(kvAsyncContext *c, int status) {
+    if (status != KV_OK) {
         printf("Error: %s\n", c->errstr);
         return;
     }
     printf("Connected...\n");
 }
 
-void disconnectCallback(const valkeyAsyncContext *c, int status) {
-    if (status != VALKEY_OK) {
+void disconnectCallback(const kvAsyncContext *c, int status) {
+    if (status != KV_OK) {
         printf("Error: %s\n", c->errstr);
         return;
     }
@@ -74,21 +74,21 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    valkeyAsyncContext *c = valkeyAsyncConnect("127.0.0.1", 6379);
+    kvAsyncContext *c = kvAsyncConnect("127.0.0.1", 6379);
     if (c->err) {
         /* Let *c leak for now... */
         printf("Error: %s\n", c->errstr);
         return 1;
     }
 
-    valkeyMacOSAttach(c, loop);
+    kvMacOSAttach(c, loop);
 
-    valkeyAsyncSetConnectCallback(c, connectCallback);
-    valkeyAsyncSetDisconnectCallback(c, disconnectCallback);
+    kvAsyncSetConnectCallback(c, connectCallback);
+    kvAsyncSetDisconnectCallback(c, disconnectCallback);
 
-    valkeyAsyncCommand(
+    kvAsyncCommand(
         c, NULL, NULL, "SET key %b", argv[argc - 1], strlen(argv[argc - 1]));
-    valkeyAsyncCommand(c, getCallback, (char *)"end-1", "GET key");
+    kvAsyncCommand(c, getCallback, (char *)"end-1", "GET key");
 
     CFRunLoopRun();
 

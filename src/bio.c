@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -146,7 +146,7 @@ void *bioProcessBackgroundJobs(void *arg);
 
 /* Make sure we have enough stack to perform all the things we do in the
  * main thread. */
-#define VALKEY_THREAD_STACK_SIZE (1024 * 1024 * 4)
+#define KV_THREAD_STACK_SIZE (1024 * 1024 * 4)
 
 /* Initialize the background system, spawning the thread. */
 void bioInit(void) {
@@ -162,7 +162,7 @@ void bioInit(void) {
     pthread_attr_init(&attr);
     pthread_attr_getstacksize(&attr, &stacksize);
     if (!stacksize) stacksize = 1; /* The world is full of Solaris Fixes */
-    while (stacksize < VALKEY_THREAD_STACK_SIZE) stacksize *= 2;
+    while (stacksize < KV_THREAD_STACK_SIZE) stacksize *= 2;
     pthread_attr_setstacksize(&attr, stacksize);
 
     /* Ready to spawn our threads. We use the single argument the thread
@@ -243,7 +243,7 @@ void *bioProcessBackgroundJobs(void *arg) {
     bio_worker_data *const bwd = arg;
     sigset_t sigset;
 
-    valkey_set_thread_title(bwd->bio_worker_title);
+    kv_set_thread_title(bwd->bio_worker_title);
 
     serverSetCpuAffinity(server.bio_cpulist);
 
@@ -268,7 +268,7 @@ void *bioProcessBackgroundJobs(void *arg) {
         int job_type = job->header.type;
 
         if (job_type == BIO_CLOSE_FILE) {
-            if (job->fd_args.need_fsync && valkey_fsync(job->fd_args.fd) == -1 && errno != EBADF && errno != EINVAL) {
+            if (job->fd_args.need_fsync && kv_fsync(job->fd_args.fd) == -1 && errno != EBADF && errno != EINVAL) {
                 serverLog(LL_WARNING, "Fail to fsync the AOF file: %s", strerror(errno));
             }
             if (job->fd_args.need_reclaim_cache) {
@@ -281,7 +281,7 @@ void *bioProcessBackgroundJobs(void *arg) {
             /* The fd may be closed by main thread and reused for another
              * socket, pipe, or file. We just ignore these errno because
              * aof fsync did not really fail. */
-            if (valkey_fsync(job->fd_args.fd) == -1 && errno != EBADF && errno != EINVAL) {
+            if (kv_fsync(job->fd_args.fd) == -1 && errno != EBADF && errno != EINVAL) {
                 int last_status = atomic_load_explicit(&server.aof_bio_fsync_status, memory_order_relaxed);
 
                 atomic_store_explicit(&server.aof_bio_fsync_errno, errno, memory_order_relaxed);

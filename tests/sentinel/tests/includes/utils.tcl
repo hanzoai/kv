@@ -1,5 +1,5 @@
 proc restart_killed_instances {} {
-    foreach type {valkey sentinel} {
+    foreach type {kv sentinel} {
         foreach_${type}_id id {
             if {[get_instance_attrib $type $id pid] == -1} {
                 puts -nonewline "$type/$id "
@@ -61,7 +61,7 @@ proc wait_for_sentinels_connect_servers { {is_connect 1} } {
 }
 
 proc configure_sentinel_user_acl {user password {allow_failover 1}} {
-    foreach_valkey_id id {
+    foreach_kv_id id {
         R $id ACL SETUSER $user >$password +subscribe +publish [expr {$allow_failover ? "+failover" : "-failover"}] +script|kill +ping +info +multi +slaveof +config +client +exec &__sentinel__:hello ON
         # Ensure default user cannot be used for failover
         R $id ACL SETUSER default -failover -slaveof
@@ -71,7 +71,7 @@ proc configure_sentinel_user_acl {user password {allow_failover 1}} {
         S $id SENTINEL SET mymaster auth-pass $password
         S $id SENTINEL FLUSHCONFIG
     }
-    foreach_valkey_id id {
+    foreach_kv_id id {
         R $id CLIENT KILL USER default SKIPME yes
     }
     wait_for_sentinels_connect_servers
@@ -83,7 +83,7 @@ proc reset_sentinel_user_acl {user} {
         S $id SENTINEL SET mymaster auth-pass ""
         S $id SENTINEL FLUSHCONFIG
     }
-    foreach_valkey_id id {
+    foreach_kv_id id {
         R $id ACL SETUSER default +failover +slaveof
         R $id ACL DELUSER $user
         R $id CONFIG REWRITE

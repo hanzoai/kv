@@ -84,10 +84,10 @@ test "Verify information about the shards" {
             assert_equal "127.0.0.1"  [dict get [get_node_info_from_shard [lindex $ids $i] $ref "node"] endpoint]
 
             if {$::tls} {
-                assert_equal [get_instance_attrib valkey $i plaintext-port] [dict get [get_node_info_from_shard [lindex $ids $i] $ref "node"] port]
-                assert_equal [get_instance_attrib valkey $i port] [dict get [get_node_info_from_shard [lindex $ids $i] $ref "node"] tls-port]
+                assert_equal [get_instance_attrib kv $i plaintext-port] [dict get [get_node_info_from_shard [lindex $ids $i] $ref "node"] port]
+                assert_equal [get_instance_attrib kv $i port] [dict get [get_node_info_from_shard [lindex $ids $i] $ref "node"] tls-port]
             } else {
-                assert_equal [get_instance_attrib valkey $i port] [dict get [get_node_info_from_shard [lindex $ids $i] $ref "node"] port]
+                assert_equal [get_instance_attrib kv $i port] [dict get [get_node_info_from_shard [lindex $ids $i] $ref "node"] port]
             }
 
             if {$i < 4} {
@@ -111,7 +111,7 @@ test "Verify no slot shard" {
 set node_0_id [R 0 CLUSTER MYID]
 
 test "Kill a node and tell the replica to immediately takeover" {
-    kill_instance valkey 0
+    kill_instance kv 0
     R 4 cluster failover force
 }
 
@@ -128,7 +128,7 @@ set primary_id 4
 set replica_id 0
 
 test "Restarting primary node" {
-    restart_instance valkey $replica_id
+    restart_instance kv $replica_id
 }
 
 test "Instance #0 gets converted into a replica" {
@@ -206,7 +206,7 @@ test "Regression test for a crash when calling SHARDS during handshake" {
     for {set i 0} {$i < 19} {incr i} {
         R $i CLUSTER FORGET $id
     }
-    R 19 cluster meet 127.0.0.1 [get_instance_attrib valkey 0 port]
+    R 19 cluster meet 127.0.0.1 [get_instance_attrib kv 0 port]
     # This should line would previously crash, since all the outbound
     # connections were in handshake state.
     R 19 CLUSTER SHARDS
@@ -248,15 +248,15 @@ test "CLUSTER MYSHARDID reports same shard id after shard restart" {
     set node_ids {}
     for {set i 0} {$i < 8} {incr i 4} {
         dict set node_ids $i [R $i cluster myshardid]
-        kill_instance valkey $i
+        kill_instance kv $i
         wait_for_condition 50 100 {
-            [instance_is_killed valkey $i]
+            [instance_is_killed kv $i]
         } else {
             fail "instance $i is not killed"
         }
     }
     for {set i 0} {$i < 8} {incr i 4} {
-        restart_instance valkey $i
+        restart_instance kv $i
     }
     assert_cluster_state ok
     for {set i 0} {$i < 8} {incr i 4} {
@@ -270,15 +270,15 @@ test "CLUSTER MYSHARDID reports same shard id after cluster restart" {
         dict set node_ids $i [R $i cluster myshardid]
     }
     for {set i 0} {$i < 8} {incr i} {
-        kill_instance valkey $i
+        kill_instance kv $i
         wait_for_condition 50 100 {
-            [instance_is_killed valkey $i]
+            [instance_is_killed kv $i]
         } else {
             fail "instance $i is not killed"
         }
     }
     for {set i 0} {$i < 8} {incr i} {
-        restart_instance valkey $i
+        restart_instance kv $i
     }
     assert_cluster_state ok
     for {set i 0} {$i < 8} {incr i} {

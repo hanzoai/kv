@@ -1,10 +1,10 @@
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "list.h"
-#include "../../valkeymodule.h"
+#include "../../kvmodule.h"
 
 typedef struct ListNode {
     void *val;
@@ -21,7 +21,7 @@ typedef struct ListIter {
 } ListIter;
 
 List *list_create(void) {
-    List *list = ValkeyModule_Alloc(sizeof(List));
+    List *list = KVModule_Alloc(sizeof(List));
     list->head = NULL;
     list->length = 0;
     return list;
@@ -31,10 +31,10 @@ void list_destroy(List *list) {
     ListNode *current = list->head;
     while (current) {
         ListNode *next = current->next;
-        ValkeyModule_Free(current);
+        KVModule_Free(current);
         current = next;
     }
-    ValkeyModule_Free(list);
+    KVModule_Free(list);
 }
 
 int list_length(List *list) {
@@ -42,7 +42,7 @@ int list_length(List *list) {
 }
 
 void list_add(List *list, void *val) {
-    ListNode *new_node = ValkeyModule_Calloc(1, sizeof(ListNode));
+    ListNode *new_node = KVModule_Calloc(1, sizeof(ListNode));
     new_node->val = val;
     new_node->next = NULL;
     if (!list->head) {
@@ -58,7 +58,7 @@ void list_add(List *list, void *val) {
 }
 
 ListIter *list_get_iter(List *list) {
-    ListIter *iter = ValkeyModule_Calloc(1, sizeof(ListIter));
+    ListIter *iter = KVModule_Calloc(1, sizeof(ListIter));
     iter->current = list->head;
     return iter;
 }
@@ -73,5 +73,5 @@ void *list_iter_next(ListIter *iter) {
 }
 
 void list_release_iter(ListIter *iter) {
-    ValkeyModule_Free(iter);
+    KVModule_Free(iter);
 }

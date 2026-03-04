@@ -249,7 +249,7 @@ static inline int isReplicaReadyForReplData(client *replica) {
 
 /* Decides if copy avoidance is preferred according to client type, number of I/O threads, object size
  * Maybe called with NULL obj for evaluation with no regard to object size
- * Copy avoidance can be allowed only for regular Valkey clients
+ * Copy avoidance can be allowed only for regular KV clients
  * that use _writeToClient handler to write replies to client connection */
 static int isCopyAvoidPreferred(client *c, robj *obj) {
     if (c->flag.fake || isDeferredReplyEnabled(c)) return 0;
@@ -568,7 +568,7 @@ static size_t upsertPayloadHeader(char *buf,
  * Sanitizer suppression: client->buf_usable_size determined by
  * zmalloc_usable_size() call. Writing beyond client->buf boundaries confuses
  * sanitizer and generates a false positive out-of-bounds error */
-VALKEY_NO_SANITIZE("bounds")
+KV_NO_SANITIZE("bounds")
 static size_t _addReplyPayloadToBuffer(client *c, const void *payload, size_t len, uint8_t payload_type) {
     /* If the debug enforcing to use the reply list is enabled.*/
     if (server.debug_client_enforce_reply_list) return 0;
@@ -1778,7 +1778,7 @@ void clientAcceptHandler(connection *conn) {
     }
 
     server.stat_numconnections++;
-    moduleFireServerEvent(VALKEYMODULE_EVENT_CLIENT_CHANGE, VALKEYMODULE_SUBEVENT_CLIENT_CHANGE_CONNECTED, c);
+    moduleFireServerEvent(KVMODULE_EVENT_CLIENT_CHANGE, KVMODULE_SUBEVENT_CLIENT_CHANGE_CONNECTED, c);
 }
 
 void acceptCommonHandler(connection *conn, struct ClientFlags flags, char *ip) {
@@ -2052,7 +2052,7 @@ void freeClient(client *c) {
 
     /* For connected clients, call the disconnection event of modules hooks. */
     if (c->conn) {
-        moduleFireServerEvent(VALKEYMODULE_EVENT_CLIENT_CHANGE, VALKEYMODULE_SUBEVENT_CLIENT_CHANGE_DISCONNECTED, c);
+        moduleFireServerEvent(KVMODULE_EVENT_CLIENT_CHANGE, KVMODULE_SUBEVENT_CLIENT_CHANGE_DISCONNECTED, c);
     }
 
     /* Notify module system that this client auth status changed. */
@@ -4048,7 +4048,7 @@ static void prefetchCommandQueueKeys(client *c) {
             /* TODO? Prefetch all types and encodings except OBJ_ENCODING_EMBSTR
              * and OBJ_ENCODING_INT. */
             if (val->encoding == OBJ_ENCODING_RAW && val->type == OBJ_STRING) {
-                valkey_prefetch(objectGetVal(val));
+                kv_prefetch(objectGetVal(val));
             }
         }
     }
@@ -4215,7 +4215,7 @@ void readQueryFromClient(connection *conn) {
 /* An "Address String" is a colon separated ip:port pair.
  * For IPv4 it's in the form x.y.z.k:port, example: "127.0.0.1:1234".
  * For IPv6 addresses we use [] around the IP part, like in "[::1]:1234".
- * For Unix sockets we use path:0, like in "/tmp/valkey:0".
+ * For Unix sockets we use path:0, like in "/tmp/kv:0".
  *
  * An Address String always fits inside a buffer of CONN_ADDR_STR_LEN bytes,
  * including the null term.
@@ -5730,7 +5730,7 @@ void helloCommand(client *c) {
     addReplyBulkCString(c, server.extended_redis_compat ? "redis" : SERVER_NAME);
 
     addReplyBulkCString(c, "version");
-    addReplyBulkCString(c, server.extended_redis_compat ? REDIS_VERSION : VALKEY_VERSION);
+    addReplyBulkCString(c, server.extended_redis_compat ? REDIS_VERSION : KV_VERSION);
 
     addReplyBulkCString(c, "proto");
     addReplyLongLong(c, c->resp);

@@ -35,7 +35,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-valkeyAllocFuncs valkeyAllocFns = {
+kvAllocFuncs kvAllocFns = {
     .mallocFn = malloc,
     .callocFn = calloc,
     .reallocFn = realloc,
@@ -43,18 +43,18 @@ valkeyAllocFuncs valkeyAllocFns = {
     .freeFn = free,
 };
 
-/* Override valkey' allocators with ones supplied by the user */
-valkeyAllocFuncs valkeySetAllocators(valkeyAllocFuncs *override) {
-    valkeyAllocFuncs orig = valkeyAllocFns;
+/* Override kv' allocators with ones supplied by the user */
+kvAllocFuncs kvSetAllocators(kvAllocFuncs *override) {
+    kvAllocFuncs orig = kvAllocFns;
 
-    valkeyAllocFns = *override;
+    kvAllocFns = *override;
 
     return orig;
 }
 
 /* Reset allocators to use libc defaults */
-void valkeyResetAllocators(void) {
-    valkeyAllocFns = (valkeyAllocFuncs){
+void kvResetAllocators(void) {
+    kvAllocFns = (kvAllocFuncs){
         .mallocFn = malloc,
         .callocFn = calloc,
         .reallocFn = realloc,
@@ -66,7 +66,7 @@ void valkeyResetAllocators(void) {
 #ifdef _WIN32
 
 void *vk_malloc(size_t size) {
-    return valkeyAllocFns.mallocFn(size);
+    return kvAllocFns.mallocFn(size);
 }
 
 void *vk_calloc(size_t nmemb, size_t size) {
@@ -74,19 +74,19 @@ void *vk_calloc(size_t nmemb, size_t size) {
     if (SIZE_MAX / size < nmemb)
         return NULL;
 
-    return valkeyAllocFns.callocFn(nmemb, size);
+    return kvAllocFns.callocFn(nmemb, size);
 }
 
 void *vk_realloc(void *ptr, size_t size) {
-    return valkeyAllocFns.reallocFn(ptr, size);
+    return kvAllocFns.reallocFn(ptr, size);
 }
 
 char *vk_strdup(const char *str) {
-    return valkeyAllocFns.strdupFn(str);
+    return kvAllocFns.strdupFn(str);
 }
 
 void vk_free(void *ptr) {
-    valkeyAllocFns.freeFn(ptr);
+    kvAllocFns.freeFn(ptr);
 }
 
 #endif

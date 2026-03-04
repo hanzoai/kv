@@ -1,7 +1,7 @@
-#ifndef VALKEY_EXAMPLE_QT_H
-#define VALKEY_EXAMPLE_QT_H
+#ifndef KV_EXAMPLE_QT_H
+#define KV_EXAMPLE_QT_H
 
-#include <valkey/adapters/qt.h>
+#include <kv/adapters/qt.h>
 
 class ExampleQt : public QObject {
 
@@ -22,10 +22,10 @@ class ExampleQt : public QObject {
 
   private:
     const char *m_value;
-    valkeyAsyncContext *m_ctx;
-    ValkeyQtAdapter m_adapter;
+    kvAsyncContext *m_ctx;
+    KVQtAdapter m_adapter;
 
-    friend void getCallback(valkeyAsyncContext *, void *, void *);
+    friend void getCallback(kvAsyncContext *, void *, void *);
 };
 
-#endif /* VALKEY_EXAMPLE_QT_H */
+#endif /* KV_EXAMPLE_QT_H */

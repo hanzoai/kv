@@ -27,14 +27,14 @@ proc get_one_of_my_replica {id} {
         fail "replicas didn't connect"
     }
     set replica_port [lindex [lindex [lindex [R $id role] 2] 0] 1]
-    set replica_id_num [get_instance_id_by_port valkey $replica_port]
+    set replica_id_num [get_instance_id_by_port kv $replica_port]
     return $replica_id_num
 }
 
 proc cluster_write_keys_with_expire {id ttl} {
     set prefix [randstring 20 20 alpha]
     set port [srv -$id port]
-    set cluster [valkey_cluster 127.0.0.1:$port]
+    set cluster [kv_cluster 127.0.0.1:$port]
     for {set j 100} {$j < 200} {incr j} {
         $cluster setex key_expire.$j $ttl $prefix.$j
     }

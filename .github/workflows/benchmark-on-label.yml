@@ -21,33 +21,33 @@ jobs:
   benchmark:
     if: |
       github.event.action == 'labeled' && github.event.label.name == 'run-benchmark' &&
-      github.repository == 'valkey-io/valkey'
+      github.repository == 'kv-io/kv'
 
     runs-on: ["self-hosted", "ec2-al-2023-pr-benchmarking-arm64"]
     timeout-minutes: 7200
     steps:
-      - name: Checkout valkey
+      - name: Checkout kv
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          path: valkey
+          path: kv
           fetch-depth: 0
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           persist-credentials: false
 
-      - name: Checkout valkey-perf-benchmark
+      - name: Checkout kv-perf-benchmark
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          repository: ${{ github.repository_owner }}/valkey-perf-benchmark
-          path: valkey-perf-benchmark
+          repository: ${{ github.repository_owner }}/kv-perf-benchmark
+          path: kv-perf-benchmark
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Checkout valkey for latest benchmark.
+      - name: Checkout kv for latest benchmark.
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          repository: valkey-io/valkey
+          repository: kv-io/kv
           ref: "unstable"
-          path: valkey_latest
+          path: kv_latest
           fetch-depth: 0
           persist-credentials: false
 
@@ -58,7 +58,7 @@ jobs:
           cache: "pip"
 
       - name: Install dependencies
-        working-directory: valkey-perf-benchmark
+        working-directory: kv-perf-benchmark
         run: |
           sudo dnf groupinstall "Development Tools" -y
           sudo dnf install -y gcc gcc-c++ make \
@@ -68,37 +68,37 @@ jobs:
               libffi-devel
           pip install -r requirements.txt
 
-      - name: Build latest valkey_latest
-        working-directory: valkey_latest
+      - name: Build latest kv_latest
+        working-directory: kv_latest
         run: |
-          echo "Building latest valkey-benchmark for latest benchmark executable..."
+          echo "Building latest kv-benchmark for latest benchmark executable..."
           make distclean || true
           make -j
-          if [[ -f "src/valkey-benchmark" ]]; then
-            echo "Successfully built latest valkey-benchmark"
-            ls -la src/valkey-benchmark
-            ./src/valkey-benchmark --version || echo "Version check completed"
+          if [[ -f "src/kv-benchmark" ]]; then
+            echo "Successfully built latest kv-benchmark"
+            ls -la src/kv-benchmark
+            ./src/kv-benchmark --version || echo "Version check completed"
           else
-            echo "Failed to build valkey-benchmark"
+            echo "Failed to build kv-benchmark"
             exit 1
           fi
-          VALKEY_BENCHMARK_PATH="$(pwd)/src/valkey-benchmark"
-          echo "VALKEY_BENCHMARK_PATH=$VALKEY_BENCHMARK_PATH" >> $GITHUB_ENV
-          echo "Latest valkey-benchmark path: $VALKEY_BENCHMARK_PATH"
+          KV_BENCHMARK_PATH="$(pwd)/src/kv-benchmark"
+          echo "KV_BENCHMARK_PATH=$KV_BENCHMARK_PATH" >> $GITHUB_ENV
+          echo "Latest kv-benchmark path: $KV_BENCHMARK_PATH"
 
       - name: Run benchmarks
-        working-directory: valkey-perf-benchmark
+        working-directory: kv-perf-benchmark
         run: |
-          CONFIG_FILE="../valkey/.github/benchmark_configs/benchmark-config-arm.json"
+          CONFIG_FILE="../kv/.github/benchmark_configs/benchmark-config-arm.json"
 
           # Base benchmark arguments
           BENCHMARK_ARGS=(
             --config "$CONFIG_FILE"
             --commits "${{ github.event.pull_request.merge_commit_sha }}"
             --baseline "${{ github.event.pull_request.base.ref }}"
-            --valkey-benchmark-path "$VALKEY_BENCHMARK_PATH"
+            --kv-benchmark-path "$KV_BENCHMARK_PATH"
             --target-ip ${{ secrets.EC2_ARM64_IP }}
-            --valkey-path "../valkey"
+            --kv-path "../kv"
             --results-dir "results"
             --runs 5
           )
@@ -107,7 +107,7 @@ jobs:
           python ./benchmark.py "${BENCHMARK_ARGS[@]}"
 
       - name: Compare results
-        working-directory: valkey-perf-benchmark
+        working-directory: kv-perf-benchmark
         run: |
           python ./utils/compare_benchmark_results.py \
             --baseline ./results/${{ github.event.pull_request.base.ref }}/metrics.json \
@@ -122,8 +122,8 @@ jobs:
         with:
           name: benchmark-results
           path: |
-            ./valkey-perf-benchmark/results/${{ github.event.pull_request.merge_commit_sha }}/metrics.json
-            ./valkey-perf-benchmark/results/${{ github.event.pull_request.base.ref }}/metrics.json
+            ./kv-perf-benchmark/results/${{ github.event.pull_request.merge_commit_sha }}/metrics.json
+            ./kv-perf-benchmark/results/${{ github.event.pull_request.base.ref }}/metrics.json
             comparison.md
 
       - name: Comment PR with results
@@ -144,17 +144,17 @@ jobs:
               body: `**Benchmark ran on this commit:** ${link}\n\n${body}`
             });
 
-      - name: Cleanup any running valkey processes
+      - name: Cleanup any running kv processes
         if: always()
         continue-on-error: true
         run: |
-          rm -rf comparison.md valkey*
-          pkill -f valkey
+          rm -rf comparison.md kv*
+          pkill -f kv
           exit_code=$?
           if [ $exit_code -eq 0 ]; then
-            echo "Killed running valkey processes"
+            echo "Killed running kv processes"
           elif [ $exit_code -eq 1 ]; then
-            echo "No valkey processes found to kill"
+            echo "No kv processes found to kill"
           else
             echo "Warning: pkill failed with exit code $exit_code"
           fi

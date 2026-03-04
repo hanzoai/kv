@@ -1,28 +1,28 @@
-#include "valkeymodule.h"
+#include "kvmodule.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
 
-int test_module_update_parameter(ValkeyModuleCtx *ctx,
-                                 ValkeyModuleString **argv, int argc) {
+int test_module_update_parameter(KVModuleCtx *ctx,
+                                 KVModuleString **argv, int argc) {
 
-  ValkeyModule_UpdateRuntimeArgs(ctx, argv, argc);
-  return ValkeyModule_ReplyWithSimpleString(ctx, "OK");
+  KVModule_UpdateRuntimeArgs(ctx, argv, argc);
+  return KVModule_ReplyWithSimpleString(ctx, "OK");
 }
 
-int ValkeyModule_OnLoad(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
-    VALKEYMODULE_NOT_USED(argv);
-    VALKEYMODULE_NOT_USED(argc);
+int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+    KVMODULE_NOT_USED(argv);
+    KVMODULE_NOT_USED(argc);
 
-    if (ValkeyModule_Init(ctx, "moduleparameter", 1, VALKEYMODULE_APIVER_1) ==
-        VALKEYMODULE_ERR)
-      return VALKEYMODULE_ERR;
+    if (KVModule_Init(ctx, "moduleparameter", 1, KVMODULE_APIVER_1) ==
+        KVMODULE_ERR)
+      return KVMODULE_ERR;
 
-    if (ValkeyModule_CreateCommand(ctx, "testmoduleparameter.update.parameter",
+    if (KVModule_CreateCommand(ctx, "testmoduleparameter.update.parameter",
                                    test_module_update_parameter, "fast", 0, 0,
-                                   0) == VALKEYMODULE_ERR)
-      return VALKEYMODULE_ERR;
+                                   0) == KVMODULE_ERR)
+      return KVMODULE_ERR;
 
-    return VALKEYMODULE_OK;
+    return KVMODULE_OK;
 }

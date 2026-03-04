@@ -45,14 +45,14 @@
 
 #include "sds.h"
 #include "ae.h"
-#include <valkey/valkey.h>
+#include <kv/kv.h>
 #ifdef USE_OPENSSL
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#include <valkey/tls.h>
+#include <kv/tls.h>
 #endif
 #ifdef USE_RDMA
-#include <valkey/rdma.h>
+#include <kv/rdma.h>
 #endif
 #include "adlist.h"
 #include "dict.h"
@@ -98,7 +98,7 @@ typedef enum readFromReplica {
 
 static struct config {
     aeEventLoop *el;
-    enum valkeyConnectionType ct;
+    enum kvConnectionType ct;
     cliConnInfo conn_info;
     int tls;
     int mptcp;
@@ -172,7 +172,7 @@ static struct placeholders {
 } placeholders;
 
 typedef struct _client {
-    valkeyContext *context;
+    kvContext *context;
     sds obuf;
     char **stagptr;     /* Pointers to slot hashtags (cluster mode only) */
     size_t staglen;     /* Number of pointers in client->stagptr */
@@ -230,8 +230,8 @@ static void freeBenchmarkThread(benchmarkThread *thread);
 static void freeBenchmarkThreads(void);
 static void *execBenchmarkThread(void *ptr);
 static clusterNode *createClusterNode(char *ip, int port);
-static serverConfig *getServerConfig(enum valkeyConnectionType ct, const char *ip_or_path, int port);
-static valkeyContext *getValkeyContext(enum valkeyConnectionType ct, const char *ip_or_path, int port);
+static serverConfig *getServerConfig(enum kvConnectionType ct, const char *ip_or_path, int port);
+static kvContext *getKVContext(enum kvConnectionType ct, const char *ip_or_path, int port);
 static void freeServerConfig(serverConfig *cfg);
 static int fetchClusterSlotsConfiguration(client c);
 static void updateClusterSlotsConfiguration(void);
@@ -299,15 +299,15 @@ static dictType dtype = {
     NULL               /* allow to expand */
 };
 
-static valkeyContext *getValkeyContext(enum valkeyConnectionType ct, const char *ip_or_path, int port) {
-    valkeyContext *ctx = NULL;
-    valkeyReply *reply = NULL;
+static kvContext *getKVContext(enum kvConnectionType ct, const char *ip_or_path, int port) {
+    kvContext *ctx = NULL;
+    kvReply *reply = NULL;
     struct timeval tv = {0};
-    ctx = valkeyConnectWrapper(ct, ip_or_path, port, tv, 0, config.mptcp);
+    ctx = kvConnectWrapper(ct, ip_or_path, port, tv, 0, config.mptcp);
     if (ctx == NULL || ctx->err) {
         fprintf(stderr, "Could not connect to server at ");
         char *err = (ctx != NULL ? ctx->errstr : "");
-        if (ct != VALKEY_CONN_UNIX)
+        if (ct != KV_CONN_UNIX)
             fprintf(stderr, "%s:%d: %s\n", ip_or_path, port, err);
         else
             fprintf(stderr, "%s: %s\n", ip_or_path, err);
@@ -315,65 +315,65 @@ static valkeyContext *getValkeyContext(enum valkeyConnectionType ct, const char 
     }
     if (config.tls == 1) {
         const char *err = NULL;
-        if (cliSecureConnection(ctx, config.sslconfig, &err) == VALKEY_ERR && err) {
+        if (cliSecureConnection(ctx, config.sslconfig, &err) == KV_ERR && err) {
             fprintf(stderr, "Could not negotiate a TLS connection: %s\n", err);
             goto cleanup;
         }
     }
     if (config.conn_info.auth == NULL) return ctx;
     if (config.conn_info.user == NULL)
-        reply = valkeyCommand(ctx, "AUTH %s", config.conn_info.auth);
+        reply = kvCommand(ctx, "AUTH %s", config.conn_info.auth);
     else
-        reply = valkeyCommand(ctx, "AUTH %s %s", config.conn_info.user, config.conn_info.auth);
+        reply = kvCommand(ctx, "AUTH %s %s", config.conn_info.user, config.conn_info.auth);
     if (reply != NULL) {
-        if (reply->type == VALKEY_REPLY_ERROR) {
-            if (ct != VALKEY_CONN_UNIX)
+        if (reply->type == KV_REPLY_ERROR) {
+            if (ct != KV_CONN_UNIX)
                 fprintf(stderr, "Node %s:%d replied with error:\n%s\n", ip_or_path, port, reply->str);
             else
                 fprintf(stderr, "Node %s replied with error:\n%s\n", ip_or_path, reply->str);
             freeReplyObject(reply);
-            valkeyFree(ctx);
+            kvFree(ctx);
             exit(1);
         }
         freeReplyObject(reply);
         return ctx;
     }
     fprintf(stderr, "ERROR: failed to fetch reply from ");
-    if (ct != VALKEY_CONN_UNIX)
+    if (ct != KV_CONN_UNIX)
         fprintf(stderr, "%s:%d\n", ip_or_path, port);
     else
         fprintf(stderr, "%s\n", ip_or_path);
 cleanup:
     freeReplyObject(reply);
-    valkeyFree(ctx);
+    kvFree(ctx);
     return NULL;
 }
 
 
-static serverConfig *getServerConfig(enum valkeyConnectionType ct, const char *ip_or_path, int port) {
+static serverConfig *getServerConfig(enum kvConnectionType ct, const char *ip_or_path, int port) {
     serverConfig *cfg = zcalloc(sizeof(*cfg));
     if (!cfg) return NULL;
-    valkeyContext *c = NULL;
-    valkeyReply *reply = NULL, *sub_reply = NULL;
-    c = getValkeyContext(ct, ip_or_path, port);
+    kvContext *c = NULL;
+    kvReply *reply = NULL, *sub_reply = NULL;
+    c = getKVContext(ct, ip_or_path, port);
     if (c == NULL) {
         freeServerConfig(cfg);
         exit(1);
     }
-    valkeyAppendCommand(c, "CONFIG GET %s", "save");
-    valkeyAppendCommand(c, "CONFIG GET %s", "appendonly");
+    kvAppendCommand(c, "CONFIG GET %s", "save");
+    kvAppendCommand(c, "CONFIG GET %s", "appendonly");
     int abort_test = 0;
     int i = 0;
     void *r = NULL;
     for (; i < 2; i++) {
-        int res = valkeyGetReply(c, &r);
+        int res = kvGetReply(c, &r);
         if (reply) freeReplyObject(reply);
-        reply = res == VALKEY_OK ? ((valkeyReply *)r) : NULL;
-        if (res != VALKEY_OK || !r) goto fail;
-        if (reply->type == VALKEY_REPLY_ERROR) {
+        reply = res == KV_OK ? ((kvReply *)r) : NULL;
+        if (res != KV_OK || !r) goto fail;
+        if (reply->type == KV_REPLY_ERROR) {
             goto fail;
         }
-        if (reply->type != VALKEY_REPLY_ARRAY || reply->elements < 2) goto fail;
+        if (reply->type != KV_REPLY_ARRAY || reply->elements < 2) goto fail;
         sub_reply = reply->element[1];
         char *value = sub_reply->str;
         if (!value) value = "";
@@ -383,18 +383,18 @@ static serverConfig *getServerConfig(enum valkeyConnectionType ct, const char *i
         }
     }
     freeReplyObject(reply);
-    valkeyFree(c);
+    kvFree(c);
     return cfg;
 fail:
-    if (reply && reply->type == VALKEY_REPLY_ERROR && !strncmp(reply->str, "NOAUTH", 6)) {
-        if (ct != VALKEY_CONN_UNIX)
+    if (reply && reply->type == KV_REPLY_ERROR && !strncmp(reply->str, "NOAUTH", 6)) {
+        if (ct != KV_CONN_UNIX)
             fprintf(stderr, "Node %s:%d replied with error:\n%s\n", ip_or_path, port, reply->str);
         else
             fprintf(stderr, "Node %s replied with error:\n%s\n", ip_or_path, reply->str);
         abort_test = 1;
     }
     freeReplyObject(reply);
-    valkeyFree(c);
+    kvFree(c);
     freeServerConfig(cfg);
     if (abort_test) exit(1);
     return NULL;
@@ -533,7 +533,7 @@ static void freeClient(client c) {
             aeStop(el);
         }
     }
-    valkeyFree(c->context);
+    kvFree(c->context);
     if (c->paused) releasePausedClient(c);
     sdsfree(c->obuf);
     zfree(c->stagptr);
@@ -560,7 +560,7 @@ static void resetClient(client c) {
     aeEventLoop *el = CLIENT_GET_EVENTLOOP(c);
     aeDeleteFileEvent(el, c->context->fd, AE_WRITABLE);
     aeDeleteFileEvent(el, c->context->fd, AE_READABLE);
-    if (config.ct == VALKEY_CONN_RDMA) {
+    if (config.ct == KV_CONN_RDMA) {
         writeHandler(el, c->context->fd, c, 0); /* RDMA context always writable, but it can't be invoked by AE_WRITABLE */
     } else {
         aeCreateFileEvent(el, c->context->fd, AE_WRITABLE, writeHandler, c);
@@ -682,22 +682,22 @@ static void readHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
      * is not part of the latency, so calculate it only once, here. */
     if (c->latency < 0) c->latency = ustime() - (c->start);
 
-    if (valkeyBufferRead(c->context) != VALKEY_OK) {
+    if (kvBufferRead(c->context) != KV_OK) {
         fprintf(stderr, "Error: %s\n", c->context->errstr);
         exit(1);
     } else {
         while (c->pending) {
-            if (valkeyGetReply(c->context, &reply) != VALKEY_OK) {
+            if (kvGetReply(c->context, &reply) != KV_OK) {
                 fprintf(stderr, "Error: %s\n", c->context->errstr);
                 exit(1);
             }
             if (reply != NULL) {
-                if (reply == (void *)VALKEY_REPLY_ERROR) {
+                if (reply == (void *)KV_REPLY_ERROR) {
                     fprintf(stderr, "Unexpected error reply, exiting...\n");
                     exit(1);
                 }
-                valkeyReply *r = reply;
-                if (r->type == VALKEY_REPLY_ERROR) {
+                kvReply *r = reply;
+                if (r->type == KV_REPLY_ERROR) {
                     /* Try to update slots configuration if reply error is
                      * MOVED/ASK/CLUSTERDOWN and the key(s) used by the command
                      * contain(s) the slot hash tag.
@@ -945,10 +945,10 @@ static client createClient(char *cmd, int len, int seqlen, client from, int thre
         c->cluster_node = node;
     }
 
-    c->context = valkeyConnectWrapper(config.ct, ip, port, tv, 1, config.mptcp);
+    c->context = kvConnectWrapper(config.ct, ip, port, tv, 1, config.mptcp);
     if (c->context->err) {
         fprintf(stderr, "Could not connect to server at ");
-        if (config.ct != VALKEY_CONN_UNIX || is_cluster_client)
+        if (config.ct != KV_CONN_UNIX || is_cluster_client)
             fprintf(stderr, "%s:%d: %s\n", ip, port, c->context->errstr);
         else
             fprintf(stderr, "%s: %s\n", ip, c->context->errstr);
@@ -956,7 +956,7 @@ static client createClient(char *cmd, int len, int seqlen, client from, int thre
     }
     if (config.tls == 1) {
         const char *err = NULL;
-        if (cliSecureConnection(c->context, config.sslconfig, &err) == VALKEY_ERR && err) {
+        if (cliSecureConnection(c->context, config.sslconfig, &err) == KV_ERR && err) {
             fprintf(stderr, "Could not negotiate a TLS connection: %s\n", err);
             exit(1);
         }
@@ -964,7 +964,7 @@ static client createClient(char *cmd, int len, int seqlen, client from, int thre
     c->paused = 0;
     c->reuse = 0;
     c->thread_id = thread_id;
-    /* Suppress libvalkey cleanup of unused buffers for max speed. */
+    /* Suppress libkv cleanup of unused buffers for max speed. */
     c->context->reader->maxbuf = 0;
 
     /* Build the request buffer:
@@ -979,9 +979,9 @@ static client createClient(char *cmd, int len, int seqlen, client from, int thre
         char *buf = NULL;
         int len;
         if (config.conn_info.user == NULL)
-            len = valkeyFormatCommand(&buf, "AUTH %s", config.conn_info.auth);
+            len = kvFormatCommand(&buf, "AUTH %s", config.conn_info.auth);
         else
-            len = valkeyFormatCommand(&buf, "AUTH %s %s", config.conn_info.user, config.conn_info.auth);
+            len = kvFormatCommand(&buf, "AUTH %s %s", config.conn_info.user, config.conn_info.auth);
         c->obuf = sdscatlen(c->obuf, buf, len);
         free(buf);
         c->prefix_pending++;
@@ -989,7 +989,7 @@ static client createClient(char *cmd, int len, int seqlen, client from, int thre
 
     if (config.enable_tracking) {
         char *buf = NULL;
-        int len = valkeyFormatCommand(&buf, "CLIENT TRACKING on");
+        int len = kvFormatCommand(&buf, "CLIENT TRACKING on");
         c->obuf = sdscatlen(c->obuf, buf, len);
         free(buf);
         c->prefix_pending++;
@@ -1007,7 +1007,7 @@ static client createClient(char *cmd, int len, int seqlen, client from, int thre
 
     if (config.resp3) {
         char *buf = NULL;
-        int len = valkeyFormatCommand(&buf, "HELLO 3");
+        int len = kvFormatCommand(&buf, "HELLO 3");
         c->obuf = sdscatlen(c->obuf, buf, len);
         free(buf);
         c->prefix_pending++;
@@ -1016,7 +1016,7 @@ static client createClient(char *cmd, int len, int seqlen, client from, int thre
     if (config.cluster_mode && (config.read_from_replica == FROM_REPLICA_ONLY || config.read_from_replica == FROM_ALL)) {
         char *buf = NULL;
         int len;
-        len = valkeyFormatCommand(&buf, "READONLY");
+        len = kvFormatCommand(&buf, "READONLY");
         c->obuf = sdscatlen(c->obuf, buf, len);
         free(buf);
         c->prefix_pending++;
@@ -1074,7 +1074,7 @@ static client createClient(char *cmd, int len, int seqlen, client from, int thre
         el = thread->el;
     }
     if (config.idlemode == 0) {
-        if (config.ct != VALKEY_CONN_RDMA) {
+        if (config.ct != KV_CONN_RDMA) {
             aeCreateFileEvent(el, c->context->fd, AE_WRITABLE, writeHandler, c);
         }
     } else
@@ -1296,7 +1296,7 @@ static void benchmarkSequence(const char *title, char *cmd, int len, int seqlen)
     config.start = mstime();
     if (!config.num_threads) {
 #ifdef USE_RDMA
-        if (config.idlemode == 0 && config.ct == VALKEY_CONN_RDMA) {
+        if (config.idlemode == 0 && config.ct == KV_CONN_RDMA) {
             issueFirstRequestForClients(config.el, 0, 1);
         }
 #endif
@@ -1348,7 +1348,7 @@ static void freeBenchmarkThreads(void) {
 static void *execBenchmarkThread(void *ptr) {
     benchmarkThread *thread = (benchmarkThread *)ptr;
 #ifdef USE_RDMA
-    if (config.idlemode == 0 && config.ct == VALKEY_CONN_RDMA) {
+    if (config.idlemode == 0 && config.ct == KV_CONN_RDMA) {
         issueFirstRequestForClients(thread->el, thread->index, config.num_threads);
     }
 #endif
@@ -1407,34 +1407,34 @@ static clusterNode **addClusterNode(clusterNode *node) {
 
 static int fetchClusterConfiguration(void) {
     int success = 1;
-    valkeyContext *ctx = NULL;
-    valkeyReply *reply = NULL;
+    kvContext *ctx = NULL;
+    kvReply *reply = NULL;
     dict *nodes = NULL;
     const char *errmsg = "Failed to fetch cluster configuration";
     size_t i, j;
-    ctx = getValkeyContext(config.ct, config.conn_info.hostip, config.conn_info.hostport);
+    ctx = getKVContext(config.ct, config.conn_info.hostip, config.conn_info.hostport);
     if (ctx == NULL) {
         exit(1);
     }
 
-    reply = valkeyCommand(ctx, "CLUSTER SLOTS");
-    if (reply == NULL || reply->type == VALKEY_REPLY_ERROR) {
+    reply = kvCommand(ctx, "CLUSTER SLOTS");
+    if (reply == NULL || reply->type == KV_REPLY_ERROR) {
         success = 0;
         if (reply) fprintf(stderr, "%s\nCLUSTER SLOTS ERROR: %s\n", errmsg, reply->str);
         goto cleanup;
     }
-    assert(reply->type == VALKEY_REPLY_ARRAY);
+    assert(reply->type == KV_REPLY_ARRAY);
     nodes = dictCreate(&dtype);
     for (i = 0; i < reply->elements; i++) {
-        valkeyReply *r = reply->element[i];
-        assert(r->type == VALKEY_REPLY_ARRAY);
+        kvReply *r = reply->element[i];
+        assert(r->type == KV_REPLY_ARRAY);
         assert(r->elements >= 3);
         int from = r->element[0]->integer;
         int to = r->element[1]->integer;
         sds primary = NULL;
         for (j = 2; j < r->elements; j++) {
-            valkeyReply *nr = r->element[j];
-            assert(nr->type == VALKEY_REPLY_ARRAY && nr->elements >= 3);
+            kvReply *nr = r->element[j];
+            assert(nr->type == KV_REPLY_ARRAY && nr->elements >= 3);
             assert(nr->element[0]->str != NULL);
             assert(nr->element[2]->str != NULL);
 
@@ -1486,7 +1486,7 @@ static int fetchClusterConfiguration(void) {
         sdsfree(primary);
     }
 cleanup:
-    if (ctx) valkeyFree(ctx);
+    if (ctx) kvFree(ctx);
     if (!success) {
         if (config.cluster_nodes) freeClusterNodes();
     }
@@ -1507,7 +1507,7 @@ static int fetchClusterSlotsConfiguration(client c) {
         c->slots_last_update = last_update;
         return -1;
     }
-    valkeyReply *reply = NULL;
+    kvReply *reply = NULL;
 
     is_fetching_slots = atomic_fetch_add_explicit(&config.is_fetching_slots, 1, memory_order_relaxed);
     if (is_fetching_slots) return -1; // TODO: use other codes || errno ?
@@ -1517,7 +1517,7 @@ static int fetchClusterSlotsConfiguration(client c) {
 
     /* printf("[%d] fetchClusterSlotsConfiguration\n", c->thread_id); */
     dict *nodes = dictCreate(&dtype);
-    valkeyContext *ctx = NULL;
+    kvContext *ctx = NULL;
     for (i = 0; i < (size_t)config.cluster_node_count; i++) {
         clusterNode *node = config.cluster_nodes[i];
         assert(node->ip != NULL);
@@ -1525,7 +1525,7 @@ static int fetchClusterSlotsConfiguration(client c) {
         assert(node->port);
         /* Use first node as entry point to connect to. */
         if (ctx == NULL) {
-            ctx = getValkeyContext(config.ct, node->ip, node->port);
+            ctx = getKVContext(config.ct, node->ip, node->port);
             if (!ctx) {
                 success = 0;
                 goto cleanup;
@@ -1536,16 +1536,16 @@ static int fetchClusterSlotsConfiguration(client c) {
         node->updated_slots_count = 0;
         dictReplace(nodes, node->name, node);
     }
-    reply = valkeyCommand(ctx, "CLUSTER SLOTS");
-    if (reply == NULL || reply->type == VALKEY_REPLY_ERROR) {
+    reply = kvCommand(ctx, "CLUSTER SLOTS");
+    if (reply == NULL || reply->type == KV_REPLY_ERROR) {
         success = 0;
         if (reply) fprintf(stderr, "%s\nCLUSTER SLOTS ERROR: %s\n", errmsg, reply->str);
         goto cleanup;
     }
-    assert(reply->type == VALKEY_REPLY_ARRAY);
+    assert(reply->type == KV_REPLY_ARRAY);
     for (i = 0; i < reply->elements; i++) {
-        valkeyReply *r = reply->element[i];
-        assert(r->type == VALKEY_REPLY_ARRAY);
+        kvReply *r = reply->element[i];
+        assert(r->type == KV_REPLY_ARRAY);
         assert(r->elements >= 3);
         int from, to, slot;
         from = r->element[0]->integer;
@@ -1563,8 +1563,8 @@ static int fetchClusterSlotsConfiguration(client c) {
         }
 
         for (j = start; j < end; j++) {
-            valkeyReply *nr = r->element[j];
-            assert(nr->type == VALKEY_REPLY_ARRAY && nr->elements >= 3);
+            kvReply *nr = r->element[j];
+            assert(nr->type == KV_REPLY_ARRAY && nr->elements >= 3);
             assert(nr->element[2]->str != NULL);
             sds name = sdsnew(nr->element[2]->str);
             dictEntry *entry = dictFind(nodes, name);
@@ -1586,7 +1586,7 @@ static int fetchClusterSlotsConfiguration(client c) {
     updateClusterSlotsConfiguration();
 cleanup:
     freeReplyObject(reply);
-    valkeyFree(ctx);
+    kvFree(ctx);
     dictRelease(nodes);
     atomic_store_explicit(&config.is_fetching_slots, 0, memory_order_relaxed);
     return success;
@@ -1641,7 +1641,7 @@ int parseOptions(int argc, char **argv) {
             config.numclients = atoi(argv[++i]);
         } else if (!strcmp(argv[i], "-v") || !strcmp(argv[i], "--version")) {
             sds version = cliVersion();
-            printf("valkey-benchmark %s\n", version);
+            printf("kv-benchmark %s\n", version);
             sdsfree(version);
             exit(0);
         } else if (!strcmp(argv[i], "-n")) {
@@ -1680,7 +1680,7 @@ int parseOptions(int argc, char **argv) {
             if (lastarg) goto invalid;
             sdsfree(config.conn_info.hostip);
             config.conn_info.hostip = sdsnew(argv[++i]);
-            config.ct = VALKEY_CONN_UNIX;
+            config.ct = KV_CONN_UNIX;
         } else if (!strcmp(argv[i], "-x")) {
             config.stdinarg = 1;
         } else if (!strcmp(argv[i], "-a")) {
@@ -1693,7 +1693,7 @@ int parseOptions(int argc, char **argv) {
             if (lastarg) goto invalid;
             config.rps = atoi(argv[++i]);
         } else if (!strcmp(argv[i], "-u") && !lastarg) {
-            parseUri(argv[++i], "valkey-benchmark", &config.conn_info, &config.tls);
+            parseUri(argv[++i], "kv-benchmark", &config.conn_info, &config.tls);
             if (config.conn_info.hostport < 0 || config.conn_info.hostport > 65535) {
                 fprintf(stderr, "Invalid server port.\n");
                 exit(1);
@@ -1821,11 +1821,11 @@ int parseOptions(int argc, char **argv) {
 #endif
 #ifdef USE_RDMA
         } else if (!strcmp(argv[i], "--rdma")) {
-            if (valkeyInitiateRdma() != VALKEY_OK) {
-                fprintf(stderr, "Failed to initialize RDMA support from libvalkey\n");
+            if (kvInitiateRdma() != KV_OK) {
+                fprintf(stderr, "Failed to initialize RDMA support from libkv\n");
                 exit(1);
             }
-            config.ct = VALKEY_CONN_RDMA;
+            config.ct = KV_CONN_RDMA;
 #endif
         } else if (!strcmp(argv[i], "--fuzz")) {
             config.fuzz_mode = 1;
@@ -1903,7 +1903,7 @@ usage:
 
     printf(
         "%s%s%s%s%s%s", /* Split to avoid strings longer than 4095 (-Woverlength-strings). */
-        "Usage: valkey-benchmark [OPTIONS] [--] [COMMAND ARGS...]\n\n"
+        "Usage: kv-benchmark [OPTIONS] [--] [COMMAND ARGS...]\n\n"
         "Simulates sending commands using multiple clients. The utility provides a\n"
         "default set of tests. You can run a subset of the tests using the -t option or\n"
         "supply one or more custom commands on the command line.\n\n"
@@ -1926,12 +1926,12 @@ usage:
         " -h <hostname>      Server hostname (default 127.0.0.1)\n"
         " -p <port>          Server port (default 6379)\n"
         " -s <socket>        Server socket (overrides host and port)\n"
-        " -a <password>      Password for Valkey Auth\n"
+        " -a <password>      Password for KV Auth\n"
         " --user <username>  Used to send ACL style 'AUTH username pass'. Needs -a.\n"
-        " -u <uri>           Server URI on format valkey://user:password@host:port/dbnum\n"
+        " -u <uri>           Server URI on format kv://user:password@host:port/dbnum\n"
         "                    User, password and dbnum are optional. For authentication\n"
         "                    without a username, use username 'default'. For TLS, use\n"
-        "                    the scheme 'valkeys'.\n"
+        "                    the scheme 'kvs'.\n"
         " -c <clients>       Number of parallel connections (default 50).\n"
         "                    Note: If --cluster is used then number of clients has to be\n"
         "                    the same or higher than the number of nodes.\n"
@@ -2018,19 +2018,19 @@ usage:
         " --version          Output version and exit.\n\n"
         "Examples:\n\n"
         " Run the benchmark with the default configuration against 127.0.0.1:6379:\n"
-        "   $ valkey-benchmark\n\n"
+        "   $ kv-benchmark\n\n"
         " Use 20 parallel clients, for a total of 100k requests, against 192.168.1.1:\n"
-        "   $ valkey-benchmark -h 192.168.1.1 -p 6379 -n 100000 -c 20\n\n"
+        "   $ kv-benchmark -h 192.168.1.1 -p 6379 -n 100000 -c 20\n\n"
         " Fill 127.0.0.1:6379 with about 1 million keys only using the SET test:\n"
-        "   $ valkey-benchmark -t set -n 1000000 -r 100000000\n\n"
+        "   $ kv-benchmark -t set -n 1000000 -r 100000000\n\n"
         " Benchmark 127.0.0.1:6379 for a few commands producing CSV output:\n"
-        "   $ valkey-benchmark -t ping,set,get -n 100000 --csv\n\n"
+        "   $ kv-benchmark -t ping,set,get -n 100000 --csv\n\n"
         " Benchmark a specific command line:\n"
-        "   $ valkey-benchmark -r 10000 -n 10000 eval 'return server.call(\"ping\")' 0\n\n"
+        "   $ kv-benchmark -r 10000 -n 10000 eval 'return server.call(\"ping\")' 0\n\n"
         " Fill a list with 10000 random elements:\n"
-        "   $ valkey-benchmark -r 10000 -n 10000 lpush mylist __rand_int__\n\n"
+        "   $ kv-benchmark -r 10000 -n 10000 lpush mylist __rand_int__\n\n"
         " Benchmark a specific transaction:\n"
-        "   $ valkey-benchmark -- multi ';' set key:__rand_int__ __data__ ';' \\\n"
+        "   $ kv-benchmark -- multi ';' set key:__rand_int__ __data__ ';' \\\n"
         "                         incr counter ';' exec\n\n");
     exit(exit_status);
 }
@@ -2174,7 +2174,7 @@ int main(int argc, char **argv) {
     signal(SIGPIPE, SIG_IGN);
 
     memset(&config.sslconfig, 0, sizeof(config.sslconfig));
-    config.ct = VALKEY_CONN_TCP;
+    config.ct = KV_CONN_TCP;
     config.numclients = 50;
     config.requests = -1;
     config.duration = -1;
@@ -2237,7 +2237,7 @@ int main(int argc, char **argv) {
     }
 #endif
 
-    if (config.mptcp && (config.ct != VALKEY_CONN_TCP)) {
+    if (config.mptcp && (config.ct != KV_CONN_TCP)) {
         fprintf(stderr, "Options --mptcp is only supported by TCP\n");
         exit(1);
     }
@@ -2248,7 +2248,7 @@ int main(int argc, char **argv) {
 
         /* Fetch cluster configuration. */
         if (!fetchClusterConfiguration() || !config.cluster_nodes) {
-            if (config.ct != VALKEY_CONN_UNIX) {
+            if (config.ct != KV_CONN_UNIX) {
                 fprintf(stderr,
                         "Failed to fetch cluster configuration from "
                         "%s:%d\n",
@@ -2385,7 +2385,7 @@ int main(int argc, char **argv) {
                 cmd = NULL;
                 if (i == start) continue;
                 /* End of command. RESP-encode and append to sequence. */
-                len = valkeyFormatCommandArgv(&cmd, i - start,
+                len = kvFormatCommandArgv(&cmd, i - start,
                                               (const char **)sds_args + start,
                                               argvlen + start);
                 for (int j = 0; j < repeat; j++) {
@@ -2439,67 +2439,67 @@ int main(int argc, char **argv) {
         if (test_is_selected("ping_inline") || test_is_selected("ping")) benchmark("PING_INLINE", "PING\r\n", 6);
 
         if (test_is_selected("ping_mbulk") || test_is_selected("ping")) {
-            len = valkeyFormatCommand(&cmd, "PING");
+            len = kvFormatCommand(&cmd, "PING");
             benchmark("PING_MBULK", cmd, len);
             free(cmd);
         }
 
         if (test_is_selected("set")) {
-            len = valkeyFormatCommand(&cmd, "SET key%s:__rand_int__ %s", tag, data);
+            len = kvFormatCommand(&cmd, "SET key%s:__rand_int__ %s", tag, data);
             benchmark("SET", cmd, len);
             free(cmd);
         }
 
         if (test_is_selected("get")) {
-            len = valkeyFormatCommand(&cmd, "GET key%s:__rand_int__", tag);
+            len = kvFormatCommand(&cmd, "GET key%s:__rand_int__", tag);
             benchmark("GET", cmd, len);
             free(cmd);
         }
 
         if (test_is_selected("incr")) {
-            len = valkeyFormatCommand(&cmd, "INCR counter%s:__rand_int__", tag);
+            len = kvFormatCommand(&cmd, "INCR counter%s:__rand_int__", tag);
             benchmark("INCR", cmd, len);
             free(cmd);
         }
 
         if (test_is_selected("lpush")) {
-            len = valkeyFormatCommand(&cmd, "LPUSH mylist%s %s", tag, data);
+            len = kvFormatCommand(&cmd, "LPUSH mylist%s %s", tag, data);
             benchmark("LPUSH", cmd, len);
             free(cmd);
         }
 
         if (test_is_selected("rpush")) {
-            len = valkeyFormatCommand(&cmd, "RPUSH mylist%s %s", tag, data);
+            len = kvFormatCommand(&cmd, "RPUSH mylist%s %s", tag, data);
             benchmark("RPUSH", cmd, len);
             free(cmd);
         }
 
         if (test_is_selected("lpop")) {
-            len = valkeyFormatCommand(&cmd, "LPOP mylist%s", tag);
+            len = kvFormatCommand(&cmd, "LPOP mylist%s", tag);
             benchmark("LPOP", cmd, len);
             free(cmd);
         }
 
         if (test_is_selected("rpop")) {
-            len = valkeyFormatCommand(&cmd, "RPOP mylist%s", tag);
+            len = kvFormatCommand(&cmd, "RPOP mylist%s", tag);
             benchmark("RPOP", cmd, len);
             free(cmd);
         }
 
         if (test_is_selected("sadd")) {
-            len = valkeyFormatCommand(&cmd, "SADD myset%s element:__rand_int__", tag);
+            len = kvFormatCommand(&cmd, "SADD myset%s element:__rand_int__", tag);
             benchmark("SADD", cmd, len);
             free(cmd);
         }
 
         if (test_is_selected("hset")) {
-            len = valkeyFormatCommand(&cmd, "HSET myhash%s element:__rand_int__ %s", tag, data);
+            len = kvFormatCommand(&cmd, "HSET myhash%s element:__rand_int__ %s", tag, data);
             benchmark("HSET", cmd, len);
             free(cmd);
         }
 
         if (test_is_selected("spop")) {
-            len = valkeyFormatCommand(&cmd, "SPOP myset%s", tag);
+            len = kvFormatCommand(&cmd, "SPOP myset%s", tag);
             benchmark("SPOP", cmd, len);
             free(cmd);
         }
@@ -2507,44 +2507,44 @@ int main(int argc, char **argv) {
         if (test_is_selected("zadd")) {
             char *score = "0";
             if (config.replace_placeholders) score = "__rand_int__";
-            len = valkeyFormatCommand(&cmd, "ZADD myzset%s %s element:__rand_1st__", tag, score);
+            len = kvFormatCommand(&cmd, "ZADD myzset%s %s element:__rand_1st__", tag, score);
             benchmark("ZADD", cmd, len);
             free(cmd);
         }
 
         if (test_is_selected("zpopmin")) {
-            len = valkeyFormatCommand(&cmd, "ZPOPMIN myzset%s", tag);
+            len = kvFormatCommand(&cmd, "ZPOPMIN myzset%s", tag);
             benchmark("ZPOPMIN", cmd, len);
             free(cmd);
         }
 
         if (test_is_selected("lrange") || test_is_selected("lrange_100") || test_is_selected("lrange_300") ||
             test_is_selected("lrange_500") || test_is_selected("lrange_600")) {
-            len = valkeyFormatCommand(&cmd, "LPUSH mylist%s %s", tag, data);
+            len = kvFormatCommand(&cmd, "LPUSH mylist%s %s", tag, data);
             benchmark("LPUSH (needed to benchmark LRANGE)", cmd, len);
             free(cmd);
         }
 
         if (test_is_selected("lrange") || test_is_selected("lrange_100")) {
-            len = valkeyFormatCommand(&cmd, "LRANGE mylist%s 0 99", tag);
+            len = kvFormatCommand(&cmd, "LRANGE mylist%s 0 99", tag);
             benchmark("LRANGE_100 (first 100 elements)", cmd, len);
             free(cmd);
         }
 
         if (test_is_selected("lrange") || test_is_selected("lrange_300")) {
-            len = valkeyFormatCommand(&cmd, "LRANGE mylist%s 0 299", tag);
+            len = kvFormatCommand(&cmd, "LRANGE mylist%s 0 299", tag);
             benchmark("LRANGE_300 (first 300 elements)", cmd, len);
             free(cmd);
         }
 
         if (test_is_selected("lrange") || test_is_selected("lrange_500")) {
-            len = valkeyFormatCommand(&cmd, "LRANGE mylist%s 0 499", tag);
+            len = kvFormatCommand(&cmd, "LRANGE mylist%s 0 499", tag);
             benchmark("LRANGE_500 (first 500 elements)", cmd, len);
             free(cmd);
         }
 
         if (test_is_selected("lrange") || test_is_selected("lrange_600")) {
-            len = valkeyFormatCommand(&cmd, "LRANGE mylist%s 0 599", tag);
+            len = kvFormatCommand(&cmd, "LRANGE mylist%s 0 599", tag);
             benchmark("LRANGE_600 (first 600 elements)", cmd, len);
             free(cmd);
         }
@@ -2557,7 +2557,7 @@ int main(int argc, char **argv) {
                 cmd_argv[i] = key_placeholder;
                 cmd_argv[i + 1] = data;
             }
-            len = valkeyFormatCommandArgv(&cmd, 21, cmd_argv, NULL);
+            len = kvFormatCommandArgv(&cmd, 21, cmd_argv, NULL);
             benchmark("MSET (10 keys)", cmd, len);
             free(cmd);
             sdsfree(key_placeholder);
@@ -2570,21 +2570,21 @@ int main(int argc, char **argv) {
             for (i = 1; i < 11; i++) {
                 cmd_argv[i] = key_placeholder;
             }
-            len = valkeyFormatCommandArgv(&cmd, 11, cmd_argv, NULL);
+            len = kvFormatCommandArgv(&cmd, 11, cmd_argv, NULL);
             benchmark("MGET (10 keys)", cmd, len);
             free(cmd);
             sdsfree(key_placeholder);
         }
 
         if (test_is_selected("xadd")) {
-            len = valkeyFormatCommand(&cmd, "XADD mystream%s * myfield %s", tag, data);
+            len = kvFormatCommand(&cmd, "XADD mystream%s * myfield %s", tag, data);
             benchmark("XADD", cmd, len);
             free(cmd);
         }
 
         if (test_is_selected("function_load")) {
             char *script = generateFunctionScript(config.num_functions, 0);
-            len = valkeyFormatCommand(&cmd, "function load replace %s", script);
+            len = kvFormatCommand(&cmd, "function load replace %s", script);
             benchmark("FUNCTION LOAD", cmd, len);
             zfree(script);
             free(cmd);
@@ -2593,17 +2593,17 @@ int main(int argc, char **argv) {
         if (test_is_selected("fcall")) {
             char *script = generateFunctionScript(1, config.num_keys_in_fcall > 0);
 
-            valkeyContext *ctx = getValkeyContext(config.ct, config.conn_info.hostip, config.conn_info.hostport);
+            kvContext *ctx = getKVContext(config.ct, config.conn_info.hostip, config.conn_info.hostport);
             if (ctx == NULL) {
                 exit(1);
             }
 
             assert(ctx != NULL && ctx->err == 0);
-            void *reply = valkeyCommand(ctx, "FUNCTION LOAD REPLACE %s", script);
+            void *reply = kvCommand(ctx, "FUNCTION LOAD REPLACE %s", script);
 
             assert(reply != NULL);
             freeReplyObject(reply);
-            valkeyFree(ctx);
+            kvFree(ctx);
             zfree(script);
 
             char **cmd_argv = zmalloc(sizeof(char *) * (config.num_keys_in_fcall + 3));
@@ -2617,7 +2617,7 @@ int main(int argc, char **argv) {
                 ret = asprintf(&(cmd_argv[3 + i]), "key%d", i + 1);
                 UNUSED(ret);
             }
-            len = valkeyFormatCommandArgv(&cmd, config.num_keys_in_fcall + 3, (const char **)cmd_argv, NULL);
+            len = kvFormatCommandArgv(&cmd, config.num_keys_in_fcall + 3, (const char **)cmd_argv, NULL);
             for (int i = 0; i < config.num_keys_in_fcall + 3; i++) {
                 free(cmd_argv[i]);
             }

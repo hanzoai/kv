@@ -5,14 +5,14 @@ proc cmdstat {cmd} {
     return [cmdrstat $cmd r]
 }
 
-# common code to reset stats, flush the db and run valkey-benchmark
+# common code to reset stats, flush the db and run kv-benchmark
 proc common_bench_setup {cmd} {
     r config resetstat
     r flushall
     if {[catch { exec {*}$cmd } output]} {
         set first_line [lindex [split $output "\n"] 0]
-        puts [colorstr red "valkey-benchmark non zero code, the output is: $output"]
-        fail "valkey-benchmark non zero code. first line: $first_line"
+        puts [colorstr red "kv-benchmark non zero code, the output is: $output"]
+        fail "kv-benchmark non zero code. first line: $first_line"
     }
     return $output
 }
@@ -33,26 +33,26 @@ tags {"benchmark network external:skip logreqres:skip"} {
         r select 0
 
         test {benchmark: set,get} {
-            set cmd [valkeybenchmark $master_host $master_port "-c 5 -n 10 -t set,get"]
+            set cmd [kvbenchmark $master_host $master_port "-c 5 -n 10 -t set,get"]
             common_bench_setup $cmd
             default_set_get_checks
         }
 
         test {benchmark: connecting using URI set,get} {
-            set cmd [valkeybenchmarkuri $master_host $master_port "-c 5 -n 10 -t set,get"]
+            set cmd [kvbenchmarkuri $master_host $master_port "-c 5 -n 10 -t set,get"]
             common_bench_setup $cmd
             default_set_get_checks
         }
 
         test {benchmark: connecting using URI with authentication set,get} {
             r config set primaryauth pass
-            set cmd [valkeybenchmarkuriuserpass $master_host $master_port "default" pass "-c 5 -n 10 -t set,get"]
+            set cmd [kvbenchmarkuriuserpass $master_host $master_port "default" pass "-c 5 -n 10 -t set,get"]
             common_bench_setup $cmd
             default_set_get_checks
         }
 
         test {benchmark: full test suite} {
-            set cmd [valkeybenchmark $master_host $master_port "-c 10 -n 100"]
+            set cmd [kvbenchmark $master_host $master_port "-c 10 -n 100"]
             common_bench_setup $cmd
 
             # ping total calls are 2*issued commands per test due to PING_INLINE and PING_MBULK
@@ -77,7 +77,7 @@ tags {"benchmark network external:skip logreqres:skip"} {
         }
 
         test {benchmark: multi-thread set,get} {
-            set cmd [valkeybenchmark $master_host $master_port "--threads 10 -c 5 -n 10 -t set,get"]
+            set cmd [kvbenchmark $master_host $master_port "--threads 10 -c 5 -n 10 -t set,get"]
             common_bench_setup $cmd
             default_set_get_checks
 
@@ -86,7 +86,7 @@ tags {"benchmark network external:skip logreqres:skip"} {
         }
 
         test {benchmark: pipelined full set,get} {
-            set cmd [valkeybenchmark $master_host $master_port "-P 5 -c 10 -n 10010 -t set,get"]
+            set cmd [kvbenchmark $master_host $master_port "-P 5 -c 10 -n 10010 -t set,get"]
             common_bench_setup $cmd
             assert_match  {*calls=10010,*} [cmdstat set]
             assert_match  {*calls=10010,*} [cmdstat get]
@@ -98,7 +98,7 @@ tags {"benchmark network external:skip logreqres:skip"} {
         }
 
         test {benchmark: arbitrary command} {
-            set cmd [valkeybenchmark $master_host $master_port "-c 5 -n 150 INCRBYFLOAT mykey 10.0"]
+            set cmd [kvbenchmark $master_host $master_port "-c 5 -n 150 INCRBYFLOAT mykey 10.0"]
             common_bench_setup $cmd
             assert_match  {*calls=150,*} [cmdstat incrbyfloat]
             # assert one of the non benchmarked commands is not present
@@ -109,7 +109,7 @@ tags {"benchmark network external:skip logreqres:skip"} {
         }
 
         test {benchmark: arbitrary command sequence} {
-            set cmd [valkeybenchmark $master_host $master_port "-n 12 -- incr foo ; 3 incr bar"]
+            set cmd [kvbenchmark $master_host $master_port "-n 12 -- incr foo ; 3 incr bar"]
             common_bench_setup $cmd
             assert_equal 3 [r get foo]
             assert_equal 9 [r get bar]
@@ -117,14 +117,14 @@ tags {"benchmark network external:skip logreqres:skip"} {
         }
 
         test {benchmark: arbitrary command with data placeholder} {
-            set cmd [valkeybenchmark $master_host $master_port "-n 1 -d 42 -- set k value:__data__"]
+            set cmd [kvbenchmark $master_host $master_port "-n 1 -d 42 -- set k value:__data__"]
             common_bench_setup $cmd
             puts [r get k]
             assert_equal 48 [r strlen k]
         }
 
         test {benchmark: keyspace length} {
-            set cmd [valkeybenchmark $master_host $master_port "-r 50 -t set -n 1000"]
+            set cmd [kvbenchmark $master_host $master_port "-r 50 -t set -n 1000"]
             common_bench_setup $cmd
             assert_match  {*calls=1000,*} [cmdstat set]
             # assert one of the non benchmarked commands is not present
@@ -135,7 +135,7 @@ tags {"benchmark network external:skip logreqres:skip"} {
         }
 
         test {benchmark: keyspace covered by sequential option} {
-            set cmd [valkeybenchmark $master_host $master_port "-r 50 -t set -n 50 --sequential"]
+            set cmd [kvbenchmark $master_host $master_port "-r 50 -t set -n 50 --sequential"]
             common_bench_setup $cmd
             assert_match  {*calls=50,*} [cmdstat set]
 
@@ -144,7 +144,7 @@ tags {"benchmark network external:skip logreqres:skip"} {
         }
 
         test {benchmark: multiple independent sequential replacements} {
-            set cmd [valkeybenchmark $master_host $master_port "-r 50 -n 1000 --sequential -- set j__rand_int__ rain ; set k__rand_1st__ rain"]
+            set cmd [kvbenchmark $master_host $master_port "-r 50 -n 1000 --sequential -- set j__rand_int__ rain ; set k__rand_1st__ rain"]
             common_bench_setup $cmd
             assert_match  {*calls=1000,*} [cmdstat set]
             
@@ -153,7 +153,7 @@ tags {"benchmark network external:skip logreqres:skip"} {
         }
 
         test {benchmark: multiple occurrences of first placeholder have different values} {
-            set cmd [valkeybenchmark $master_host $master_port "-r 100 -n 100 --sequential -- set rain__rand_int__ rain__rand_int__"]
+            set cmd [kvbenchmark $master_host $master_port "-r 100 -n 100 --sequential -- set rain__rand_int__ rain__rand_int__"]
             common_bench_setup $cmd
             assert_match  {*calls=100,*} [cmdstat set]
             
@@ -168,7 +168,7 @@ tags {"benchmark network external:skip logreqres:skip"} {
         }
 
         test {benchmark: besides first placeholder, multiple placeholder occurrences have same value} {
-            set cmd [valkeybenchmark $master_host $master_port "-r 100 -n 100 -P 5 --sequential -- set rain__rand_1st__ rain__rand_1st__"]
+            set cmd [kvbenchmark $master_host $master_port "-r 100 -n 100 -P 5 --sequential -- set rain__rand_1st__ rain__rand_1st__"]
             common_bench_setup $cmd
             assert_match  {*calls=100,*} [cmdstat set]
             
@@ -183,7 +183,7 @@ tags {"benchmark network external:skip logreqres:skip"} {
         }
 
         test {benchmark: multiple placeholder occurrences have same value} {
-            set cmd [valkeybenchmark $master_host $master_port "-r 30000000 -n 20 -- set rain__rand_int__ rain__rand_1st__"]
+            set cmd [kvbenchmark $master_host $master_port "-r 30000000 -n 20 -- set rain__rand_int__ rain__rand_1st__"]
             common_bench_setup $cmd
             assert_match  {*calls=20,*} [cmdstat set]
 
@@ -200,7 +200,7 @@ tags {"benchmark network external:skip logreqres:skip"} {
         }
 
         test {benchmark: sequential zadd results in expected number of keys} {
-            set cmd [valkeybenchmark $master_host $master_port "-r 50 -n 50 --sequential -t zadd"]
+            set cmd [kvbenchmark $master_host $master_port "-r 50 -n 50 --sequential -t zadd"]
             common_bench_setup $cmd
             assert_match  {*calls=50,*} [cmdstat zadd]
 
@@ -211,7 +211,7 @@ tags {"benchmark network external:skip logreqres:skip"} {
 
         test {benchmark: warmup and duration are cumulative} {
             set start_time [clock clicks -millisec]
-            set cmd [valkeybenchmark $master_host $master_port "-r 5 --warmup 1 --duration 1 -t set"]
+            set cmd [kvbenchmark $master_host $master_port "-r 5 --warmup 1 --duration 1 -t set"]
             set output [common_bench_setup $cmd]
             set end_time [clock clicks -millisec]
 
@@ -226,7 +226,7 @@ tags {"benchmark network external:skip logreqres:skip"} {
 
         test {benchmark: warmup can be used with request count} {
             set start_time [clock clicks -millisec]
-            set cmd [valkeybenchmark $master_host $master_port "-r 5 --warmup 1 -n 100 -t set"]
+            set cmd [kvbenchmark $master_host $master_port "-r 5 --warmup 1 -n 100 -t set"]
             set output [common_bench_setup $cmd]
             set end_time [clock clicks -millisec]
 
@@ -241,14 +241,14 @@ tags {"benchmark network external:skip logreqres:skip"} {
         }
 
         test {benchmark: -n and --duration are mutually exclusive} {
-            set cmd [valkeybenchmark $master_host $master_port "-r 5 -n 5 --duration 1 -t set"]
+            set cmd [kvbenchmark $master_host $master_port "-r 5 -n 5 --duration 1 -t set"]
             catch { exec {*}$cmd } error
             assert_match "*Options -n and --duration are mutually exclusive*" $error
         }
 
         test {benchmark: warmup applies to all tests in multi-test run} {
             set start_time [clock clicks -millisec]
-            set cmd [valkeybenchmark $master_host $master_port "-r 5 --warmup 2 -n 50 -t set,get,incr"]
+            set cmd [kvbenchmark $master_host $master_port "-r 5 --warmup 2 -n 50 -t set,get,incr"]
             set output [common_bench_setup $cmd]
             set end_time [clock clicks -millisec]
 
@@ -278,7 +278,7 @@ tags {"benchmark network external:skip logreqres:skip"} {
         }
 
         test {benchmark: clients idle mode should return error when reached maxclients limit} {
-            set cmd [valkeybenchmark $master_host $master_port "-c 10 -I"]
+            set cmd [kvbenchmark $master_host $master_port "-c 10 -I"]
             set original_maxclients [lindex [r config get maxclients] 1]
             r config set maxclients 5
             catch { exec {*}$cmd } error
@@ -287,14 +287,14 @@ tags {"benchmark network external:skip logreqres:skip"} {
         }
 
         test {benchmark: read last argument from stdin} {
-            set base_cmd [valkeybenchmark $master_host $master_port "-x -n 10 set key"]
+            set base_cmd [kvbenchmark $master_host $master_port "-x -n 10 set key"]
             set cmd "printf arg | $base_cmd"
             common_bench_setup $cmd
             r get key
         } {arg}
 
         test {benchmark: CSV output format} {
-            set cmd [valkeybenchmark $master_host $master_port "-c 5 -n 10 -t set,get --csv"]
+            set cmd [kvbenchmark $master_host $master_port "-c 5 -n 10 -t set,get --csv"]
             set output [common_bench_setup $cmd]
             # CSV output should contain comma-separated values
             assert_match "*,*,*,*" $output
@@ -307,7 +307,7 @@ tags {"benchmark network external:skip logreqres:skip"} {
         }
 
         test {benchmark: quiet mode} {
-            set cmd [valkeybenchmark $master_host $master_port "-c 5 -n 10 -t set,get -q"]
+            set cmd [kvbenchmark $master_host $master_port "-c 5 -n 10 -t set,get -q"]
             set output [common_bench_setup $cmd]
             # Quiet mode should only show query/sec values (case-insensitive)
             assert {[string match -nocase "*requests per second*" $output]}
@@ -320,7 +320,7 @@ tags {"benchmark network external:skip logreqres:skip"} {
         # tls specific tests
         if {$::tls} {
             test {benchmark: specific tls-ciphers} {
-                set cmd [valkeybenchmark $master_host $master_port "-r 50 -t set -n 1000 --tls-ciphers \"DEFAULT:-AES128-SHA256\""]
+                set cmd [kvbenchmark $master_host $master_port "-r 50 -t set -n 1000 --tls-ciphers \"DEFAULT:-AES128-SHA256\""]
                 common_bench_setup $cmd
                 assert_match  {*calls=1000,*} [cmdstat set]
                 # assert one of the non benchmarked commands is not present
@@ -329,7 +329,7 @@ tags {"benchmark network external:skip logreqres:skip"} {
 
             test {benchmark: tls connecting using URI with authentication set,get} {
                 r config set primaryauth pass
-                set cmd [valkeybenchmarkuriuserpass $master_host $master_port "default" pass "-c 5 -n 10 -t set,get"]
+                set cmd [kvbenchmarkuriuserpass $master_host $master_port "default" pass "-c 5 -n 10 -t set,get"]
                 common_bench_setup $cmd
                 default_set_get_checks
             }
@@ -338,7 +338,7 @@ tags {"benchmark network external:skip logreqres:skip"} {
                 r flushall
                 r config resetstat
                 set ciphersuites_supported 1
-                set cmd [valkeybenchmark $master_host $master_port "-r 50 -t set -n 1000 --tls-ciphersuites \"TLS_AES_128_GCM_SHA256\""]
+                set cmd [kvbenchmark $master_host $master_port "-r 50 -t set -n 1000 --tls-ciphersuites \"TLS_AES_128_GCM_SHA256\""]
                 if {[catch { exec {*}$cmd } error]} {
                     set first_line [lindex [split $error "\n"] 0]
                     if {[string match "*Invalid option*" $first_line]} {
@@ -347,8 +347,8 @@ tags {"benchmark network external:skip logreqres:skip"} {
                             puts "Skipping test, TLSv1.3 not supported."
                         }
                     } else {
-                        puts [colorstr red "valkey-benchmark non zero code. first line: $first_line"]
-                        fail "valkey-benchmark non zero code. first line: $first_line"
+                        puts [colorstr red "kv-benchmark non zero code. first line: $first_line"]
+                        fail "kv-benchmark non zero code. first line: $first_line"
                     }
                 }
                 if {$ciphersuites_supported} {

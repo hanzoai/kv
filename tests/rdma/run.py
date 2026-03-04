@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """
 ==========================================================================
-run.py - script for test client for Valkey Over RDMA (Linux only)
+run.py - script for test client for KV Over RDMA (Linux only)
 --------------------------------------------------------------------------
 Copyright (C) 2024  zhenwei pi <pizhenwei@bytedance.com>
 
@@ -16,14 +16,14 @@ import time
 import argparse
 
 def build_program():
-    valkeydir = os.path.dirname(os.path.abspath(__file__)) + "/../.."
-    cmd = "make -C " + valkeydir + "/tests/rdma"
+    kvdir = os.path.dirname(os.path.abspath(__file__)) + "/../.."
+    cmd = "make -C " + kvdir + "/tests/rdma"
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
     if p.wait():
-        print("Valkey Over RDMA build rdma-test [FAILED]")
+        print("KV Over RDMA build rdma-test [FAILED]")
         return 1
 
-    print("Valkey Over RDMA build rdma-test program [OK]")
+    print("KV Over RDMA build rdma-test program [OK]")
     return 0
 
 
@@ -45,7 +45,7 @@ def find_rdma_dev():
                     ipaddr = addrs[netifaces.AF_INET6][0]["addr"]
                 else:
                     continue
-                print("Valkey Over RDMA test prepare " + dev + " <" + ipaddr  + "> [OK]")
+                print("KV Over RDMA test prepare " + dev + " <" + ipaddr  + "> [OK]")
                 return ipaddr
     except os.error:
         return None
@@ -54,42 +54,42 @@ def find_rdma_dev():
 
 
 def test_rdma(ipaddr):
-    valkeydir = os.path.dirname(os.path.abspath(__file__)) + "/../.."
+    kvdir = os.path.dirname(os.path.abspath(__file__)) + "/../.."
     retval = 0
 
     # step 1, prepare test directory
-    tmpdir = valkeydir + "/tests/rdma/tmp"
+    tmpdir = kvdir + "/tests/rdma/tmp"
     subprocess.Popen("mkdir -p " + tmpdir, shell=True).wait()
 
     # step 2, start server
-    svrpath = valkeydir + "/src/valkey-server"
+    svrpath = kvdir + "/src/kv-server"
     svrcmd = [svrpath, "--port", "0", "--loglevel", "verbose", "--protected-mode", "yes",
-             "--appendonly", "no", "--daemonize", "no", "--dir", valkeydir + "/tests/rdma/tmp",
+             "--appendonly", "no", "--daemonize", "no", "--dir", kvdir + "/tests/rdma/tmp",
              "--rdma-port", "6379", "--rdma-bind", ipaddr]
 
     svr = subprocess.Popen(svrcmd, shell=False, stdout=subprocess.PIPE)
     try:
         if svr.wait(1):
-             print("Valkey Over RDMA valkey-server runs less than 1s [FAILED]")
+             print("KV Over RDMA kv-server runs less than 1s [FAILED]")
              return 1
     except subprocess.TimeoutExpired as e:
-        print("Valkey Over RDMA valkey-server start [OK]")
+        print("KV Over RDMA kv-server start [OK]")
         pass
 
     # step 3, run test client
     start = time.time()
-    clipath = valkeydir + "/tests/rdma/rdma-test"
+    clipath = kvdir + "/tests/rdma/rdma-test"
     clicmd = [clipath, "--thread", "4", "-h", ipaddr]
     cli = subprocess.Popen(clicmd, shell=False, stdout=subprocess.PIPE)
     if cli.wait(60):
         outs, _ = cli.communicate()
-        print("Valkey Over RDMA test [FAILED]")
+        print("KV Over RDMA test [FAILED]")
         print("---------------\n" + outs.decode() + "---------------\n")
         retval = 1
     else:
         elapsed = time.time() - start
         outs, _ = cli.communicate()
-        print("Valkey Over RDMA test in " + str(round(elapsed, 2)) + "s [OK]")
+        print("KV Over RDMA test in " + str(round(elapsed, 2)) + "s [OK]")
         print(outs.decode())
         retval = 0
 
@@ -113,7 +113,7 @@ def test_exit(retval, install_rxe):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description = "Script to test Valkey Over RDMA",
+        description = "Script to test KV Over RDMA",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("-r", "--install-rxe", action='store_true',
         help="install RXE driver and setup RXE device")
@@ -128,7 +128,7 @@ if __name__ == "__main__":
         cmd = rdma_env_py + " -o setup -d rxe"
         p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
         if p.wait():
-            print("Valkey Over RDMA setup RXE [FAILED]")
+            print("KV Over RDMA setup RXE [FAILED]")
             test_exit(1, False)
 
     # build C client into binary
@@ -139,10 +139,10 @@ if __name__ == "__main__":
     ipaddr = find_rdma_dev()
     if ipaddr is None:
         # not fatal error, continue to create software version: RXE and SIW
-        print("Valkey Over RDMA test detect existing RDMA device [FAILED]")
+        print("KV Over RDMA test detect existing RDMA device [FAILED]")
     else:
         retval = test_rdma(ipaddr)
         if not retval:
-            print("Valkey Over RDMA test over " + ipaddr + " [OK]")
+            print("KV Over RDMA test over " + ipaddr + " [OK]")
 
     test_exit(0, args.install_rxe);

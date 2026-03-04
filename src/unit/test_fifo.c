@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -220,7 +220,7 @@ int test_fifoComparePerformance(int argc, char *argv[], int flags) {
     UNUSED(flags);
 
     /* To run the performance comparison test, use:
-     * ./valkey-unit-tests --single test_fifo.c --compare-performance-to-adlist
+     * ./kv-unit-tests --single test_fifo.c --compare-performance-to-adlist
      * This test will exercise both FIFO and ADLIST to compare performance.
      * The test will (intentionally) fail, printing the results as failed assertions. */
     if (argc > 3 && !strcasecmp(argv[3], "--compare-performance-to-adlist")) {

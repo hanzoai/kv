@@ -1,5 +1,5 @@
 start_server {tags {"acl external:skip"}} {
-    set r2 [valkey_client]
+    set r2 [kv_client]
     test {Test basic multiple selectors} {
         r ACL SETUSER selector-1 on -@all resetkeys nopass
         $r2 auth selector-1 password
@@ -588,7 +588,7 @@ start_server [list overrides [list "dir" $server_path "aclfile" "userwithselecto
 }
 
 start_server {tags {"acl external:skip"}} {
-    set r2 [valkey_client]
+    set r2 [kv_client]
     
     test {Test basic database-level ACL functionality} {
         r ACL SETUSER db-user on +@all nopass ~* db=0,1

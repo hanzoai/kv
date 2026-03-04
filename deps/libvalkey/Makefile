@@ -1,4 +1,4 @@
-# Libvalkey Makefile
+# Libkv Makefile
 # Copyright (C) 2010-2011 Salvatore Sanfilippo <antirez at gmail dot com>
 # Copyright (C) 2010-2011 Pieter Noordhuis <pcnoordhuis at gmail dot com>
 # This file is released under the BSD license, see the COPYING file
@@ -10,7 +10,7 @@ OBJ_DIR = obj
 LIB_DIR = lib
 TEST_DIR = tests
 
-INCLUDE_DIR = include/valkey
+INCLUDE_DIR = include/kv
 
 TEST_SRCS = $(TEST_DIR)/client_test.c $(TEST_DIR)/ut_parse_cmd.c $(TEST_DIR)/ut_slotmap_update.c
 TEST_BINS = $(patsubst $(TEST_DIR)/%.c,$(TEST_DIR)/%,$(TEST_SRCS))
@@ -18,8 +18,8 @@ TEST_BINS = $(patsubst $(TEST_DIR)/%.c,$(TEST_DIR)/%,$(TEST_SRCS))
 SOURCES = $(filter-out $(SRC_DIR)/tls.c $(SRC_DIR)/rdma.c, $(wildcard $(SRC_DIR)/*.c))
 HEADERS = $(filter-out $(INCLUDE_DIR)/tls.h $(INCLUDE_DIR)/rdma.h, $(wildcard $(INCLUDE_DIR)/*.h))
 
-# Allow the libvalkey provided sds and dict types to be replaced by
-# compatible implementations (like Valkey's).
+# Allow the libkv provided sds and dict types to be replaced by
+# compatible implementations (like KV's).
 # A replaced type is not included in a built archive or shared library.
 SDS_INCLUDE_DIR ?= $(SRC_DIR)
 DICT_INCLUDE_DIR ?= $(SRC_DIR)
@@ -32,39 +32,39 @@ endif
 
 OBJS = $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SOURCES))
 
-LIBNAME=libvalkey
-PKGCONFNAME=$(LIB_DIR)/valkey.pc
+LIBNAME=libkv
+PKGCONFNAME=$(LIB_DIR)/kv.pc
 
-PKGCONF_TEMPLATE = valkey.pc.in
-TLS_PKGCONF_TEMPLATE = valkey_tls.pc.in
-RDMA_PKGCONF_TEMPLATE = valkey_rdma.pc.in
+PKGCONF_TEMPLATE = kv.pc.in
+TLS_PKGCONF_TEMPLATE = kv_tls.pc.in
+RDMA_PKGCONF_TEMPLATE = kv_rdma.pc.in
 
-LIBVALKEY_HEADER=$(INCLUDE_DIR)/valkey.h
-LIBVALKEY_VERSION=$(shell awk '/LIBVALKEY_VERSION_(MAJOR|MINOR|PATCH)/{gsub(/"/, "", $$3); print $$3}' $(LIBVALKEY_HEADER))
-LIBVALKEY_MAJOR=$(word 1,$(LIBVALKEY_VERSION))
-LIBVALKEY_MINOR=$(word 2,$(LIBVALKEY_VERSION))
-LIBVALKEY_PATCH=$(word 3,$(LIBVALKEY_VERSION))
+LIBKV_HEADER=$(INCLUDE_DIR)/kv.h
+LIBKV_VERSION=$(shell awk '/LIBKV_VERSION_(MAJOR|MINOR|PATCH)/{gsub(/"/, "", $$3); print $$3}' $(LIBKV_HEADER))
+LIBKV_MAJOR=$(word 1,$(LIBKV_VERSION))
+LIBKV_MINOR=$(word 2,$(LIBKV_VERSION))
+LIBKV_PATCH=$(word 3,$(LIBKV_VERSION))
 
 # Installation related variables and target
 PREFIX?=/usr/local
-INCLUDE_PATH?=include/valkey
+INCLUDE_PATH?=include/kv
 LIBRARY_PATH?=lib
 PKGCONF_PATH?=pkgconfig
 INSTALL_INCLUDE_PATH= $(DESTDIR)$(PREFIX)/$(INCLUDE_PATH)
 INSTALL_LIBRARY_PATH= $(DESTDIR)$(PREFIX)/$(LIBRARY_PATH)
 INSTALL_PKGCONF_PATH= $(INSTALL_LIBRARY_PATH)/$(PKGCONF_PATH)
 
-# valkey-server configuration used for testing
-VALKEY_PORT=56379
-VALKEY_SERVER=valkey-server
-define VALKEY_TEST_CONFIG
+# kv-server configuration used for testing
+KV_PORT=56379
+KV_SERVER=kv-server
+define KV_TEST_CONFIG
 	daemonize yes
-	pidfile /tmp/valkey-test-valkey.pid
-	port $(VALKEY_PORT)
+	pidfile /tmp/kv-test-kv.pid
+	port $(KV_PORT)
 	bind 127.0.0.1
-	unixsocket /tmp/valkey-test-valkey.sock
+	unixsocket /tmp/kv-test-kv.sock
 endef
-export VALKEY_TEST_CONFIG
+export KV_TEST_CONFIG
 
 # Fallback to gcc when $CC is not in $PATH.
 CC := $(if $(shell command -v $(firstword $(CC)) >/dev/null 2>&1 && echo OK),$(CC),gcc)
@@ -81,8 +81,8 @@ REAL_LDFLAGS=$(LDFLAGS)
 
 DYLIBSUFFIX=so
 STLIBSUFFIX=a
-DYLIB_PATCH_NAME=$(LIBNAME).$(DYLIBSUFFIX).$(LIBVALKEY_MAJOR).$(LIBVALKEY_MINOR).$(LIBVALKEY_PATCH)
-DYLIB_MAJOR_NAME=$(LIBNAME).$(DYLIBSUFFIX).$(LIBVALKEY_MAJOR)
+DYLIB_PATCH_NAME=$(LIBNAME).$(DYLIBSUFFIX).$(LIBKV_MAJOR).$(LIBKV_MINOR).$(LIBKV_PATCH)
+DYLIB_MAJOR_NAME=$(LIBNAME).$(DYLIBSUFFIX).$(LIBKV_MAJOR)
 DYLIB_ROOT_NAME=$(LIBNAME).$(DYLIBSUFFIX)
 DYLIBNAME=$(LIB_DIR)/$(DYLIB_ROOT_NAME)
 
@@ -91,11 +91,11 @@ STLIBNAME=$(LIB_DIR)/$(LIBNAME).$(STLIBSUFFIX)
 STLIB_MAKE_CMD=$(AR) rcs
 
 #################### TLS variables start ####################
-TLS_LIBNAME=libvalkey_tls
-TLS_PKGCONFNAME=$(LIB_DIR)/valkey_tls.pc
+TLS_LIBNAME=libkv_tls
+TLS_PKGCONFNAME=$(LIB_DIR)/kv_tls.pc
 TLS_INSTALLNAME=install-tls
-TLS_DYLIB_PATCH_NAME=$(TLS_LIBNAME).$(DYLIBSUFFIX).$(LIBVALKEY_MAJOR).$(LIBVALKEY_MINOR).$(LIBVALKEY_PATCH)
-TLS_DYLIB_MAJOR_NAME=$(TLS_LIBNAME).$(DYLIBSUFFIX).$(LIBVALKEY_MAJOR)
+TLS_DYLIB_PATCH_NAME=$(TLS_LIBNAME).$(DYLIBSUFFIX).$(LIBKV_MAJOR).$(LIBKV_MINOR).$(LIBKV_PATCH)
+TLS_DYLIB_MAJOR_NAME=$(TLS_LIBNAME).$(DYLIBSUFFIX).$(LIBKV_MAJOR)
 TLS_DYLIB_ROOT_NAME=$(TLS_LIBNAME).$(DYLIBSUFFIX)
 TLS_DYLIBNAME=$(LIB_DIR)/$(TLS_LIBNAME).$(DYLIBSUFFIX)
 TLS_STLIBNAME=$(LIB_DIR)/$(TLS_LIBNAME).$(STLIBSUFFIX)
@@ -108,7 +108,7 @@ ifeq ($(USE_TLS),1)
   TLS_OBJS = $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(TLS_SOURCES))
 
   # This is required for test.c only
-  CFLAGS+=-DVALKEY_TEST_TLS
+  CFLAGS+=-DKV_TEST_TLS
   TLS_STLIB=$(TLS_STLIBNAME)
   TLS_DYLIB=$(TLS_DYLIBNAME)
   TLS_PKGCONF=$(TLS_PKGCONFNAME)
@@ -122,11 +122,11 @@ endif
 ##################### TLS variables end #####################
 
 #################### RDMA variables start ####################
-RDMA_LIBNAME=libvalkey_rdma
-RDMA_PKGCONFNAME=$(LIB_DIR)/valkey_rdma.pc
+RDMA_LIBNAME=libkv_rdma
+RDMA_PKGCONFNAME=$(LIB_DIR)/kv_rdma.pc
 RDMA_INSTALLNAME=install-rdma
-RDMA_DYLIB_PATCH_NAME=$(RDMA_LIBNAME).$(DYLIBSUFFIX).$(LIBVALKEY_MAJOR).$(LIBVALKEY_MINOR).$(LIBVALKEY_PATCH)
-RDMA_DYLIB_MAJOR_NAME=$(RDMA_LIBNAME).$(DYLIBSUFFIX).$(LIBVALKEY_MAJOR)
+RDMA_DYLIB_PATCH_NAME=$(RDMA_LIBNAME).$(DYLIBSUFFIX).$(LIBKV_MAJOR).$(LIBKV_MINOR).$(LIBKV_PATCH)
+RDMA_DYLIB_MAJOR_NAME=$(RDMA_LIBNAME).$(DYLIBSUFFIX).$(LIBKV_MAJOR)
 RDMA_DYLIB_ROOT_NAME=$(RDMA_LIBNAME).$(DYLIBSUFFIX)
 RDMA_DYLIBNAME=$(LIB_DIR)/$(RDMA_LIBNAME).$(DYLIBSUFFIX)
 RDMA_STLIBNAME=$(LIB_DIR)/$(RDMA_LIBNAME).$(STLIBSUFFIX)
@@ -139,7 +139,7 @@ ifeq ($(USE_RDMA),1)
   RDMA_OBJS=$(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(RDMA_SOURCES))
   RDMA_LDFLAGS=-lrdmacm -libverbs
   # This is required for test.c only
-  CFLAGS+=-DVALKEY_TEST_RDMA
+  CFLAGS+=-DKV_TEST_RDMA
   RDMA_STLIB=$(RDMA_STLIBNAME)
   RDMA_DYLIB=$(RDMA_DYLIBNAME)
   RDMA_PKGCONF=$(RDMA_PKGCONFNAME)
@@ -157,7 +157,7 @@ uname_S := $(shell uname -s 2>/dev/null || echo not)
 
 # This is required for test.c only
 ifeq ($(TEST_ASYNC),1)
-  export CFLAGS+=-DVALKEY_TEST_ASYNC
+  export CFLAGS+=-DKV_TEST_ASYNC
 endif
 
 ifeq ($(USE_TLS),1)
@@ -195,11 +195,11 @@ else ifeq ($(UNAME_S),SunOS)
   TLS_DYLIB_MAKE_CMD = $(CC) $(SUN_SHARED_FLAG) -o $(TLS_DYLIBNAME) -h $(TLS_DYLIB_PATCH_NAME) $(LDFLAGS) $(TLS_LDFLAGS)
 else ifeq ($(uname_S),Darwin)
   DYLIBSUFFIX=dylib
-  DYLIB_PATCH_NAME=$(LIBNAME).$(LIBVALKEY_MAJOR).$(LIBVALKEY_MINOR).$(LIBVALKEY_PATCH).$(DYLIBSUFFIX)
-  DYLIB_MAJOR_NAME=$(LIBNAME).$(LIBVALKEY_MAJOR).$(DYLIBSUFFIX)
+  DYLIB_PATCH_NAME=$(LIBNAME).$(LIBKV_MAJOR).$(LIBKV_MINOR).$(LIBKV_PATCH).$(DYLIBSUFFIX)
+  DYLIB_MAJOR_NAME=$(LIBNAME).$(LIBKV_MAJOR).$(DYLIBSUFFIX)
   DYLIB_MAKE_CMD=$(CC) -dynamiclib -Wl,-install_name,$(PREFIX)/$(LIBRARY_PATH)/$(DYLIB_PATCH_NAME) -o $(DYLIBNAME) $(LDFLAGS)
-  TLS_DYLIB_PATCH_NAME=$(TLS_LIBNAME).$(LIBVALKEY_MAJOR).$(LIBVALKEY_MINOR).$(LIBVALKEY_PATCH).$(DYLIBSUFFIX)
-  TLS_DYLIB_MAJOR_NAME=$(TLS_LIBNAME).$(LIBVALKEY_MAJOR).$(DYLIBSUFFIX)
+  TLS_DYLIB_PATCH_NAME=$(TLS_LIBNAME).$(LIBKV_MAJOR).$(LIBKV_MINOR).$(LIBKV_PATCH).$(DYLIBSUFFIX)
+  TLS_DYLIB_MAJOR_NAME=$(TLS_LIBNAME).$(LIBKV_MAJOR).$(DYLIBSUFFIX)
   TLS_DYLIB_MAKE_CMD=$(CC) -dynamiclib -Wl,-install_name,$(PREFIX)/$(LIBRARY_PATH)/$(TLS_DYLIB_PATCH_NAME) -o $(TLS_DYLIBNAME) $(LDFLAGS) $(TLS_LDFLAGS)
   DYLIB_PLUGIN=-Wl,-undefined -Wl,dynamic_lookup
 endif
@@ -271,7 +271,7 @@ $(PKGCONFNAME): $(PKGCONF_TEMPLATE)
 	sed \
 		-e 's|@CMAKE_INSTALL_PREFIX@|$(PREFIX)|g' \
 		-e 's|@CMAKE_INSTALL_LIBDIR@|$(INSTALL_LIBRARY_PATH)|g' \
-		-e 's|@PROJECT_VERSION@|$(LIBVALKEY_SONAME)|g' \
+		-e 's|@PROJECT_VERSION@|$(LIBKV_SONAME)|g' \
 		$< > $@
 
 $(TLS_PKGCONFNAME): $(TLS_PKGCONF_TEMPLATE)
@@ -279,7 +279,7 @@ $(TLS_PKGCONFNAME): $(TLS_PKGCONF_TEMPLATE)
 	sed \
 		-e 's|@CMAKE_INSTALL_PREFIX@|$(PREFIX)|g' \
 		-e 's|@CMAKE_INSTALL_LIBDIR@|$(INSTALL_LIBRARY_PATH)|g' \
-		-e 's|@PROJECT_VERSION@|$(LIBVALKEY_SONAME)|g' \
+		-e 's|@PROJECT_VERSION@|$(LIBKV_SONAME)|g' \
 		$< > $@
 
 $(RDMA_PKGCONFNAME): $(RDMA_PKGCONF_TEMPLATE)
@@ -287,7 +287,7 @@ $(RDMA_PKGCONFNAME): $(RDMA_PKGCONF_TEMPLATE)
 	sed \
 		-e 's|@CMAKE_INSTALL_PREFIX@|$(PREFIX)|g' \
 		-e 's|@CMAKE_INSTALL_LIBDIR@|$(INSTALL_LIBRARY_PATH)|g' \
-		-e 's|@PROJECT_VERSION@|$(LIBVALKEY_SONAME)|g' \
+		-e 's|@PROJECT_VERSION@|$(LIBKV_SONAME)|g' \
 		$< > $@
 
 install: $(DYLIBNAME) $(STLIBNAME) $(PKGCONFNAME) $(TLS_INSTALL) $(RDMA_INSTALL)
@@ -340,9 +340,9 @@ gcov:
 coverage: gcov
 	make check
 	mkdir -p tmp/lcov
-	lcov -d . -c --exclude '/usr*' -o tmp/lcov/valkey.info
-	lcov -q -l tmp/lcov/valkey.info
-	genhtml --legend -q -o tmp/lcov/report tmp/lcov/valkey.info
+	lcov -d . -c --exclude '/usr*' -o tmp/lcov/kv.info
+	lcov -q -l tmp/lcov/kv.info
+	genhtml --legend -q -o tmp/lcov/report tmp/lcov/kv.info
 
 debug:
 	$(MAKE) OPTIMIZATION="-O0"

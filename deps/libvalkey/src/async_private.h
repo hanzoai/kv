@@ -29,8 +29,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef VALKEY_ASYNC_PRIVATE_H
-#define VALKEY_ASYNC_PRIVATE_H
+#ifndef KV_ASYNC_PRIVATE_H
+#define KV_ASYNC_PRIVATE_H
 #include "visibility.h"
 
 #define _EL_ADD_READ(ctx)                      \
@@ -62,24 +62,24 @@
         ctx->ev.cleanup = NULL;                \
     } while (0)
 
-static inline void refreshTimeout(valkeyAsyncContext *ctx) {
-#define VALKEY_TIMER_ISSET(tvp) \
+static inline void refreshTimeout(kvAsyncContext *ctx) {
+#define KV_TIMER_ISSET(tvp) \
     (tvp && ((tvp)->tv_sec || (tvp)->tv_usec))
 
-#define VALKEY_EL_TIMER(ac, tvp)                             \
-    if ((ac)->ev.scheduleTimer && VALKEY_TIMER_ISSET(tvp)) { \
+#define KV_EL_TIMER(ac, tvp)                             \
+    if ((ac)->ev.scheduleTimer && KV_TIMER_ISSET(tvp)) { \
         (ac)->ev.scheduleTimer((ac)->ev.data, *(tvp));       \
     }
 
-    if (ctx->c.flags & VALKEY_CONNECTED) {
-        VALKEY_EL_TIMER(ctx, ctx->c.command_timeout);
+    if (ctx->c.flags & KV_CONNECTED) {
+        KV_EL_TIMER(ctx, ctx->c.command_timeout);
     } else {
-        VALKEY_EL_TIMER(ctx, ctx->c.connect_timeout);
+        KV_EL_TIMER(ctx, ctx->c.connect_timeout);
     }
 }
 
-/* Visible although private since required by libvalkey_tls.so */
-LIBVALKEY_API void valkeyAsyncDisconnectInternal(valkeyAsyncContext *ac);
-LIBVALKEY_API void valkeyProcessCallbacks(valkeyAsyncContext *ac);
+/* Visible although private since required by libkv_tls.so */
+LIBKV_API void kvAsyncDisconnectInternal(kvAsyncContext *ac);
+LIBKV_API void kvProcessCallbacks(kvAsyncContext *ac);
 
-#endif /* VALKEY_ASYNC_PRIVATE_H */
+#endif /* KV_ASYNC_PRIVATE_H */

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -17,22 +17,22 @@
 #ifdef USE_LTTNG
 
 #undef LTTNG_UST_TRACEPOINT_PROVIDER
-#define LTTNG_UST_TRACEPOINT_PROVIDER valkey_commands
+#define LTTNG_UST_TRACEPOINT_PROVIDER kv_commands
 
 #undef LTTNG_UST_TRACEPOINT_INCLUDE
 #define LTTNG_UST_TRACEPOINT_INCLUDE "./trace_commands.h"
 
-#if !defined(__VALKEY_TRACE_COMMANDS_H__) || defined(LTTNG_UST_TRACEPOINT_HEADER_MULTI_READ)
-#define __VALKEY_TRACE_COMMANDS_H__
+#if !defined(__KV_TRACE_COMMANDS_H__) || defined(LTTNG_UST_TRACEPOINT_HEADER_MULTI_READ)
+#define __KV_TRACE_COMMANDS_H__
 
 #include <lttng/tracepoint.h>
 
 LTTNG_UST_TRACEPOINT_ENUM(
     /* Tracepoint provider name */
-    valkey_commands,
+    kv_commands,
 
     /* Tracepoint connection type enum */
-    valkey_conn_type_enum,
+    kv_conn_type_enum,
 
     /* Tracepoint connection type enum values, Source: ConnectionType */
     LTTNG_UST_TP_ENUM_VALUES(
@@ -45,7 +45,7 @@ LTTNG_UST_TRACEPOINT_ENUM(
 
 LTTNG_UST_TRACEPOINT_EVENT(
 	/* Tracepoint provider name */
-	valkey_commands,
+	kv_commands,
 
 	/* Tracepoint name */
 	command_call,
@@ -61,7 +61,7 @@ LTTNG_UST_TRACEPOINT_EVENT(
 
 	/* Output event fields */
 	LTTNG_UST_TP_FIELDS(
-		lttng_ust_field_enum(valkey_commands, valkey_conn_type_enum, int, enum_field, prot)
+		lttng_ust_field_enum(kv_commands, kv_conn_type_enum, int, enum_field, prot)
 		lttng_ust_field_string(addr, addr)
 		lttng_ust_field_string(laddr, laddr)
 		lttng_ust_field_string(name, name)
@@ -69,25 +69,25 @@ LTTNG_UST_TRACEPOINT_EVENT(
 	)
 )
 
-#define valkey_commands_trace(...) lttng_ust_tracepoint(__VA_ARGS__)
+#define kv_commands_trace(...) lttng_ust_tracepoint(__VA_ARGS__)
 
-#endif /* __VALKEY_TRACE_COMMANDS_H__ */
+#endif /* __KV_TRACE_COMMANDS_H__ */
 
 #include <lttng/tracepoint-event.h>
 
 #else /* USE_LTTNG */
 
-#ifndef __VALKEY_TRACE_COMMANDS_H__
-#define __VALKEY_TRACE_COMMANDS_H__
+#ifndef __KV_TRACE_COMMANDS_H__
+#define __KV_TRACE_COMMANDS_H__
 
 /* avoid compiler warning on empty source file */
-static inline void __valkey_commands_trace(void) {
+static inline void __kv_commands_trace(void) {
 }
 
-#define valkey_commands_trace(...) \
+#define kv_commands_trace(...) \
     do {                           \
     } while (0)
 
-#endif /* __VALKEY_TRACE_COMMANDS_H__ */
+#endif /* __KV_TRACE_COMMANDS_H__ */
 
 #endif /* USE_LTTNG */

@@ -15,7 +15,7 @@ set ::tlsdir "../../tls"
 
 proc main {} {
     parse_options
-    spawn_instance valkey $::valkey_base_port $::instances_count {
+    spawn_instance kv $::kv_base_port $::instances_count {
         "cluster-enabled yes"
         "appendonly yes"
         "enable-protected-configs yes"

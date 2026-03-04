@@ -1,6 +1,6 @@
 /* Module Test: Verifies the module's capability to share an owned buffer with the core, 
  * which is then stored in a hash key field using a non-owning string reference (stringRef). */
-#include "valkeymodule.h"
+#include "kvmodule.h"
 #include <string.h>
 
 typedef struct bufferNode {
@@ -45,14 +45,14 @@ void freeBufferList(void) {
  * 1. The hash entry key.
  * 2. The hahs entry field.
  */
-int hashHasStringRef(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
-    if (argc != 3) return ValkeyModule_WrongArity(ctx);
+int hashHasStringRef(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+    if (argc != 3) return KVModule_WrongArity(ctx);
 
-    ValkeyModule_AutoMemory(ctx);
-    ValkeyModuleKey *key = ValkeyModule_OpenKey(ctx, argv[1], VALKEYMODULE_WRITE);
+    KVModule_AutoMemory(ctx);
+    KVModuleKey *key = KVModule_OpenKey(ctx, argv[1], KVMODULE_WRITE);
 
-    int result = ValkeyModule_HashHasStringRef(key, argv[2]);
-    return ValkeyModule_ReplyWithLongLong(ctx, result);
+    int result = KVModule_HashHasStringRef(key, argv[2]);
+    return KVModule_ReplyWithLongLong(ctx, result);
 }
 
 /* HASH.SET_STRINGREF key field buffer
@@ -63,37 +63,37 @@ int hashHasStringRef(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) 
  * 2. The hahs entry field.
  * 3. The buffer to share with the core.
  */
-int hashSetStringRef(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
-    if (argc != 4) return ValkeyModule_WrongArity(ctx);
+int hashSetStringRef(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+    if (argc != 4) return KVModule_WrongArity(ctx);
 
-    ValkeyModule_AutoMemory(ctx);
-    ValkeyModuleKey *key = ValkeyModule_OpenKey(ctx, argv[1], VALKEYMODULE_WRITE);
+    KVModule_AutoMemory(ctx);
+    KVModuleKey *key = KVModule_OpenKey(ctx, argv[1], KVMODULE_WRITE);
 
     size_t buf_len;
-    const char *buf = ValkeyModule_StringPtrLen(argv[3], &buf_len);
+    const char *buf = KVModule_StringPtrLen(argv[3], &buf_len);
     bufferNode *node = addBuffer(buf, buf_len);
 
-    int result = ValkeyModule_HashSetStringRef(key, argv[2], node->buf, node->len);
-    if (result == 0) return ValkeyModule_ReplyWithLongLong(ctx, result);
-    return ValkeyModule_ReplyWithError(ctx, "Err");
+    int result = KVModule_HashSetStringRef(key, argv[2], node->buf, node->len);
+    if (result == 0) return KVModule_ReplyWithLongLong(ctx, result);
+    return KVModule_ReplyWithError(ctx, "Err");
 }
 
-int ValkeyModule_OnLoad(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
-    VALKEYMODULE_NOT_USED(argv);
-    VALKEYMODULE_NOT_USED(argc);
-    if (ValkeyModule_Init(ctx, "hash.stringref", 1, VALKEYMODULE_APIVER_1) ==
-        VALKEYMODULE_OK &&
-        ValkeyModule_CreateCommand(ctx, "hash.set_stringref", hashSetStringRef, "write",
-                                  1, 1, 1) == VALKEYMODULE_OK &&
-        ValkeyModule_CreateCommand(ctx, "hash.has_stringref", hashHasStringRef, "readonly",
-                                  1, 1, 1) == VALKEYMODULE_OK) {
-        return VALKEYMODULE_OK;
+int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+    KVMODULE_NOT_USED(argv);
+    KVMODULE_NOT_USED(argc);
+    if (KVModule_Init(ctx, "hash.stringref", 1, KVMODULE_APIVER_1) ==
+        KVMODULE_OK &&
+        KVModule_CreateCommand(ctx, "hash.set_stringref", hashSetStringRef, "write",
+                                  1, 1, 1) == KVMODULE_OK &&
+        KVModule_CreateCommand(ctx, "hash.has_stringref", hashHasStringRef, "readonly",
+                                  1, 1, 1) == KVMODULE_OK) {
+        return KVMODULE_OK;
     }
-    return VALKEYMODULE_ERR;
+    return KVMODULE_ERR;
 }
 
-int ValkeyModule_OnUnload(ValkeyModuleCtx *ctx) {
-    VALKEYMODULE_NOT_USED(ctx);
+int KVModule_OnUnload(KVModuleCtx *ctx) {
+    KVMODULE_NOT_USED(ctx);
     freeBufferList();
-    return VALKEYMODULE_OK;
+    return KVMODULE_OK;
 }

@@ -21,7 +21,7 @@
  * Returns strlen(src); if retval >= dsize, truncation occurred.
  */
 size_t
-valkey_strlcpy(char *dst, const char *src, size_t dsize)
+kv_strlcpy(char *dst, const char *src, size_t dsize)
 {
     const char *osrc = src;
     size_t nleft = dsize;
@@ -53,7 +53,7 @@ valkey_strlcpy(char *dst, const char *src, size_t dsize)
  * If retval >= dsize, truncation occurred.
  */
 size_t
-valkey_strlcat(char *dst, const char *src, size_t dsize)
+kv_strlcat(char *dst, const char *src, size_t dsize)
 {
     const char *odst = dst;
     const char *osrc = src;

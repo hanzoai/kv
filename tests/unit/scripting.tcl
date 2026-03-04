@@ -1,7 +1,7 @@
 foreach is_eval {0 1} {
 foreach script_compatibility_api {server redis} {
 
-# We run the tests using both the server APIs, e.g. server.call(), and valkey APIs, e.g. redis.call(),
+# We run the tests using both the server APIs, e.g. server.call(), and kv APIs, e.g. redis.call(),
 # in order to ensure compatibility.
 if {$script_compatibility_api eq "server"} {
     proc replace_script_redis_api_with_server {args} {
@@ -863,7 +863,7 @@ start_server {tags {"scripting"}} {
         r script flush ;# reset Lua VM
         r set x 0
         # Use a non blocking client to speedup the loop.
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         for {set j 0} {$j < 10000} {incr j} {
             run_script_on_connection $rd {return redis.call("incr",KEYS[1])} 1 x
         }
@@ -1163,7 +1163,7 @@ start_server {tags {"scripting"}} {
         set _ $e
     } {*Attempt to modify a readonly table*}
 
-    test "Try trick readonly table on valkey table" {
+    test "Try trick readonly table on kv table" {
         catch {
             run_script {
                 redis.call = function() return 1 end
@@ -1280,7 +1280,7 @@ start_server {tags {"scripting external:skip large-memory"}} {
 # instance at all.
 start_server {tags {"scripting"}} {
     test {Timedout read-only scripts can be killed by SCRIPT KILL} {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         r config set lua-time-limit 10
         run_script_on_connection $rd {while true do end} 0
         after 200
@@ -1293,7 +1293,7 @@ start_server {tags {"scripting"}} {
     }
 
     test {Timedout read-only scripts can be killed by SCRIPT KILL even when use pcall} {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         r config set lua-time-limit 10
         run_script_on_connection $rd {local f = function() while 1 do redis.call('ping') end end while 1 do pcall(f) end} 0
 
@@ -1321,7 +1321,7 @@ start_server {tags {"scripting"}} {
     }
 
     test {Timedout script does not cause a false dead client} {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         r config set lua-time-limit 10
 
         # sending (in a pipeline):
@@ -1382,9 +1382,9 @@ start_server {tags {"scripting"}} {
         r config set appendonly yes
 
         # create clients, and set one to block waiting for key 'x'
-        set rd [valkey_deferring_client]
-        set rd2 [valkey_deferring_client]
-        set r3 [valkey_client]
+        set rd [kv_deferring_client]
+        set rd2 [kv_deferring_client]
+        set r3 [kv_client]
         $rd2 blpop x 0
         wait_for_blocked_clients_count 1
 
@@ -1423,7 +1423,7 @@ start_server {tags {"scripting"}} {
     } {OK} {external:skip needs:debug}
 
     test {Timedout scripts that modified data can't be killed by SCRIPT KILL} {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         r config set lua-time-limit 10
         run_script_on_connection $rd {redis.call('set',KEYS[1],'y'); while true do end} 1 x
         after 200
@@ -1443,7 +1443,7 @@ start_server {tags {"scripting"}} {
         assert_match {BUSY*} $e
         catch {r shutdown nosave}
         # Make sure the server was killed
-        catch {set rd [valkey_deferring_client]} e
+        catch {set rd [kv_deferring_client]} e
         assert_match {*connection refused*} $e
     } {} {external:skip}
 }
@@ -1491,7 +1491,7 @@ start_server {tags {"scripting"}} {
             } ;# is_eval
 
             test "Replication of script multiple pushes to list with BLPOP" {
-                set rd [valkey_deferring_client]
+                set rd [kv_deferring_client]
                 $rd brpop a 0
                 run_script {
                     redis.call("lpush",KEYS[1],"1");
@@ -2226,8 +2226,8 @@ start_server {tags {"scripting"}} {
             # temporarily set the server to master, so it doesn't block the queuing
             # and we can test the evaluation of the flags on exec
             r replicaof no one
-            set rr [valkey_client]
-            set rr2 [valkey_client]
+            set rr [kv_client]
+            set rr2 [kv_client]
             $rr multi
             $rr2 multi
 
@@ -2293,7 +2293,7 @@ start_server {tags {"scripting"}} {
 
             # run a slow script that does one write, then waits for INFO to indicate
             # that the replica dropped, and then runs another write
-            set rd [valkey_deferring_client -1]
+            set rd [kv_deferring_client -1]
             $rd eval {
                 redis.call('set','x',"script value")
                 while true do

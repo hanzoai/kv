@@ -809,7 +809,7 @@ unsigned char *lpInsert(unsigned char *lp,
         } else if (elestr) {
             lpEncodeString(dst, elestr, size);
         } else {
-            valkey_unreachable();
+            kv_unreachable();
         }
         dst += enclen;
         memcpy(dst, backlen, backlen_size);

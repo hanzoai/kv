@@ -1,25 +1,25 @@
-#ifndef VALKEY_ADAPTERS_LIBSDEVENT_H
-#define VALKEY_ADAPTERS_LIBSDEVENT_H
+#ifndef KV_ADAPTERS_LIBSDEVENT_H
+#define KV_ADAPTERS_LIBSDEVENT_H
 #include "../async.h"
 #include "../cluster.h"
-#include "../valkey.h"
+#include "../kv.h"
 
 #include <systemd/sd-event.h>
 
-#define VALKEY_LIBSDEVENT_DELETED 0x01
-#define VALKEY_LIBSDEVENT_ENTERED 0x02
+#define KV_LIBSDEVENT_DELETED 0x01
+#define KV_LIBSDEVENT_ENTERED 0x02
 
-typedef struct valkeyLibsdeventEvents {
-    valkeyAsyncContext *context;
+typedef struct kvLibsdeventEvents {
+    kvAsyncContext *context;
     struct sd_event *event;
     struct sd_event_source *fdSource;
     struct sd_event_source *timerSource;
     int fd;
     short flags;
     short state;
-} valkeyLibsdeventEvents;
+} kvLibsdeventEvents;
 
-static void valkeyLibsdeventDestroy(valkeyLibsdeventEvents *e) {
+static void kvLibsdeventDestroy(kvLibsdeventEvents *e) {
     if (e->fdSource) {
         e->fdSource = sd_event_source_disable_unref(e->fdSource);
     }
@@ -30,44 +30,44 @@ static void valkeyLibsdeventDestroy(valkeyLibsdeventEvents *e) {
     vk_free(e);
 }
 
-static int valkeyLibsdeventTimeoutHandler(sd_event_source *s, uint64_t usec, void *userdata) {
+static int kvLibsdeventTimeoutHandler(sd_event_source *s, uint64_t usec, void *userdata) {
     ((void)s);
     ((void)usec);
-    valkeyLibsdeventEvents *e = (valkeyLibsdeventEvents *)userdata;
-    valkeyAsyncHandleTimeout(e->context);
+    kvLibsdeventEvents *e = (kvLibsdeventEvents *)userdata;
+    kvAsyncHandleTimeout(e->context);
     return 0;
 }
 
-static int valkeyLibsdeventHandler(sd_event_source *s, int fd, uint32_t event, void *userdata) {
+static int kvLibsdeventHandler(sd_event_source *s, int fd, uint32_t event, void *userdata) {
     ((void)s);
     ((void)fd);
-    valkeyLibsdeventEvents *e = (valkeyLibsdeventEvents *)userdata;
-    e->state |= VALKEY_LIBSDEVENT_ENTERED;
+    kvLibsdeventEvents *e = (kvLibsdeventEvents *)userdata;
+    e->state |= KV_LIBSDEVENT_ENTERED;
 
 #define CHECK_DELETED()                         \
-    if (e->state & VALKEY_LIBSDEVENT_DELETED) { \
-        valkeyLibsdeventDestroy(e);             \
+    if (e->state & KV_LIBSDEVENT_DELETED) { \
+        kvLibsdeventDestroy(e);             \
         return 0;                               \
     }
 
-    if ((event & EPOLLIN) && e->context && (e->state & VALKEY_LIBSDEVENT_DELETED) == 0) {
-        valkeyAsyncHandleRead(e->context);
+    if ((event & EPOLLIN) && e->context && (e->state & KV_LIBSDEVENT_DELETED) == 0) {
+        kvAsyncHandleRead(e->context);
         CHECK_DELETED();
     }
 
-    if ((event & EPOLLOUT) && e->context && (e->state & VALKEY_LIBSDEVENT_DELETED) == 0) {
-        valkeyAsyncHandleWrite(e->context);
+    if ((event & EPOLLOUT) && e->context && (e->state & KV_LIBSDEVENT_DELETED) == 0) {
+        kvAsyncHandleWrite(e->context);
         CHECK_DELETED();
     }
 
-    e->state &= ~VALKEY_LIBSDEVENT_ENTERED;
+    e->state &= ~KV_LIBSDEVENT_ENTERED;
 #undef CHECK_DELETED
 
     return 0;
 }
 
-static void valkeyLibsdeventAddRead(void *userdata) {
-    valkeyLibsdeventEvents *e = (valkeyLibsdeventEvents *)userdata;
+static void kvLibsdeventAddRead(void *userdata) {
+    kvLibsdeventEvents *e = (kvLibsdeventEvents *)userdata;
 
     if (e->flags & EPOLLIN) {
         return;
@@ -78,12 +78,12 @@ static void valkeyLibsdeventAddRead(void *userdata) {
     if (e->flags & EPOLLOUT) {
         sd_event_source_set_io_events(e->fdSource, e->flags);
     } else {
-        sd_event_add_io(e->event, &e->fdSource, e->fd, e->flags, valkeyLibsdeventHandler, e);
+        sd_event_add_io(e->event, &e->fdSource, e->fd, e->flags, kvLibsdeventHandler, e);
     }
 }
 
-static void valkeyLibsdeventDelRead(void *userdata) {
-    valkeyLibsdeventEvents *e = (valkeyLibsdeventEvents *)userdata;
+static void kvLibsdeventDelRead(void *userdata) {
+    kvLibsdeventEvents *e = (kvLibsdeventEvents *)userdata;
 
     e->flags &= ~EPOLLIN;
 
@@ -94,8 +94,8 @@ static void valkeyLibsdeventDelRead(void *userdata) {
     }
 }
 
-static void valkeyLibsdeventAddWrite(void *userdata) {
-    valkeyLibsdeventEvents *e = (valkeyLibsdeventEvents *)userdata;
+static void kvLibsdeventAddWrite(void *userdata) {
+    kvLibsdeventEvents *e = (kvLibsdeventEvents *)userdata;
 
     if (e->flags & EPOLLOUT) {
         return;
@@ -106,12 +106,12 @@ static void valkeyLibsdeventAddWrite(void *userdata) {
     if (e->flags & EPOLLIN) {
         sd_event_source_set_io_events(e->fdSource, e->flags);
     } else {
-        sd_event_add_io(e->event, &e->fdSource, e->fd, e->flags, valkeyLibsdeventHandler, e);
+        sd_event_add_io(e->event, &e->fdSource, e->fd, e->flags, kvLibsdeventHandler, e);
     }
 }
 
-static void valkeyLibsdeventDelWrite(void *userdata) {
-    valkeyLibsdeventEvents *e = (valkeyLibsdeventEvents *)userdata;
+static void kvLibsdeventDelWrite(void *userdata) {
+    kvLibsdeventEvents *e = (kvLibsdeventEvents *)userdata;
 
     e->flags &= ~EPOLLOUT;
 
@@ -122,43 +122,43 @@ static void valkeyLibsdeventDelWrite(void *userdata) {
     }
 }
 
-static void valkeyLibsdeventCleanup(void *userdata) {
-    valkeyLibsdeventEvents *e = (valkeyLibsdeventEvents *)userdata;
+static void kvLibsdeventCleanup(void *userdata) {
+    kvLibsdeventEvents *e = (kvLibsdeventEvents *)userdata;
 
     if (!e) {
         return;
     }
 
-    if (e->state & VALKEY_LIBSDEVENT_ENTERED) {
-        e->state |= VALKEY_LIBSDEVENT_DELETED;
+    if (e->state & KV_LIBSDEVENT_ENTERED) {
+        e->state |= KV_LIBSDEVENT_DELETED;
     } else {
-        valkeyLibsdeventDestroy(e);
+        kvLibsdeventDestroy(e);
     }
 }
 
-static void valkeyLibsdeventSetTimeout(void *userdata, struct timeval tv) {
-    valkeyLibsdeventEvents *e = (valkeyLibsdeventEvents *)userdata;
+static void kvLibsdeventSetTimeout(void *userdata, struct timeval tv) {
+    kvLibsdeventEvents *e = (kvLibsdeventEvents *)userdata;
 
     uint64_t usec = tv.tv_sec * 1000000 + tv.tv_usec;
     if (!e->timerSource) {
-        sd_event_add_time_relative(e->event, &e->timerSource, CLOCK_MONOTONIC, usec, 1, valkeyLibsdeventTimeoutHandler, e);
+        sd_event_add_time_relative(e->event, &e->timerSource, CLOCK_MONOTONIC, usec, 1, kvLibsdeventTimeoutHandler, e);
     } else {
         sd_event_source_set_time_relative(e->timerSource, usec);
     }
 }
 
-static int valkeyLibsdeventAttach(valkeyAsyncContext *ac, struct sd_event *event) {
-    valkeyContext *c = &(ac->c);
-    valkeyLibsdeventEvents *e;
+static int kvLibsdeventAttach(kvAsyncContext *ac, struct sd_event *event) {
+    kvContext *c = &(ac->c);
+    kvLibsdeventEvents *e;
 
     /* Nothing should be attached when something is already attached */
     if (ac->ev.data != NULL)
-        return VALKEY_ERR;
+        return KV_ERR;
 
     /* Create container for context and r/w events */
-    e = (valkeyLibsdeventEvents *)vk_calloc(1, sizeof(*e));
+    e = (kvLibsdeventEvents *)vk_calloc(1, sizeof(*e));
     if (e == NULL)
-        return VALKEY_ERR;
+        return KV_ERR;
 
     /* Initialize and increase event refcount */
     e->context = ac;
@@ -167,32 +167,32 @@ static int valkeyLibsdeventAttach(valkeyAsyncContext *ac, struct sd_event *event
     sd_event_ref(event);
 
     /* Register functions to start/stop listening for events */
-    ac->ev.addRead = valkeyLibsdeventAddRead;
-    ac->ev.delRead = valkeyLibsdeventDelRead;
-    ac->ev.addWrite = valkeyLibsdeventAddWrite;
-    ac->ev.delWrite = valkeyLibsdeventDelWrite;
-    ac->ev.cleanup = valkeyLibsdeventCleanup;
-    ac->ev.scheduleTimer = valkeyLibsdeventSetTimeout;
+    ac->ev.addRead = kvLibsdeventAddRead;
+    ac->ev.delRead = kvLibsdeventDelRead;
+    ac->ev.addWrite = kvLibsdeventAddWrite;
+    ac->ev.delWrite = kvLibsdeventDelWrite;
+    ac->ev.cleanup = kvLibsdeventCleanup;
+    ac->ev.scheduleTimer = kvLibsdeventSetTimeout;
     ac->ev.data = e;
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
 /* Internal adapter function with correct function signature. */
-static int valkeyLibsdeventAttachAdapter(valkeyAsyncContext *ac, void *event) {
-    return valkeyLibsdeventAttach(ac, (struct sd_event *)event);
+static int kvLibsdeventAttachAdapter(kvAsyncContext *ac, void *event) {
+    return kvLibsdeventAttach(ac, (struct sd_event *)event);
 }
 
-VALKEY_UNUSED
-static int valkeyClusterOptionsUseLibsdevent(valkeyClusterOptions *options,
+KV_UNUSED
+static int kvClusterOptionsUseLibsdevent(kvClusterOptions *options,
                                              struct sd_event *event) {
     if (options == NULL || event == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    options->attach_fn = valkeyLibsdeventAttachAdapter;
+    options->attach_fn = kvLibsdeventAttachAdapter;
     options->attach_data = event;
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-#endif /* VALKEY_ADAPTERS_LIBSDEVENT_H */
+#endif /* KV_ADAPTERS_LIBSDEVENT_H */

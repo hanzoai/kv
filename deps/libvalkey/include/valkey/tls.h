@@ -28,8 +28,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef VALKEY_TLS_H
-#define VALKEY_TLS_H
+#ifndef KV_TLS_H
+#define KV_TLS_H
 
 #include "visibility.h"
 
@@ -38,7 +38,7 @@ extern "C" {
 #endif
 
 /* Forward declarations for structs defined elsewhere. */
-struct valkeyContext;
+struct kvContext;
 
 /* This is the underlying OpenSSL struct which is not included to
  * keep build dependencies short here.
@@ -48,33 +48,33 @@ struct ssl_st;
 /* A wrapper around OpenSSL SSL_CTX to allow easy TLS use without directly
  * calling OpenSSL.
  */
-typedef struct valkeyTLSContext valkeyTLSContext;
+typedef struct kvTLSContext kvTLSContext;
 
 /**
- * Initialization errors that valkeyCreateTLSContext() may return.
+ * Initialization errors that kvCreateTLSContext() may return.
  */
 typedef enum {
-    VALKEY_TLS_CTX_NONE = 0,                   /* No Error */
-    VALKEY_TLS_CTX_CREATE_FAILED,              /* Failed to create OpenSSL SSL_CTX */
-    VALKEY_TLS_CTX_CERT_KEY_REQUIRED,          /* Client cert and key must both be specified or skipped */
-    VALKEY_TLS_CTX_CA_CERT_LOAD_FAILED,        /* Failed to load CA Certificate or CA Path */
-    VALKEY_TLS_CTX_CLIENT_CERT_LOAD_FAILED,    /* Failed to load client certificate */
-    VALKEY_TLS_CTX_CLIENT_DEFAULT_CERT_FAILED, /* Failed to set client default certificate directory */
-    VALKEY_TLS_CTX_PRIVATE_KEY_LOAD_FAILED,    /* Failed to load private key */
-    VALKEY_TLS_CTX_OS_CERTSTORE_OPEN_FAILED,   /* Failed to open system certificate store */
-    VALKEY_TLS_CTX_OS_CERT_ADD_FAILED          /* Failed to add CA certificates obtained from system to the TLS context */
-} valkeyTLSContextError;
+    KV_TLS_CTX_NONE = 0,                   /* No Error */
+    KV_TLS_CTX_CREATE_FAILED,              /* Failed to create OpenSSL SSL_CTX */
+    KV_TLS_CTX_CERT_KEY_REQUIRED,          /* Client cert and key must both be specified or skipped */
+    KV_TLS_CTX_CA_CERT_LOAD_FAILED,        /* Failed to load CA Certificate or CA Path */
+    KV_TLS_CTX_CLIENT_CERT_LOAD_FAILED,    /* Failed to load client certificate */
+    KV_TLS_CTX_CLIENT_DEFAULT_CERT_FAILED, /* Failed to set client default certificate directory */
+    KV_TLS_CTX_PRIVATE_KEY_LOAD_FAILED,    /* Failed to load private key */
+    KV_TLS_CTX_OS_CERTSTORE_OPEN_FAILED,   /* Failed to open system certificate store */
+    KV_TLS_CTX_OS_CERT_ADD_FAILED          /* Failed to add CA certificates obtained from system to the TLS context */
+} kvTLSContextError;
 
 /* Constants that mirror OpenSSL's verify modes. By default,
- * VALKEY_TLS_VERIFY_PEER is used with valkeyCreateTLSContext().
+ * KV_TLS_VERIFY_PEER is used with kvCreateTLSContext().
  * Some clients disable peer verification if there are no
  * certificates specified.
  */
-#define VALKEY_TLS_VERIFY_NONE 0x00
-#define VALKEY_TLS_VERIFY_PEER 0x01
-#define VALKEY_TLS_VERIFY_FAIL_IF_NO_PEER_CERT 0x02
-#define VALKEY_TLS_VERIFY_CLIENT_ONCE 0x04
-#define VALKEY_TLS_VERIFY_POST_HANDSHAKE 0x08
+#define KV_TLS_VERIFY_NONE 0x00
+#define KV_TLS_VERIFY_PEER 0x01
+#define KV_TLS_VERIFY_FAIL_IF_NO_PEER_CERT 0x02
+#define KV_TLS_VERIFY_CLIENT_ONCE 0x04
+#define KV_TLS_VERIFY_POST_HANDSHAKE 0x08
 
 /* Options to create an OpenSSL context. */
 typedef struct {
@@ -84,12 +84,12 @@ typedef struct {
     const char *private_key_filename;
     const char *server_name;
     int verify_mode;
-} valkeyTLSOptions;
+} kvTLSOptions;
 
 /**
  * Return the error message corresponding with the specified error code.
  */
-LIBVALKEY_API const char *valkeyTLSContextGetError(valkeyTLSContextError error);
+LIBKV_API const char *kvTLSContextGetError(kvTLSContextError error);
 
 /**
  * Helper function to initialize the OpenSSL library.
@@ -98,7 +98,7 @@ LIBVALKEY_API const char *valkeyTLSContextGetError(valkeyTLSContextError error);
  * call this function only once, and only if OpenSSL is not directly initialized
  * elsewhere.
  */
-LIBVALKEY_API int valkeyInitOpenSSL(void);
+LIBKV_API int kvInitOpenSSL(void);
 
 /**
  * Helper function to initialize an OpenSSL context that can be used
@@ -120,43 +120,43 @@ LIBVALKEY_API int valkeyInitOpenSSL(void);
  * If error is non-null, it will be populated in case the context creation fails
  * (returning a NULL).
  */
-LIBVALKEY_API valkeyTLSContext *valkeyCreateTLSContext(const char *cacert_filename, const char *capath,
+LIBKV_API kvTLSContext *kvCreateTLSContext(const char *cacert_filename, const char *capath,
                                                        const char *cert_filename, const char *private_key_filename,
-                                                       const char *server_name, valkeyTLSContextError *error);
+                                                       const char *server_name, kvTLSContextError *error);
 
 /**
   * Helper function to initialize an OpenSSL context that can be used
-  * to initiate TLS connections. This is a more extensible version of valkeyCreateTLSContext().
+  * to initiate TLS connections. This is a more extensible version of kvCreateTLSContext().
   *
   * options contains a structure of TLS options to use.
   *
   * If error is non-null, it will be populated in case the context creation fails
   * (returning a NULL).
 */
-LIBVALKEY_API valkeyTLSContext *valkeyCreateTLSContextWithOptions(valkeyTLSOptions *options,
-                                                                  valkeyTLSContextError *error);
+LIBKV_API kvTLSContext *kvCreateTLSContextWithOptions(kvTLSOptions *options,
+                                                                  kvTLSContextError *error);
 
 /**
  * Free a previously created OpenSSL context.
  */
-LIBVALKEY_API void valkeyFreeTLSContext(valkeyTLSContext *valkey_tls_ctx);
+LIBKV_API void kvFreeTLSContext(kvTLSContext *kv_tls_ctx);
 
 /**
- * Initiate TLS on an existing valkeyContext.
+ * Initiate TLS on an existing kvContext.
  *
- * This is similar to valkeyInitiateTLS() but does not require the caller
- * to directly interact with OpenSSL, and instead uses a valkeyTLSContext
- * previously created using valkeyCreateTLSContext().
+ * This is similar to kvInitiateTLS() but does not require the caller
+ * to directly interact with OpenSSL, and instead uses a kvTLSContext
+ * previously created using kvCreateTLSContext().
  */
-LIBVALKEY_API int valkeyInitiateTLSWithContext(struct valkeyContext *c, valkeyTLSContext *valkey_tls_ctx);
+LIBKV_API int kvInitiateTLSWithContext(struct kvContext *c, kvTLSContext *kv_tls_ctx);
 
 /**
  * Initiate TLS negotiation on a provided OpenSSL SSL object.
  */
-LIBVALKEY_API int valkeyInitiateTLS(struct valkeyContext *c, struct ssl_st *ssl);
+LIBKV_API int kvInitiateTLS(struct kvContext *c, struct ssl_st *ssl);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* VALKEY_TLS_H */
+#endif /* KV_TLS_H */

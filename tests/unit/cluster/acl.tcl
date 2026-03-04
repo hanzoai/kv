@@ -37,7 +37,7 @@ tags {tls:skip external:skip cluster} {
             
             R 0 ACL SETUSER cluster-migrate-user on nopass +cluster +select ~* db=0
             
-            set r2 [valkey [srv 0 host] [srv 0 port] 0 $::tls]
+            set r2 [kv [srv 0 host] [srv 0 port] 0 $::tls]
             $r2 auth cluster-migrate-user ""
             $r2 select 0
             
@@ -56,7 +56,7 @@ tags {tls:skip external:skip cluster} {
         test {Test CLUSTER CANCELSLOTMIGRATIONS with database permissions} {
             R 0 ACL SETUSER cluster-cancel-user on nopass +cluster +select ~* db=0
             
-            set r2 [valkey [srv 0 host] [srv 0 port] 0 $::tls]
+            set r2 [kv [srv 0 host] [srv 0 port] 0 $::tls]
             $r2 auth cluster-cancel-user ""
             $r2 select 0
             

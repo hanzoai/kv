@@ -1,5 +1,5 @@
-#include <valkey/cluster.h>
-#include <valkey/tls.h>
+#include <kv/cluster.h>
+#include <kv/tls.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,26 +7,26 @@
 #define CLUSTER_NODE_TLS "127.0.0.1:7301"
 
 int main(void) {
-    valkeyTLSContext *tls;
-    valkeyTLSContextError tls_error;
+    kvTLSContext *tls;
+    kvTLSContextError tls_error;
 
-    valkeyInitOpenSSL();
-    tls = valkeyCreateTLSContext("ca.crt", NULL, "client.crt", "client.key",
+    kvInitOpenSSL();
+    tls = kvCreateTLSContext("ca.crt", NULL, "client.crt", "client.key",
                                  NULL, &tls_error);
     if (!tls) {
-        printf("TLS Context error: %s\n", valkeyTLSContextGetError(tls_error));
+        printf("TLS Context error: %s\n", kvTLSContextGetError(tls_error));
         exit(1);
     }
 
     struct timeval timeout = {1, 500000}; // 1.5s
 
-    valkeyClusterOptions options = {0};
+    kvClusterOptions options = {0};
     options.initial_nodes = CLUSTER_NODE_TLS;
     options.connect_timeout = &timeout;
     options.tls = tls;
-    options.tls_init_fn = &valkeyInitiateTLSWithContext;
+    options.tls_init_fn = &kvInitiateTLSWithContext;
 
-    valkeyClusterContext *cc = valkeyClusterConnectWithOptions(&options);
+    kvClusterContext *cc = kvClusterConnectWithOptions(&options);
     if (!cc) {
         printf("Error: Allocation failure\n");
         exit(-1);
@@ -36,7 +36,7 @@ int main(void) {
         exit(-1);
     }
 
-    valkeyReply *reply = valkeyClusterCommand(cc, "SET %s %s", "key", "value");
+    kvReply *reply = kvClusterCommand(cc, "SET %s %s", "key", "value");
     if (!reply) {
         printf("Reply missing: %s\n", cc->errstr);
         exit(-1);
@@ -44,7 +44,7 @@ int main(void) {
     printf("SET: %s\n", reply->str);
     freeReplyObject(reply);
 
-    valkeyReply *reply2 = valkeyClusterCommand(cc, "GET %s", "key");
+    kvReply *reply2 = kvClusterCommand(cc, "GET %s", "key");
     if (!reply2) {
         printf("Reply missing: %s\n", cc->errstr);
         exit(-1);
@@ -52,7 +52,7 @@ int main(void) {
     printf("GET: %s\n", reply2->str);
     freeReplyObject(reply2);
 
-    valkeyClusterFree(cc);
-    valkeyFreeTLSContext(tls);
+    kvClusterFree(cc);
+    kvFreeTLSContext(tls);
     return 0;
 }
