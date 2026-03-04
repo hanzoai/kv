@@ -1,4 +1,4 @@
-Valkey Test Suite
+KV Test Suite
 =================
 
 Overview
@@ -14,7 +14,7 @@ For example, to run a single test;
 ```
 
 The normal execution mode of the test suite involves starting and manipulating
-local `valkey-server` instances, inspecting process state, log files, etc.
+local `kv-server` instances, inspecting process state, log files, etc.
 
 The test suite also supports execution against an external server, which is
 enabled using the `--host` and `--port` parameters. When executing against an
@@ -29,7 +29,7 @@ match different external server configurations. All options are listed by
 | `--singledb`               | Only use database 0, don't assume others are supported. |
 | `--ignore-encoding`        | Skip all checks for specific encoding.  |
 | `--ignore-digest`          | Skip key value digest validations. |
-| `--cluster-mode`           | Run in strict Valkey Cluster compatibility mode. |
+| `--cluster-mode`           | Run in strict KV Cluster compatibility mode. |
 | `--large-memory`           | Enables tests that consume more than 100MB |
 | `--tls`                    | Run tests with TLS. See below. |
 | `--tls-module`             | Run tests with TLS, when TLS support is built as a module. |
@@ -38,7 +38,7 @@ match different external server configurations. All options are listed by
 
 Running with TLS requires the following preparations:
 
-* Build Valkey is TLS support, e.g. using `make BUILD_TLS=yes`, or `make BUILD_TLS=module`.
+* Build KV is TLS support, e.g. using `make BUILD_TLS=yes`, or `make BUILD_TLS=module`.
 * Run `./utils/gen-test-certs.sh` to generate a root CA, server certificates, and invalid certificates for testing.
 * Install TLS support for TCL, e.g. the `tcl-tls` package on Debian/Ubuntu.
 
@@ -47,9 +47,9 @@ Additional tests
 
 Not all tests are included in the `./runtest` scripts. Some additional entry points are provided by the following scripts, which support a subset of the options listed above:
 
-* `./runtest-cluster` runs more extensive tests for Valkey Cluster.
+* `./runtest-cluster` runs more extensive tests for KV Cluster.
   Some cluster tests are included in `./runtest`, but not all.
-* `./runtest-sentinel` runs tests of Valkey Sentinel.
+* `./runtest-sentinel` runs tests of KV Sentinel.
 * `./runtests-module` runs tests of the module API.
 
 Debugging

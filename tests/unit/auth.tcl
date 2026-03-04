@@ -31,14 +31,14 @@ start_server {tags {"auth external:skip"} overrides {requirepass foobar}} {
     } {101}
 
     test {For unauthenticated clients multibulk and bulk length are limited} {
-        set rr [valkey [srv "host"] [srv "port"] 0 $::tls]
+        set rr [kv [srv "host"] [srv "port"] 0 $::tls]
         $rr write "*100\r\n"
         $rr flush
         catch {[$rr read]} e
         assert_match {*unauthenticated multibulk length*} $e
         $rr close
 
-        set rr [valkey [srv "host"] [srv "port"] 0 $::tls]
+        set rr [kv [srv "host"] [srv "port"] 0 $::tls]
         $rr write "*1\r\n\$100000000\r\n"
         $rr flush
         catch {[$rr read]} e
@@ -47,7 +47,7 @@ start_server {tags {"auth external:skip"} overrides {requirepass foobar}} {
     }
 
     test {For unauthenticated clients output buffer is limited} {
-        set rr [valkey [srv "host"] [srv "port"] 1 $::tls]
+        set rr [kv [srv "host"] [srv "port"] 1 $::tls]
         
         # make sure the client is no longer authenticated
         $rr SET x 5
@@ -69,7 +69,7 @@ start_server {tags {"auth external:skip"} overrides {requirepass foobar}} {
     }  
 
     test {For once authenticated clients output buffer is NOT limited} {
-        set rr [valkey [srv "host"] [srv "port"] 1 $::tls]
+        set rr [kv [srv "host"] [srv "port"] 1 $::tls]
 
         # first time authenticate client
         $rr auth foobar
@@ -117,7 +117,7 @@ start_server {tags {"auth external:skip"} overrides {requirepass foobar}} {
         set mget_proto "*11\r\n\$4\r\nMGET\r\n$A$A$A$A$A$A$A$A$A$A"
 
         set proto "$auth_proto$set_proto$mget_proto"
-        set rd [valkey [srv "host"] [srv "port"] 1 $::tls]
+        set rd [kv [srv "host"] [srv "port"] 1 $::tls]
         set fd [$rd channel]
         puts -nonewline $fd $proto
         flush $fd

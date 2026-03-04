@@ -6,54 +6,54 @@
  */
 
 /* Extract encver / signature from a module type ID. */
-#define VALKEYMODULE_TYPE_ENCVER_BITS 10
-#define VALKEYMODULE_TYPE_ENCVER_MASK ((1 << VALKEYMODULE_TYPE_ENCVER_BITS) - 1)
-#define VALKEYMODULE_TYPE_ENCVER(id) ((id) & VALKEYMODULE_TYPE_ENCVER_MASK)
-#define VALKEYMODULE_TYPE_SIGN(id) \
-    (((id) & ~((uint64_t)VALKEYMODULE_TYPE_ENCVER_MASK)) >> VALKEYMODULE_TYPE_ENCVER_BITS)
+#define KVMODULE_TYPE_ENCVER_BITS 10
+#define KVMODULE_TYPE_ENCVER_MASK ((1 << KVMODULE_TYPE_ENCVER_BITS) - 1)
+#define KVMODULE_TYPE_ENCVER(id) ((id) & KVMODULE_TYPE_ENCVER_MASK)
+#define KVMODULE_TYPE_SIGN(id) \
+    (((id) & ~((uint64_t)KVMODULE_TYPE_ENCVER_MASK)) >> KVMODULE_TYPE_ENCVER_BITS)
 
 /* Bit flags for moduleTypeAuxSaveFunc */
-#define VALKEYMODULE_AUX_BEFORE_RDB (1 << 0)
-#define VALKEYMODULE_AUX_AFTER_RDB (1 << 1)
+#define KVMODULE_AUX_BEFORE_RDB (1 << 0)
+#define KVMODULE_AUX_AFTER_RDB (1 << 1)
 
-struct ValkeyModule;
-struct ValkeyModuleIO;
-struct ValkeyModuleDigest;
-struct ValkeyModuleCtx;
+struct KVModule;
+struct KVModuleIO;
+struct KVModuleDigest;
+struct KVModuleCtx;
 struct moduleLoadQueueEntry;
-struct ValkeyModuleKeyOptCtx;
-struct ValkeyModuleCommand;
+struct KVModuleKeyOptCtx;
+struct KVModuleCommand;
 struct clusterState;
 
 /* Each module type implementation should export a set of methods in order
  * to serialize and deserialize the value in the RDB file, rewrite the AOF
  * log, create the digest for "DEBUG DIGEST", and free the value when a key
  * is deleted. */
-typedef void *(*moduleTypeLoadFunc)(struct ValkeyModuleIO *io, int encver);
-typedef void (*moduleTypeSaveFunc)(struct ValkeyModuleIO *io, void *value);
-typedef int (*moduleTypeAuxLoadFunc)(struct ValkeyModuleIO *rdb, int encver, int when);
-typedef void (*moduleTypeAuxSaveFunc)(struct ValkeyModuleIO *rdb, int when);
-typedef void (*moduleTypeRewriteFunc)(struct ValkeyModuleIO *io, struct serverObject *key, void *value);
-typedef void (*moduleTypeDigestFunc)(struct ValkeyModuleDigest *digest, void *value);
+typedef void *(*moduleTypeLoadFunc)(struct KVModuleIO *io, int encver);
+typedef void (*moduleTypeSaveFunc)(struct KVModuleIO *io, void *value);
+typedef int (*moduleTypeAuxLoadFunc)(struct KVModuleIO *rdb, int encver, int when);
+typedef void (*moduleTypeAuxSaveFunc)(struct KVModuleIO *rdb, int when);
+typedef void (*moduleTypeRewriteFunc)(struct KVModuleIO *io, struct serverObject *key, void *value);
+typedef void (*moduleTypeDigestFunc)(struct KVModuleDigest *digest, void *value);
 typedef size_t (*moduleTypeMemUsageFunc)(const void *value);
 typedef void (*moduleTypeFreeFunc)(void *value);
 typedef size_t (*moduleTypeFreeEffortFunc)(struct serverObject *key, const void *value);
 typedef void (*moduleTypeUnlinkFunc)(struct serverObject *key, void *value);
 typedef void *(*moduleTypeCopyFunc)(struct serverObject *fromkey, struct serverObject *tokey, const void *value);
-typedef int (*moduleTypeDefragFunc)(struct ValkeyModuleDefragCtx *ctx, struct serverObject *key, void **value);
-typedef size_t (*moduleTypeMemUsageFunc2)(struct ValkeyModuleKeyOptCtx *ctx, const void *value, size_t sample_size);
-typedef void (*moduleTypeFreeFunc2)(struct ValkeyModuleKeyOptCtx *ctx, void *value);
-typedef size_t (*moduleTypeFreeEffortFunc2)(struct ValkeyModuleKeyOptCtx *ctx, const void *value);
-typedef void (*moduleTypeUnlinkFunc2)(struct ValkeyModuleKeyOptCtx *ctx, void *value);
-typedef void *(*moduleTypeCopyFunc2)(struct ValkeyModuleKeyOptCtx *ctx, const void *value);
-typedef int (*moduleTypeAuthCallback)(struct ValkeyModuleCtx *ctx, void *username, void *password, const char **err);
+typedef int (*moduleTypeDefragFunc)(struct KVModuleDefragCtx *ctx, struct serverObject *key, void **value);
+typedef size_t (*moduleTypeMemUsageFunc2)(struct KVModuleKeyOptCtx *ctx, const void *value, size_t sample_size);
+typedef void (*moduleTypeFreeFunc2)(struct KVModuleKeyOptCtx *ctx, void *value);
+typedef size_t (*moduleTypeFreeEffortFunc2)(struct KVModuleKeyOptCtx *ctx, const void *value);
+typedef void (*moduleTypeUnlinkFunc2)(struct KVModuleKeyOptCtx *ctx, void *value);
+typedef void *(*moduleTypeCopyFunc2)(struct KVModuleKeyOptCtx *ctx, const void *value);
+typedef int (*moduleTypeAuthCallback)(struct KVModuleCtx *ctx, void *username, void *password, const char **err);
 
 
 /* The module type, which is referenced in each value of a given type, defines
  * the methods and links to the module exporting the type. */
-typedef struct ValkeyModuleType {
+typedef struct KVModuleType {
     uint64_t id; /* Higher 54 bits of type ID + 10 lower bits of encoding ver. */
-    struct ValkeyModule *module;
+    struct KVModule *module;
     moduleTypeLoadFunc rdb_load;
     moduleTypeSaveFunc rdb_save;
     moduleTypeRewriteFunc aof_rewrite;
@@ -96,7 +96,7 @@ typedef struct moduleValue {
 } moduleValue;
 
 /* This structure represents a module inside the system. */
-typedef struct ValkeyModule {
+typedef struct KVModule {
     void *handle;                         /* Module dlopen() handle. */
     char *name;                           /* Module name. */
     int ver;                              /* Module version. We use just progressive integers. */
@@ -110,33 +110,33 @@ typedef struct ValkeyModule {
     int in_call;                          /* RM_Call() nesting level */
     int in_hook;                          /* Hooks callback nesting level for this module (0 or 1). */
     int options;                          /* Module options and capabilities. */
-    int blocked_clients;                  /* Count of ValkeyModuleBlockedClient in this module. */
-    ValkeyModuleInfoFunc info_cb;         /* Callback for module to add INFO fields. */
-    ValkeyModuleDefragFunc defrag_cb;     /* Callback for global data defrag. */
+    int blocked_clients;                  /* Count of KVModuleBlockedClient in this module. */
+    KVModuleInfoFunc info_cb;         /* Callback for module to add INFO fields. */
+    KVModuleDefragFunc defrag_cb;     /* Callback for global data defrag. */
     struct moduleLoadQueueEntry *loadmod; /* Module load arguments for config rewrite. */
     int num_commands_with_acl_categories; /* Number of commands in this module included in acl categories */
     int onload;                           /* Flag to identify if the call is being made from Onload (0 or 1) */
     size_t num_acl_categories_added;      /* Number of acl categories added by this module. */
-} ValkeyModule;
+} KVModule;
 
 /* This is a wrapper for the 'rio' streams used inside rdb.c in the server, so that
  * the user does not have to take the total count of the written bytes nor
  * to care about error conditions. */
-typedef struct ValkeyModuleIO {
+typedef struct KVModuleIO {
     size_t bytes;         /* Bytes read / written so far. */
     rio *rio;             /* Rio stream. */
     moduleType *type;     /* Module type doing the operation. */
     int error;            /* True if error condition happened. */
-    ValkeyModuleCtx *ctx; /* Optional context, see RM_GetContextFromIO()*/
+    KVModuleCtx *ctx; /* Optional context, see RM_GetContextFromIO()*/
     robj *key;            /* Optional name of key processed */
     int dbid;             /* The dbid of the key being processed, -1 when unknown. */
     sds pre_flush_buffer; /* A buffer that should be flushed before next write operation
                            * See rdbSaveSingleModuleAux for more details */
-} ValkeyModuleIO;
+} KVModuleIO;
 
 /* Macro to initialize an IO context. Note that the 'ver' field is populated
  * inside rdb.c according to the version of the value to load. */
-static inline void moduleInitIOContext(ValkeyModuleIO *iovar,
+static inline void moduleInitIOContext(KVModuleIO *iovar,
                                        moduleType *mtype,
                                        rio *rioptr,
                                        robj *keyptr,
@@ -156,28 +156,28 @@ static inline void moduleInitIOContext(ValkeyModuleIO *iovar,
  * a data structure, so that a digest can be created in a way that correctly
  * reflects the values. See the DEBUG DIGEST command implementation for more
  * background. */
-typedef struct ValkeyModuleDigest {
+typedef struct KVModuleDigest {
     unsigned char o[20]; /* Ordered elements. */
     unsigned char x[20]; /* Xored elements. */
     robj *key;           /* Optional name of key processed */
     int dbid;            /* The dbid of the key being processed */
-} ValkeyModuleDigest;
+} KVModuleDigest;
 
 /* Just start with a digest composed of all zero bytes. */
-static inline void moduleInitDigestContext(ValkeyModuleDigest *mdvar) {
+static inline void moduleInitDigestContext(KVModuleDigest *mdvar) {
     memset(mdvar->o, 0, sizeof(mdvar->o));
     memset(mdvar->x, 0, sizeof(mdvar->x));
 }
 
 void moduleEnqueueLoadModule(sds path, sds *argv, int argc);
-sds moduleLoadQueueEntryToLoadmoduleOptionStr(ValkeyModule *module,
+sds moduleLoadQueueEntryToLoadmoduleOptionStr(KVModule *module,
                                               const char *config_option_str);
-ValkeyModuleCtx *moduleAllocateContext(void);
-void moduleScriptingEngineInitContext(ValkeyModuleCtx *out_ctx,
-                                      ValkeyModule *module,
+KVModuleCtx *moduleAllocateContext(void);
+void moduleScriptingEngineInitContext(KVModuleCtx *out_ctx,
+                                      KVModule *module,
                                       int add_script_execution_flag,
                                       client *client);
-void moduleFreeContext(ValkeyModuleCtx *ctx);
+void moduleFreeContext(KVModuleCtx *ctx);
 void moduleInitModulesSystem(void);
 void moduleInitModulesSystemLast(void);
 void modulesCron(void);
@@ -193,7 +193,7 @@ moduleType *moduleTypeLookupModuleByNameIgnoreCase(const char *name);
 void moduleTypeNameByID(char *name, uint64_t moduleid);
 const char *moduleTypeModuleName(moduleType *mt);
 const char *moduleNameFromCommand(struct serverCommand *cmd);
-ValkeyModule *moduleFromCommand(struct serverCommand *cmd);
+KVModule *moduleFromCommand(struct serverCommand *cmd);
 void moduleCallCommandUnblockedHandler(client *c);
 int isModuleClientUnblocked(client *c);
 void unblockClientFromModule(client *c);

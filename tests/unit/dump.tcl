@@ -303,7 +303,7 @@ start_server {tags {"dump"}} {
             assert {[$first exists key] == 1}
             assert {[$second exists key] == 0}
 
-            set rd [valkey_deferring_client]
+            set rd [kv_deferring_client]
             $rd debug sleep 1.0 ; # Make second server unable to reply.
             after 100; # wait to make sure DEBUG command was executed.
             set e {}

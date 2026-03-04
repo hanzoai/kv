@@ -34,7 +34,7 @@
 #include <math.h>   /* isnan() */
 #include "cluster.h"
 
-#include "valkey_strtod.h"
+#include "kv_strtod.h"
 
 zskiplistNode *zslGetElementByRank(zskiplist *zsl, unsigned long rank);
 
@@ -192,7 +192,7 @@ int sortCompare(const void *s1, const void *s2) {
     return server.sort_desc ? -cmp : cmp;
 }
 
-/* The SORT command is the most complex command in Valkey. Warning: this code
+/* The SORT command is the most complex command in KV. Warning: this code
  * is optimized for speed and a bit less for readability */
 void sortCommandGeneric(client *c, int readonly) {
     list *operations;
@@ -484,7 +484,7 @@ void sortCommandGeneric(client *c, int readonly) {
                 if (sdsEncodedObject(byval)) {
                     char *eptr;
                     errno = 0;
-                    vector[j].u.score = valkey_strtod(objectGetVal(byval), &eptr);
+                    vector[j].u.score = kv_strtod(objectGetVal(byval), &eptr);
                     if (eptr[0] != '\0' || errno == ERANGE || errno == EINVAL || isnan(vector[j].u.score)) {
                         int_conversion_error = 1;
                     }

@@ -39,7 +39,7 @@
 
 #include "async.h"
 #include "sockcompat.h"
-#include "valkey_private.h"
+#include "kv_private.h"
 
 #include <sds.h>
 
@@ -54,45 +54,45 @@
 #include <sys/types.h>
 #include <time.h>
 
-void valkeyNetClose(valkeyContext *c) {
-    if (c && c->fd != VALKEY_INVALID_FD) {
+void kvNetClose(kvContext *c) {
+    if (c && c->fd != KV_INVALID_FD) {
         close(c->fd);
-        c->fd = VALKEY_INVALID_FD;
+        c->fd = KV_INVALID_FD;
     }
 }
 
-static ssize_t valkeyNetRead(valkeyContext *c, char *buf, size_t bufcap) {
+static ssize_t kvNetRead(kvContext *c, char *buf, size_t bufcap) {
     ssize_t nread = recv(c->fd, buf, bufcap, 0);
     if (nread == -1) {
-        if ((errno == EWOULDBLOCK && !(c->flags & VALKEY_BLOCK)) || (errno == EINTR)) {
+        if ((errno == EWOULDBLOCK && !(c->flags & KV_BLOCK)) || (errno == EINTR)) {
             /* Try again later */
             return 0;
-        } else if (errno == ETIMEDOUT && (c->flags & VALKEY_BLOCK)) {
+        } else if (errno == ETIMEDOUT && (c->flags & KV_BLOCK)) {
             /* especially in windows */
-            valkeySetError(c, VALKEY_ERR_TIMEOUT, "recv timeout");
+            kvSetError(c, KV_ERR_TIMEOUT, "recv timeout");
             return -1;
         } else {
-            valkeySetError(c, VALKEY_ERR_IO, strerror(errno));
+            kvSetError(c, KV_ERR_IO, strerror(errno));
             return -1;
         }
     } else if (nread == 0) {
-        valkeySetError(c, VALKEY_ERR_EOF, "Server closed the connection");
+        kvSetError(c, KV_ERR_EOF, "Server closed the connection");
         return -1;
     } else {
         return nread;
     }
 }
 
-static ssize_t valkeyNetWrite(valkeyContext *c) {
+static ssize_t kvNetWrite(kvContext *c) {
     ssize_t nwritten;
 
     nwritten = send(c->fd, c->obuf, sdslen(c->obuf), 0);
     if (nwritten < 0) {
-        if ((errno == EWOULDBLOCK && !(c->flags & VALKEY_BLOCK)) || (errno == EINTR)) {
+        if ((errno == EWOULDBLOCK && !(c->flags & KV_BLOCK)) || (errno == EINTR)) {
             /* Try again */
             return 0;
         } else {
-            valkeySetError(c, VALKEY_ERR_IO, strerror(errno));
+            kvSetError(c, KV_ERR_IO, strerror(errno));
             return -1;
         }
     }
@@ -100,7 +100,7 @@ static ssize_t valkeyNetWrite(valkeyContext *c) {
     return nwritten;
 }
 
-static void valkeySetErrorFromErrno(valkeyContext *c, int type, const char *prefix) {
+static void kvSetErrorFromErrno(kvContext *c, int type, const char *prefix) {
     int errorno = errno; /* snprintf() may change errno */
     char buf[128] = {0};
     size_t len = 0;
@@ -108,35 +108,35 @@ static void valkeySetErrorFromErrno(valkeyContext *c, int type, const char *pref
     if (prefix != NULL)
         len = snprintf(buf, sizeof(buf), "%s: ", prefix);
     strerror_r(errorno, (char *)(buf + len), sizeof(buf) - len);
-    valkeySetError(c, type, buf);
+    kvSetError(c, type, buf);
 }
 
-static int valkeySetReuseAddr(valkeyContext *c) {
+static int kvSetReuseAddr(kvContext *c) {
     int on = 1;
     if (setsockopt(c->fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) == -1) {
-        valkeySetErrorFromErrno(c, VALKEY_ERR_IO, NULL);
-        valkeyNetClose(c);
-        return VALKEY_ERR;
+        kvSetErrorFromErrno(c, KV_ERR_IO, NULL);
+        kvNetClose(c);
+        return KV_ERR;
     }
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-static int valkeyCreateSocket(valkeyContext *c, int type) {
-    valkeyFD s;
-    if ((s = socket(type, SOCK_STREAM, 0)) == VALKEY_INVALID_FD) {
-        valkeySetErrorFromErrno(c, VALKEY_ERR_IO, NULL);
-        return VALKEY_ERR;
+static int kvCreateSocket(kvContext *c, int type) {
+    kvFD s;
+    if ((s = socket(type, SOCK_STREAM, 0)) == KV_INVALID_FD) {
+        kvSetErrorFromErrno(c, KV_ERR_IO, NULL);
+        return KV_ERR;
     }
     c->fd = s;
     if (type == AF_INET) {
-        if (valkeySetReuseAddr(c) == VALKEY_ERR) {
-            return VALKEY_ERR;
+        if (kvSetReuseAddr(c) == KV_ERR) {
+            return KV_ERR;
         }
     }
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-static int valkeySetBlocking(valkeyContext *c, int blocking) {
+static int kvSetBlocking(kvContext *c, int blocking) {
 #ifndef _WIN32
     int flags;
 
@@ -144,9 +144,9 @@ static int valkeySetBlocking(valkeyContext *c, int blocking) {
      * Note that fcntl(2) for F_GETFL and F_SETFL can't be
      * interrupted by a signal. */
     if ((flags = fcntl(c->fd, F_GETFL)) == -1) {
-        valkeySetErrorFromErrno(c, VALKEY_ERR_IO, "fcntl(F_GETFL)");
-        valkeyNetClose(c);
-        return VALKEY_ERR;
+        kvSetErrorFromErrno(c, KV_ERR_IO, "fcntl(F_GETFL)");
+        kvNetClose(c);
+        return KV_ERR;
     }
 
     if (blocking)
@@ -155,87 +155,87 @@ static int valkeySetBlocking(valkeyContext *c, int blocking) {
         flags |= O_NONBLOCK;
 
     if (fcntl(c->fd, F_SETFL, flags) == -1) {
-        valkeySetErrorFromErrno(c, VALKEY_ERR_IO, "fcntl(F_SETFL)");
-        valkeyNetClose(c);
-        return VALKEY_ERR;
+        kvSetErrorFromErrno(c, KV_ERR_IO, "fcntl(F_SETFL)");
+        kvNetClose(c);
+        return KV_ERR;
     }
 #else
     u_long mode = blocking ? 0 : 1;
     if (ioctl(c->fd, FIONBIO, &mode) == -1) {
-        valkeySetErrorFromErrno(c, VALKEY_ERR_IO, "ioctl(FIONBIO)");
-        valkeyNetClose(c);
-        return VALKEY_ERR;
+        kvSetErrorFromErrno(c, KV_ERR_IO, "ioctl(FIONBIO)");
+        kvNetClose(c);
+        return KV_ERR;
     }
 #endif /* _WIN32 */
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-int valkeyKeepAlive(valkeyContext *c, int interval) {
+int kvKeepAlive(kvContext *c, int interval) {
     int val = 1;
-    valkeyFD fd = c->fd;
+    kvFD fd = c->fd;
 
     /* TCP_KEEPALIVE makes no sense with AF_UNIX connections */
-    if (c->connection_type == VALKEY_CONN_UNIX)
-        return VALKEY_ERR;
+    if (c->connection_type == KV_CONN_UNIX)
+        return KV_ERR;
 
 #ifndef _WIN32
     if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(val)) == -1) {
-        valkeySetError(c, VALKEY_ERR_OTHER, strerror(errno));
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OTHER, strerror(errno));
+        return KV_ERR;
     }
 
     val = interval;
 
 #if defined(__APPLE__) && defined(__MACH__)
     if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPALIVE, &val, sizeof(val)) < 0) {
-        valkeySetError(c, VALKEY_ERR_OTHER, strerror(errno));
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OTHER, strerror(errno));
+        return KV_ERR;
     }
 #else
 #if defined(__GLIBC__) && !defined(__FreeBSD_kernel__)
     if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &val, sizeof(val)) < 0) {
-        valkeySetError(c, VALKEY_ERR_OTHER, strerror(errno));
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OTHER, strerror(errno));
+        return KV_ERR;
     }
 
     val = interval / 3;
     if (val == 0)
         val = 1;
     if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &val, sizeof(val)) < 0) {
-        valkeySetError(c, VALKEY_ERR_OTHER, strerror(errno));
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OTHER, strerror(errno));
+        return KV_ERR;
     }
 
     val = 3;
     if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &val, sizeof(val)) < 0) {
-        valkeySetError(c, VALKEY_ERR_OTHER, strerror(errno));
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OTHER, strerror(errno));
+        return KV_ERR;
     }
 #endif
 #endif
 #else
     int res;
 
-    res = win32_valkeyKeepAlive(fd, interval * 1000);
+    res = win32_kvKeepAlive(fd, interval * 1000);
     if (res != 0) {
-        valkeySetError(c, VALKEY_ERR_OTHER, strerror(res));
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OTHER, strerror(res));
+        return KV_ERR;
     }
 #endif
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-int valkeySetTcpNoDelay(valkeyContext *c) {
+int kvSetTcpNoDelay(kvContext *c) {
     int yes = 1;
     if (setsockopt(c->fd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes)) == -1) {
-        valkeySetErrorFromErrno(c, VALKEY_ERR_IO, "setsockopt(TCP_NODELAY)");
-        valkeyNetClose(c);
-        return VALKEY_ERR;
+        kvSetErrorFromErrno(c, KV_ERR_IO, "setsockopt(TCP_NODELAY)");
+        kvNetClose(c);
+        return KV_ERR;
     }
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-int valkeyContextSetTcpUserTimeout(valkeyContext *c, unsigned int timeout) {
+int kvContextSetTcpUserTimeout(kvContext *c, unsigned int timeout) {
     int res;
 #ifdef TCP_USER_TIMEOUT
     res = setsockopt(c->fd, IPPROTO_TCP, TCP_USER_TIMEOUT, &timeout, sizeof(timeout));
@@ -245,14 +245,14 @@ int valkeyContextSetTcpUserTimeout(valkeyContext *c, unsigned int timeout) {
     (void)timeout;
 #endif
     if (res == -1) {
-        valkeySetErrorFromErrno(c, VALKEY_ERR_IO, "setsockopt(TCP_USER_TIMEOUT)");
-        valkeyNetClose(c);
-        return VALKEY_ERR;
+        kvSetErrorFromErrno(c, KV_ERR_IO, "setsockopt(TCP_USER_TIMEOUT)");
+        kvNetClose(c);
+        return KV_ERR;
     }
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-static long valkeyPollMillis(void) {
+static long kvPollMillis(void) {
 #ifndef _MSC_VER
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
@@ -264,49 +264,49 @@ static long valkeyPollMillis(void) {
 #endif
 }
 
-static int valkeyContextWaitReady(valkeyContext *c, long msec) {
+static int kvContextWaitReady(kvContext *c, long msec) {
     struct pollfd wfd;
     long end;
     int res;
 
     if (errno != EINPROGRESS) {
-        valkeySetErrorFromErrno(c, VALKEY_ERR_IO, NULL);
-        valkeyNetClose(c);
-        return VALKEY_ERR;
+        kvSetErrorFromErrno(c, KV_ERR_IO, NULL);
+        kvNetClose(c);
+        return KV_ERR;
     }
 
     wfd.fd = c->fd;
     wfd.events = POLLOUT;
-    end = msec >= 0 ? valkeyPollMillis() + msec : 0;
+    end = msec >= 0 ? kvPollMillis() + msec : 0;
 
     while ((res = poll(&wfd, 1, msec)) <= 0) {
         if (res < 0 && errno != EINTR) {
-            valkeySetErrorFromErrno(c, VALKEY_ERR_IO, "poll(2)");
-            valkeyNetClose(c);
-            return VALKEY_ERR;
-        } else if (res == 0 || (msec >= 0 && valkeyPollMillis() >= end)) {
+            kvSetErrorFromErrno(c, KV_ERR_IO, "poll(2)");
+            kvNetClose(c);
+            return KV_ERR;
+        } else if (res == 0 || (msec >= 0 && kvPollMillis() >= end)) {
             errno = ETIMEDOUT;
-            valkeySetErrorFromErrno(c, VALKEY_ERR_IO, NULL);
-            valkeyNetClose(c);
-            return VALKEY_ERR;
+            kvSetErrorFromErrno(c, KV_ERR_IO, NULL);
+            kvNetClose(c);
+            return KV_ERR;
         } else {
             /* res < 0 && errno == EINTR, try again */
         }
     }
 
-    if (valkeyCheckConnectDone(c, &res) != VALKEY_OK || res == 0) {
-        valkeyCheckSocketError(c);
-        return VALKEY_ERR;
+    if (kvCheckConnectDone(c, &res) != KV_OK || res == 0) {
+        kvCheckSocketError(c);
+        return KV_ERR;
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-int valkeyCheckConnectDone(valkeyContext *c, int *completed) {
+int kvCheckConnectDone(kvContext *c, int *completed) {
     int rc = connect(c->fd, (const struct sockaddr *)c->saddr, c->addrlen);
     if (rc == 0) {
         *completed = 1;
-        return VALKEY_OK;
+        return KV_OK;
     }
     int error = errno;
     if (error == EINPROGRESS) {
@@ -318,7 +318,7 @@ int valkeyCheckConnectDone(valkeyContext *c, int *completed) {
             if (so_error == 0) {
                 /* Socket is connected! */
                 *completed = 1;
-                return VALKEY_OK;
+                return KV_OK;
             }
             /* connection error; */
             errno = so_error;
@@ -328,23 +328,23 @@ int valkeyCheckConnectDone(valkeyContext *c, int *completed) {
     switch (error) {
     case EISCONN:
         *completed = 1;
-        return VALKEY_OK;
+        return KV_OK;
     case EALREADY:
     case EWOULDBLOCK:
         *completed = 0;
-        return VALKEY_OK;
+        return KV_OK;
     default:
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 }
 
-int valkeyCheckSocketError(valkeyContext *c) {
+int kvCheckSocketError(kvContext *c) {
     int err = 0, errno_saved = errno;
     socklen_t errlen = sizeof(err);
 
     if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, &err, &errlen) == -1) {
-        valkeySetErrorFromErrno(c, VALKEY_ERR_IO, "getsockopt(SO_ERROR)");
-        return VALKEY_ERR;
+        kvSetErrorFromErrno(c, KV_ERR_IO, "getsockopt(SO_ERROR)");
+        return KV_ERR;
     }
 
     if (err == 0) {
@@ -353,30 +353,30 @@ int valkeyCheckSocketError(valkeyContext *c) {
 
     if (err) {
         errno = err;
-        valkeySetErrorFromErrno(c, VALKEY_ERR_IO, NULL);
-        return VALKEY_ERR;
+        kvSetErrorFromErrno(c, KV_ERR_IO, NULL);
+        return KV_ERR;
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-int valkeyTcpSetTimeout(valkeyContext *c, const struct timeval tv) {
+int kvTcpSetTimeout(kvContext *c, const struct timeval tv) {
     const void *to_ptr = &tv;
     size_t to_sz = sizeof(tv);
 
     if (setsockopt(c->fd, SOL_SOCKET, SO_RCVTIMEO, to_ptr, to_sz) == -1) {
-        valkeySetErrorFromErrno(c, VALKEY_ERR_IO, "setsockopt(SO_RCVTIMEO)");
-        return VALKEY_ERR;
+        kvSetErrorFromErrno(c, KV_ERR_IO, "setsockopt(SO_RCVTIMEO)");
+        return KV_ERR;
     }
     if (setsockopt(c->fd, SOL_SOCKET, SO_SNDTIMEO, to_ptr, to_sz) == -1) {
-        valkeySetErrorFromErrno(c, VALKEY_ERR_IO, "setsockopt(SO_SNDTIMEO)");
-        return VALKEY_ERR;
+        kvSetErrorFromErrno(c, KV_ERR_IO, "setsockopt(SO_SNDTIMEO)");
+        return KV_ERR;
     }
-    return VALKEY_OK;
+    return KV_OK;
 }
 
 #ifdef IPPROTO_MPTCP
-int valkeyHasMptcp(void) {
+int kvHasMptcp(void) {
     return 1;
 }
 
@@ -386,38 +386,38 @@ int valkeyHasMptcp(void) {
  * Ref: https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/tools/testing/selftests/net/mptcp/mptcp_connect.c
  *      https://sourceware.org/git/?p=glibc.git;a=commit;h=a8e9022e0f829d44a818c642fc85b3bfbd26a514
  */
-static int valkeyTcpGetProtocol(int is_mptcp_enabled) {
+static int kvTcpGetProtocol(int is_mptcp_enabled) {
     return is_mptcp_enabled ? IPPROTO_MPTCP : IPPROTO_TCP;
 }
 
 #else
-int valkeyHasMptcp(void) {
+int kvHasMptcp(void) {
     return 0;
 }
 
-static int valkeyTcpGetProtocol(int is_mptcp_enabled) {
+static int kvTcpGetProtocol(int is_mptcp_enabled) {
     assert(!is_mptcp_enabled);
     (void)is_mptcp_enabled; /* Suppress unused warning when NDEBUG is defined. */
     return IPPROTO_TCP;
 }
 #endif /* IPPROTO_MPTCP */
 
-int valkeyContextConnectTcp(valkeyContext *c, const valkeyOptions *options) {
+int kvContextConnectTcp(kvContext *c, const kvOptions *options) {
     const struct timeval *timeout = options->connect_timeout;
     const char *addr = options->endpoint.tcp.ip;
     const char *source_addr = options->endpoint.tcp.source_addr;
     int port = options->endpoint.tcp.port;
-    valkeyFD s;
+    kvFD s;
     int rv, n;
     char _port[6]; /* strlen("65535"); */
     struct addrinfo hints, *servinfo, *bservinfo, *p, *b;
-    int blocking = (c->flags & VALKEY_BLOCK);
-    int reuseaddr = (c->flags & VALKEY_REUSEADDR);
+    int blocking = (c->flags & KV_BLOCK);
+    int reuseaddr = (c->flags & KV_REUSEADDR);
     int reuses = 0;
     long timeout_msec = -1;
 
     servinfo = NULL;
-    c->connection_type = VALKEY_CONN_TCP;
+    c->connection_type = KV_CONN_TCP;
     c->tcp.port = port;
 
     /* We need to take possession of the passed parameters
@@ -436,14 +436,14 @@ int valkeyContextConnectTcp(valkeyContext *c, const valkeyOptions *options) {
     }
 
     if (timeout) {
-        if (valkeyContextUpdateConnectTimeout(c, timeout) == VALKEY_ERR)
+        if (kvContextUpdateConnectTimeout(c, timeout) == KV_ERR)
             goto oom;
     } else {
         vk_free(c->connect_timeout);
         c->connect_timeout = NULL;
     }
 
-    if (valkeyConnectTimeoutMsec(c, &timeout_msec) != VALKEY_OK) {
+    if (kvConnectTimeoutMsec(c, &timeout_msec) != KV_OK) {
         goto error;
     }
 
@@ -463,9 +463,9 @@ int valkeyContextConnectTcp(valkeyContext *c, const valkeyOptions *options) {
     /* DNS lookup. To use dual stack, set both flags to prefer both IPv4 and
      * IPv6. By default, for historical reasons, we try IPv4 first and then we
      * try IPv6 only if no IPv4 address was found. */
-    if (c->flags & VALKEY_PREFER_IPV6 && c->flags & VALKEY_PREFER_IPV4)
+    if (c->flags & KV_PREFER_IPV6 && c->flags & KV_PREFER_IPV4)
         hints.ai_family = AF_UNSPEC;
-    else if (c->flags & VALKEY_PREFER_IPV6)
+    else if (c->flags & KV_PREFER_IPV6)
         hints.ai_family = AF_INET6;
     else
         hints.ai_family = AF_INET;
@@ -477,16 +477,16 @@ int valkeyContextConnectTcp(valkeyContext *c, const valkeyOptions *options) {
         rv = getaddrinfo(c->tcp.host, _port, &hints, &servinfo);
     }
     if (rv != 0) {
-        valkeySetError(c, VALKEY_ERR_OTHER, gai_strerror(rv));
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OTHER, gai_strerror(rv));
+        return KV_ERR;
     }
     for (p = servinfo; p != NULL; p = p->ai_next) {
     addrretry:
-        if ((s = socket(p->ai_family, p->ai_socktype, valkeyTcpGetProtocol(c->flags & VALKEY_MPTCP))) == VALKEY_INVALID_FD)
+        if ((s = socket(p->ai_family, p->ai_socktype, kvTcpGetProtocol(c->flags & KV_MPTCP))) == KV_INVALID_FD)
             continue;
 
         c->fd = s;
-        if (valkeySetBlocking(c, 0) != VALKEY_OK)
+        if (kvSetBlocking(c, 0) != KV_OK)
             goto error;
         if (c->tcp.source_addr) {
             int bound = 0;
@@ -494,7 +494,7 @@ int valkeyContextConnectTcp(valkeyContext *c, const valkeyOptions *options) {
             if ((rv = getaddrinfo(c->tcp.source_addr, NULL, &hints, &bservinfo)) != 0) {
                 char buf[128];
                 snprintf(buf, sizeof(buf), "Can't get addr: %s", gai_strerror(rv));
-                valkeySetError(c, VALKEY_ERR_OTHER, buf);
+                kvSetError(c, KV_ERR_OTHER, buf);
                 goto error;
             }
 
@@ -517,7 +517,7 @@ int valkeyContextConnectTcp(valkeyContext *c, const valkeyOptions *options) {
             if (!bound) {
                 char buf[128];
                 snprintf(buf, sizeof(buf), "Can't bind socket: %s", strerror(errno));
-                valkeySetError(c, VALKEY_ERR_OTHER, buf);
+                kvSetError(c, KV_ERR_OTHER, buf);
                 goto error;
             }
         }
@@ -533,7 +533,7 @@ int valkeyContextConnectTcp(valkeyContext *c, const valkeyOptions *options) {
 
         if (connect(s, p->ai_addr, p->ai_addrlen) == -1) {
             if (errno == EHOSTUNREACH) {
-                valkeyNetClose(c);
+                kvNetClose(c);
                 continue;
             } else if (errno == EINPROGRESS) {
                 if (blocking) {
@@ -544,60 +544,60 @@ int valkeyContextConnectTcp(valkeyContext *c, const valkeyOptions *options) {
                  * for `connect()`
                  */
             } else if (errno == EADDRNOTAVAIL && reuseaddr) {
-                if (++reuses >= VALKEY_CONNECT_RETRIES) {
+                if (++reuses >= KV_CONNECT_RETRIES) {
                     goto error;
                 } else {
-                    valkeyNetClose(c);
+                    kvNetClose(c);
                     goto addrretry;
                 }
             } else {
             wait_for_ready:
-                if (valkeyContextWaitReady(c, timeout_msec) != VALKEY_OK)
+                if (kvContextWaitReady(c, timeout_msec) != KV_OK)
                     goto error;
-                if (valkeySetTcpNoDelay(c) != VALKEY_OK)
+                if (kvSetTcpNoDelay(c) != KV_OK)
                     goto error;
             }
         }
-        if (blocking && valkeySetBlocking(c, 1) != VALKEY_OK)
+        if (blocking && kvSetBlocking(c, 1) != KV_OK)
             goto error;
 
-        c->flags |= VALKEY_CONNECTED;
-        rv = VALKEY_OK;
+        c->flags |= KV_CONNECTED;
+        rv = KV_OK;
         goto end;
     }
     if (p == NULL) {
         char buf[128];
         snprintf(buf, sizeof(buf), "Can't create socket: %s", strerror(errno));
-        valkeySetError(c, VALKEY_ERR_OTHER, buf);
+        kvSetError(c, KV_ERR_OTHER, buf);
         goto error;
     }
 
 oom:
-    valkeySetError(c, VALKEY_ERR_OOM, "Out of memory");
+    kvSetError(c, KV_ERR_OOM, "Out of memory");
 error:
-    rv = VALKEY_ERR;
+    rv = KV_ERR;
 end:
     if (servinfo) {
         freeaddrinfo(servinfo);
     }
 
-    return rv; // Need to return VALKEY_OK if alright
+    return rv; // Need to return KV_OK if alright
 }
 
-static int valkeyContextConnectUnix(valkeyContext *c, const valkeyOptions *options) {
+static int kvContextConnectUnix(kvContext *c, const kvOptions *options) {
 #ifndef _WIN32
     const struct timeval *timeout = options->connect_timeout;
     const char *path = options->endpoint.unix_socket;
-    int blocking = (c->flags & VALKEY_BLOCK);
+    int blocking = (c->flags & KV_BLOCK);
     struct sockaddr_un *sa;
     long timeout_msec = -1;
 
-    if (valkeyCreateSocket(c, AF_UNIX) < 0)
-        return VALKEY_ERR;
-    if (valkeySetBlocking(c, 0) != VALKEY_OK)
-        return VALKEY_ERR;
+    if (kvCreateSocket(c, AF_UNIX) < 0)
+        return KV_ERR;
+    if (kvSetBlocking(c, 0) != KV_OK)
+        return KV_ERR;
 
-    c->connection_type = VALKEY_CONN_UNIX;
+    c->connection_type = KV_CONN_UNIX;
     if (c->unix_sock.path != path) {
         vk_free(c->unix_sock.path);
 
@@ -607,15 +607,15 @@ static int valkeyContextConnectUnix(valkeyContext *c, const valkeyOptions *optio
     }
 
     if (timeout) {
-        if (valkeyContextUpdateConnectTimeout(c, timeout) == VALKEY_ERR)
+        if (kvContextUpdateConnectTimeout(c, timeout) == KV_ERR)
             goto oom;
     } else {
         vk_free(c->connect_timeout);
         c->connect_timeout = NULL;
     }
 
-    if (valkeyConnectTimeoutMsec(c, &timeout_msec) != VALKEY_OK)
-        return VALKEY_ERR;
+    if (kvConnectTimeoutMsec(c, &timeout_msec) != KV_OK)
+        return KV_ERR;
 
     /* Don't leak sockaddr if we're reconnecting */
     if (c->saddr)
@@ -632,76 +632,76 @@ static int valkeyContextConnectUnix(valkeyContext *c, const valkeyOptions *optio
         if (errno == EINPROGRESS && !blocking) {
             /* This is ok. */
         } else {
-            if (valkeyContextWaitReady(c, timeout_msec) != VALKEY_OK)
-                return VALKEY_ERR;
+            if (kvContextWaitReady(c, timeout_msec) != KV_OK)
+                return KV_ERR;
         }
     }
 
     /* Reset socket to be blocking after connect(2). */
-    if (blocking && valkeySetBlocking(c, 1) != VALKEY_OK)
-        return VALKEY_ERR;
+    if (blocking && kvSetBlocking(c, 1) != KV_OK)
+        return KV_ERR;
 
-    c->flags |= VALKEY_CONNECTED;
-    return VALKEY_OK;
+    c->flags |= KV_CONNECTED;
+    return KV_OK;
 #else
     /* We currently do not support Unix sockets for Windows. */
     /* TODO(m): https://devblogs.microsoft.com/commandline/af_unix-comes-to-windows/ */
     errno = EPROTONOSUPPORT;
-    return VALKEY_ERR;
+    return KV_ERR;
 #endif /* _WIN32 */
 oom:
-    valkeySetError(c, VALKEY_ERR_OOM, "Out of memory");
-    return VALKEY_ERR;
+    kvSetError(c, KV_ERR_OOM, "Out of memory");
+    return KV_ERR;
 }
 
-static valkeyContextFuncs valkeyContextTcpFuncs = {
-    .connect = valkeyContextConnectTcp,
-    .close = valkeyNetClose,
+static kvContextFuncs kvContextTcpFuncs = {
+    .connect = kvContextConnectTcp,
+    .close = kvNetClose,
     .free_privctx = NULL,
-    .async_read = valkeyAsyncRead,
-    .async_write = valkeyAsyncWrite,
-    .read = valkeyNetRead,
-    .write = valkeyNetWrite,
-    .set_timeout = valkeyTcpSetTimeout,
+    .async_read = kvAsyncRead,
+    .async_write = kvAsyncWrite,
+    .read = kvNetRead,
+    .write = kvNetWrite,
+    .set_timeout = kvTcpSetTimeout,
 };
 
-void valkeyContextRegisterTcpFuncs(void) {
-    valkeyContextRegisterFuncs(&valkeyContextTcpFuncs, VALKEY_CONN_TCP);
+void kvContextRegisterTcpFuncs(void) {
+    kvContextRegisterFuncs(&kvContextTcpFuncs, KV_CONN_TCP);
 }
 
-static valkeyContextFuncs valkeyContextUnixFuncs = {
-    .connect = valkeyContextConnectUnix,
-    .close = valkeyNetClose,
+static kvContextFuncs kvContextUnixFuncs = {
+    .connect = kvContextConnectUnix,
+    .close = kvNetClose,
     .free_privctx = NULL,
-    .async_read = valkeyAsyncRead,
-    .async_write = valkeyAsyncWrite,
-    .read = valkeyNetRead,
-    .write = valkeyNetWrite,
-    .set_timeout = valkeyTcpSetTimeout,
+    .async_read = kvAsyncRead,
+    .async_write = kvAsyncWrite,
+    .read = kvNetRead,
+    .write = kvNetWrite,
+    .set_timeout = kvTcpSetTimeout,
 };
 
-void valkeyContextRegisterUnixFuncs(void) {
-    valkeyContextRegisterFuncs(&valkeyContextUnixFuncs, VALKEY_CONN_UNIX);
+void kvContextRegisterUnixFuncs(void) {
+    kvContextRegisterFuncs(&kvContextUnixFuncs, KV_CONN_UNIX);
 }
 
-static int valkeyContextConnectUserfd(valkeyContext *c, const valkeyOptions *options) {
+static int kvContextConnectUserfd(kvContext *c, const kvOptions *options) {
     c->fd = options->endpoint.fd;
-    c->flags |= VALKEY_CONNECTED;
+    c->flags |= KV_CONNECTED;
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-static valkeyContextFuncs valkeyContextUserfdFuncs = {
-    .connect = valkeyContextConnectUserfd,
-    .close = valkeyNetClose,
+static kvContextFuncs kvContextUserfdFuncs = {
+    .connect = kvContextConnectUserfd,
+    .close = kvNetClose,
     .free_privctx = NULL,
-    .async_read = valkeyAsyncRead,
-    .async_write = valkeyAsyncWrite,
-    .read = valkeyNetRead,
-    .write = valkeyNetWrite,
-    .set_timeout = valkeyTcpSetTimeout,
+    .async_read = kvAsyncRead,
+    .async_write = kvAsyncWrite,
+    .read = kvNetRead,
+    .write = kvNetWrite,
+    .set_timeout = kvTcpSetTimeout,
 };
 
-void valkeyContextRegisterUserfdFuncs(void) {
-    valkeyContextRegisterFuncs(&valkeyContextUserfdFuncs, VALKEY_CONN_USERFD);
+void kvContextRegisterUserfdFuncs(void) {
+    kvContextRegisterFuncs(&kvContextUserfdFuncs, KV_CONN_USERFD);
 }

@@ -23,69 +23,69 @@
  * SUCH DAMAGE.
  */
 
-#ifndef VALKEY_ADAPTERS_QT_H
-#define VALKEY_ADAPTERS_QT_H
+#ifndef KV_ADAPTERS_QT_H
+#define KV_ADAPTERS_QT_H
 #include "../async.h"
 
 #include <QSocketNotifier>
 
-static void ValkeyQtAddRead(void *);
-static void ValkeyQtDelRead(void *);
-static void ValkeyQtAddWrite(void *);
-static void ValkeyQtDelWrite(void *);
-static void ValkeyQtCleanup(void *);
+static void KVQtAddRead(void *);
+static void KVQtDelRead(void *);
+static void KVQtAddWrite(void *);
+static void KVQtDelWrite(void *);
+static void KVQtCleanup(void *);
 
-class ValkeyQtAdapter : public QObject {
+class KVQtAdapter : public QObject {
 
     Q_OBJECT
 
-    friend void ValkeyQtAddRead(void *adapter) {
-        ValkeyQtAdapter *a = static_cast<ValkeyQtAdapter *>(adapter);
+    friend void KVQtAddRead(void *adapter) {
+        KVQtAdapter *a = static_cast<KVQtAdapter *>(adapter);
         a->addRead();
     }
 
-    friend void ValkeyQtDelRead(void *adapter) {
-        ValkeyQtAdapter *a = static_cast<ValkeyQtAdapter *>(adapter);
+    friend void KVQtDelRead(void *adapter) {
+        KVQtAdapter *a = static_cast<KVQtAdapter *>(adapter);
         a->delRead();
     }
 
-    friend void ValkeyQtAddWrite(void *adapter) {
-        ValkeyQtAdapter *a = static_cast<ValkeyQtAdapter *>(adapter);
+    friend void KVQtAddWrite(void *adapter) {
+        KVQtAdapter *a = static_cast<KVQtAdapter *>(adapter);
         a->addWrite();
     }
 
-    friend void ValkeyQtDelWrite(void *adapter) {
-        ValkeyQtAdapter *a = static_cast<ValkeyQtAdapter *>(adapter);
+    friend void KVQtDelWrite(void *adapter) {
+        KVQtAdapter *a = static_cast<KVQtAdapter *>(adapter);
         a->delWrite();
     }
 
-    friend void ValkeyQtCleanup(void *adapter) {
-        ValkeyQtAdapter *a = static_cast<ValkeyQtAdapter *>(adapter);
+    friend void KVQtCleanup(void *adapter) {
+        KVQtAdapter *a = static_cast<KVQtAdapter *>(adapter);
         a->cleanup();
     }
 
   public:
-    ValkeyQtAdapter(QObject *parent = 0)
+    KVQtAdapter(QObject *parent = 0)
         : QObject(parent), m_ctx(0), m_read(0), m_write(0) {}
 
-    ~ValkeyQtAdapter() {
+    ~KVQtAdapter() {
         if (m_ctx != 0) {
             m_ctx->ev.data = NULL;
         }
     }
 
-    int setContext(valkeyAsyncContext *ac) {
+    int setContext(kvAsyncContext *ac) {
         if (ac->ev.data != NULL) {
-            return VALKEY_ERR;
+            return KV_ERR;
         }
         m_ctx = ac;
         m_ctx->ev.data = this;
-        m_ctx->ev.addRead = ValkeyQtAddRead;
-        m_ctx->ev.delRead = ValkeyQtDelRead;
-        m_ctx->ev.addWrite = ValkeyQtAddWrite;
-        m_ctx->ev.delWrite = ValkeyQtDelWrite;
-        m_ctx->ev.cleanup = ValkeyQtCleanup;
-        return VALKEY_OK;
+        m_ctx->ev.addRead = KVQtAddRead;
+        m_ctx->ev.delRead = KVQtDelRead;
+        m_ctx->ev.addWrite = KVQtAddWrite;
+        m_ctx->ev.delWrite = KVQtDelWrite;
+        m_ctx->ev.cleanup = KVQtCleanup;
+        return KV_OK;
     }
 
   private:
@@ -123,13 +123,13 @@ class ValkeyQtAdapter : public QObject {
     }
 
   private slots:
-    void read() { valkeyAsyncHandleRead(m_ctx); }
-    void write() { valkeyAsyncHandleWrite(m_ctx); }
+    void read() { kvAsyncHandleRead(m_ctx); }
+    void write() { kvAsyncHandleWrite(m_ctx); }
 
   private:
-    valkeyAsyncContext *m_ctx;
+    kvAsyncContext *m_ctx;
     QSocketNotifier *m_read;
     QSocketNotifier *m_write;
 };
 
-#endif /* VALKEY_ADAPTERS_QT_H */
+#endif /* KV_ADAPTERS_QT_H */

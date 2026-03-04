@@ -1,9 +1,9 @@
-/* This file is used by valkey-cli in place of server.h when including commands.c
+/* This file is used by kv-cli in place of server.h when including commands.c
  * It contains alternative structs which omit the parts of the commands table
- * that are not suitable for valkey-cli, e.g. the command proc. */
+ * that are not suitable for kv-cli, e.g. the command proc. */
 
-#ifndef VALKEY_CLI_COMMANDS_H
-#define VALKEY_CLI_COMMANDS_H
+#ifndef KV_CLI_COMMANDS_H
+#define KV_CLI_COMMANDS_H
 
 #include <stddef.h>
 #include "commands.h"

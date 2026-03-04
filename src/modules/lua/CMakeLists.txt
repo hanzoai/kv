@@ -1,6 +1,6 @@
-project(valkeylua)
+project(kvlua)
 
-if (VALKEY_DEBUG_BUILD)
+if (KV_DEBUG_BUILD)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -W -Wall -fno-common -g -ggdb -std=c99 -O2 -D_GNU_SOURCE")
 else ()
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -W -Wall -fno-common -O3 -std=c99  -D_GNU_SOURCE")
@@ -15,11 +15,11 @@ set(LUA_ENGINE_SRCS
     ../../sha1.c
     ../../rand.c)
 
-add_library(valkeylua SHARED "${LUA_ENGINE_SRCS}")
+add_library(kvlua SHARED "${LUA_ENGINE_SRCS}")
 
-target_link_libraries(valkeylua PRIVATE lualib fpconv)
-target_include_directories(valkeylua PRIVATE ../../../deps/lua/src)
+target_link_libraries(kvlua PRIVATE lualib fpconv)
+target_include_directories(kvlua PRIVATE ../../../deps/lua/src)
 
-install(TARGETS valkeylua
+install(TARGETS kvlua
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )

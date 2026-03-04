@@ -313,7 +313,7 @@ start_server {tags {"other"}} {
     } {} {needs:reset}
 
     test {RESET clears MONITOR state} {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd monitor
         assert_equal [$rd read] "OK"
 
@@ -360,7 +360,7 @@ start_server {tags {"other"}} {
     }
 
     test "Extended Redis Compatibility config" {
-        # This config is added in Valkey 8.0, shall be deprecated and have no
+        # This config is added in KV 8.0, shall be deprecated and have no
         # effect in 9.x and be deleted in 10.0.
         set hello [r hello 3]
         set version [dict get $hello version]
@@ -373,7 +373,7 @@ start_server {tags {"other"}} {
             # exists but have no effect.
             r config set extended-redis-compatibility yes
             set hello [r hello 3]
-            assert_equal valkey [dict get $hello server]
+            assert_equal kv [dict get $hello server]
             assert_equal $version [dict get $hello version]
             r config set extended-redis-compatibility no
         } elseif {[string match "8.*" $version] || [string match "9.*" $version] || ($version eq "255.255.255")} {
@@ -395,19 +395,19 @@ start_server {tags {"other"}} {
             assert_match {*Redis ver.*} $lolwut_output
             r config set extended-redis-compatibility no
             set hello [r hello 3]
-            assert_equal "valkey" [dict get $hello server]
+            assert_equal "kv" [dict get $hello server]
             assert_equal $version [dict get $hello version]
             set info [r info server]
             assert_no_match "*redis_mode:*" $info
             assert_match "*server_mode:*" $info
             set lolwut_output [r lolwut]
-            assert_match {*Valkey ver.*} $lolwut_output
+            assert_match {*KV ver.*} $lolwut_output
             set lolwut_output [r lolwut version 5]
-            assert_match {*Valkey ver.*} $lolwut_output
+            assert_match {*KV ver.*} $lolwut_output
             set lolwut_output [r lolwut version 6]
-            assert_match {*Valkey ver.*} $lolwut_output
+            assert_match {*KV ver.*} $lolwut_output
             set lolwut_output [r lolwut version 9]
-            assert_match {*Valkey ver.*} $lolwut_output
+            assert_match {*KV ver.*} $lolwut_output
         }
     }
 }
@@ -470,7 +470,7 @@ start_server {tags {"other external:skip"}} {
             set cmdline [read_proc_title [srv 0 pid]]
 
             assert_equal "TEST" [lindex $cmdline 0]
-            assert_match "*/valkey-server" [lindex $cmdline 1]
+            assert_match "*/kv-server" [lindex $cmdline 1]
 
             if {$::tls} {
                 set expect_port [srv 0 pport]
@@ -486,7 +486,7 @@ start_server {tags {"other external:skip"}} {
             assert_equal $expect_port [lindex $cmdline 3]
             assert_equal $expect_tls_port [lindex $cmdline 4]
             assert_match "*/tests/tmp/server.*/socket" [lindex $cmdline 5]
-            assert_match "*/tests/tmp/valkey.conf.*" [lindex $cmdline 6]
+            assert_match "*/tests/tmp/kv.conf.*" [lindex $cmdline 6]
 
             # Try setting a bad template
             catch {r config set "proc-title-template" "{invalid-var}"} err

@@ -1,11 +1,11 @@
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
 /*
  * This file implements allocator-specific defragmentation logic used
- * within the Valkey engine. Below is the relationship between various
+ * within the KV engine. Below is the relationship between various
  * components involved in allocation and defragmentation:
  *
  *                  Application code

@@ -1,5 +1,5 @@
 *.gcda
 *.gcno
 *.gcov
-valkey.info
+kv.info
 lcov-html

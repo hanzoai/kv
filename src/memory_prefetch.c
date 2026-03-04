@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -138,7 +138,7 @@ static void prefetchValue(KeyPrefetchInfo *info) {
     if (hashtableIncrementalFindGetResult(&info->hashtab_state, &entry)) {
         robj *val = entry;
         if (val->encoding == OBJ_ENCODING_RAW && val->type == OBJ_STRING) {
-            valkey_prefetch(objectGetVal(val));
+            kv_prefetch(objectGetVal(val));
         }
     }
 
@@ -185,7 +185,7 @@ static void prefetchCommands(void) {
         if (!c || c->argc <= 1) continue;
         /* Skip prefetching first argv (cmd name) it was already looked up by the I/O thread. */
         for (int j = 1; j < c->argc; j++) {
-            valkey_prefetch(c->argv[j]);
+            kv_prefetch(c->argv[j]);
         }
     }
 
@@ -195,7 +195,7 @@ static void prefetchCommands(void) {
         if (!c || c->argc <= 1) continue;
         for (int j = 1; j < c->argc; j++) {
             if (c->argv[j]->encoding == OBJ_ENCODING_RAW) {
-                valkey_prefetch(objectGetVal(c->argv[j]));
+                kv_prefetch(objectGetVal(c->argv[j]));
             }
         }
     }

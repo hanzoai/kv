@@ -39,21 +39,21 @@
 /* The current RDB version. When the format changes in a way that is no longer
  * backward compatible this number gets incremented.
  *
- * RDB 11 is the last open-source Redis RDB version, used by Valkey 7.x and 8.x.
+ * RDB 11 is the last open-source Redis RDB version, used by KV 7.x and 8.x.
  *
  * RDB 12-79 are reserved for Redis non-compatible RDB formats
  *
- * We start using high rdb version numbers since Valkey 9.0. This is in order to avoid
+ * We start using high rdb version numbers since KV 9.0. This is in order to avoid
  * collisions with non-OSS Redis RDB versions.
  *
- * In an RDB file/stream, we also check the magic string REDIS or VALKEY but in
+ * In an RDB file/stream, we also check the magic string REDIS or KV but in
  * the DUMP/RESTORE format, there is only the RDB version number and no magic
  * string. */
 #define RDB_VERSION 80
 
-/* Mapping between RDB version and the Valkey version where it was added. */
+/* Mapping between RDB version and the KV version where it was added. */
 static const int RDB_VERSION_MAP[][2] = {
-    /* {RDB version, added in Valkey version} from oldest to newest. */
+    /* {RDB version, added in KV version} from oldest to newest. */
     {11, 0x070200},
     {80, 0x090000},
 };
@@ -68,7 +68,7 @@ static inline bool rdbIsForeignVersion(int rdbver) {
     return rdbver >= RDB_FOREIGN_VERSION_MIN && rdbver <= RDB_FOREIGN_VERSION_MAX;
 }
 
-static inline bool rdbUseValkeyMagic(int rdbver) {
+static inline bool rdbUseKVMagic(int rdbver) {
     return rdbver > RDB_FOREIGN_VERSION_MAX;
 }
 
@@ -185,7 +185,7 @@ enum RdbType {
 #define RDB_LOAD_ERR_UNKNOWN_TYPE 2 /* Unknown type in file */
 #define RDB_LOAD_ERR_OTHER 3        /* Any other errors */
 
-bool rdbIsVersionAccepted(int rdbver, bool is_valkey_magic, bool is_redis_magic);
+bool rdbIsVersionAccepted(int rdbver, bool is_kv_magic, bool is_redis_magic);
 ssize_t rdbWriteRaw(rio *rdb, void *p, size_t len);
 int rdbSaveType(rio *rdb, unsigned char type);
 int rdbLoadType(rio *rdb);

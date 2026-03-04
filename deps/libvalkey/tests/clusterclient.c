@@ -24,16 +24,16 @@
 #include <winsock2.h> /* For struct timeval */
 #endif
 
-void printReply(const valkeyReply *reply) {
+void printReply(const kvReply *reply) {
     switch (reply->type) {
-    case VALKEY_REPLY_ERROR:
-    case VALKEY_REPLY_STATUS:
-    case VALKEY_REPLY_STRING:
-    case VALKEY_REPLY_VERB:
-    case VALKEY_REPLY_BIGNUM:
+    case KV_REPLY_ERROR:
+    case KV_REPLY_STATUS:
+    case KV_REPLY_STRING:
+    case KV_REPLY_VERB:
+    case KV_REPLY_BIGNUM:
         printf("%s\n", reply->str);
         break;
-    case VALKEY_REPLY_INTEGER:
+    case KV_REPLY_INTEGER:
         printf("%lld\n", reply->integer);
         break;
     default:
@@ -41,18 +41,18 @@ void printReply(const valkeyReply *reply) {
     }
 }
 
-void eventCallback(const valkeyClusterContext *cc, int event, void *privdata) {
+void eventCallback(const kvClusterContext *cc, int event, void *privdata) {
     (void)cc;
     (void)privdata;
     const char *e;
     switch (event) {
-    case VALKEYCLUSTER_EVENT_SLOTMAP_UPDATED:
+    case KVCLUSTER_EVENT_SLOTMAP_UPDATED:
         e = "slotmap-updated";
         break;
-    case VALKEYCLUSTER_EVENT_READY:
+    case KVCLUSTER_EVENT_READY:
         e = "ready";
         break;
-    case VALKEYCLUSTER_EVENT_FREE_CONTEXT:
+    case KVCLUSTER_EVENT_FREE_CONTEXT:
         e = "free-context";
         break;
     default:
@@ -88,17 +88,17 @@ int main(int argc, char **argv) {
 
     struct timeval timeout = {1, 500000}; // 1.5s
 
-    valkeyClusterOptions options = {0};
+    kvClusterOptions options = {0};
     options.initial_nodes = initnode;
     options.connect_timeout = &timeout;
     if (use_cluster_nodes) {
-        options.options = VALKEY_OPT_USE_CLUSTER_NODES;
+        options.options = KV_OPT_USE_CLUSTER_NODES;
     }
     if (show_events) {
         options.event_callback = eventCallback;
     }
 
-    valkeyClusterContext *cc = valkeyClusterConnectWithOptions(&options);
+    kvClusterContext *cc = kvClusterConnectWithOptions(&options);
     if (cc == NULL || cc->err) {
         printf("Connect error: %s\n", cc ? cc->errstr : "OOM");
         exit(2);
@@ -121,14 +121,14 @@ int main(int argc, char **argv) {
         }
 
         if (send_to_all) {
-            valkeyClusterNodeIterator ni;
-            valkeyClusterInitNodeIterator(&ni, cc);
+            kvClusterNodeIterator ni;
+            kvClusterInitNodeIterator(&ni, cc);
             uint64_t route_version = cc->route_version;
 
-            valkeyClusterNode *node;
-            while ((node = valkeyClusterNodeNext(&ni)) != NULL) {
-                valkeyReply *reply =
-                    valkeyClusterCommandToNode(cc, node, command);
+            kvClusterNode *node;
+            while ((node = kvClusterNodeNext(&ni)) != NULL) {
+                kvReply *reply =
+                    kvClusterCommandToNode(cc, node, command);
                 if (!reply || cc->err) {
                     printf("error: %s\n", cc->errstr);
                 } else {
@@ -141,7 +141,7 @@ int main(int argc, char **argv) {
                 }
             }
         } else {
-            valkeyReply *reply = valkeyClusterCommand(cc, command);
+            kvReply *reply = kvClusterCommand(cc, command);
             if (!reply || cc->err) {
                 printf("error: %s\n", cc->errstr);
             } else {
@@ -151,6 +151,6 @@ int main(int argc, char **argv) {
         }
     }
 
-    valkeyClusterFree(cc);
+    kvClusterFree(cc);
     return 0;
 }

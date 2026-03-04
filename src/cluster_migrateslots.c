@@ -1,5 +1,5 @@
 /*
- * Copyright Valkey Contributors.
+ * Copyright KV Contributors.
  * All rights reserved.
  * SPDX-License-Identifier: BSD 3-Clause
  */
@@ -343,9 +343,9 @@ cleanup:
 }
 
 void fireModuleSlotMigrationEvent(slotMigrationJob *job, int subevent) {
-    ValkeyModuleAtomicSlotMigrationInfo info = VALKEYMODULE_ATOMICSLOTMIGRATIONINFO_INITIALIZER_V1;
+    KVModuleAtomicSlotMigrationInfo info = KVMODULE_ATOMICSLOTMIGRATIONINFO_INITIALIZER_V1;
     info.num_slot_ranges = job->slot_ranges->len;
-    info.slot_ranges = zmalloc(sizeof(ValkeyModuleSlotRange) * info.num_slot_ranges);
+    info.slot_ranges = zmalloc(sizeof(KVModuleSlotRange) * info.num_slot_ranges);
     for (uint32_t i = 0; i < info.num_slot_ranges; i++) {
         listNode *ln = listIndex(job->slot_ranges, i);
         slotRange *range = (slotRange *)ln->value;
@@ -353,7 +353,7 @@ void fireModuleSlotMigrationEvent(slotMigrationJob *job, int subevent) {
         info.slot_ranges[i].end = range->end_slot;
     }
     memcpy(info.job_name, job->name, CLUSTER_NAMELEN);
-    moduleFireServerEvent(VALKEYMODULE_EVENT_ATOMIC_SLOT_MIGRATION, subevent, &info);
+    moduleFireServerEvent(KVMODULE_EVENT_ATOMIC_SLOT_MIGRATION, subevent, &info);
     zfree(info.slot_ranges);
 }
 
@@ -628,7 +628,7 @@ void clusterCommandSyncSlotsEstablish(client *c) {
     }
 
     slotMigrationJob *job = createSlotImportJob(c, source_node, name, slot_ranges);
-    fireModuleSlotMigrationEvent(job, VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_STARTED);
+    fireModuleSlotMigrationEvent(job, KVMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_STARTED);
     listAddNodeHead(server.cluster->slot_migration_jobs, job);
 
     clusterDoBeforeSleep(CLUSTER_TODO_HANDLE_SLOT_MIGRATION);
@@ -1237,7 +1237,7 @@ void clusterCommandMigrateSlots(client *c) {
                   "Slot migration initiated through CLUSTER MIGRATESLOTS "
                   "command: %s (user request from '%s')",
                   job->description, client_info);
-        fireModuleSlotMigrationEvent(job, VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_STARTED);
+        fireModuleSlotMigrationEvent(job, KVMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_STARTED);
         proceedWithSlotMigration(job);
     }
     listSetFreeMethod(new_slot_migrations, NULL);
@@ -1620,7 +1620,7 @@ int slotExportJobBeginSnapshotToTargetSocket(slotMigrationJob *job) {
          * get a write error and exit. */
         close(server.slot_migration_pipe_read);
 
-        serverSetProcTitle("valkey-slot-migration-to-target");
+        serverSetProcTitle("kv-slot-migration-to-target");
         serverSetCpuAffinity(server.bgsave_cpulist);
 
         int retval = childSnapshotForSyncSlot(&aof, job);
@@ -2343,15 +2343,15 @@ void finishSlotMigrationJob(slotMigrationJob *job,
 
     if (job->type == SLOT_MIGRATION_EXPORT) {
         if (state == SLOT_MIGRATION_JOB_SUCCESS) {
-            fireModuleSlotMigrationEvent(job, VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_COMPLETED);
+            fireModuleSlotMigrationEvent(job, KVMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_COMPLETED);
         } else {
-            fireModuleSlotMigrationEvent(job, VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_ABORTED);
+            fireModuleSlotMigrationEvent(job, KVMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_ABORTED);
         }
     } else {
         if (state == SLOT_MIGRATION_JOB_SUCCESS) {
-            fireModuleSlotMigrationEvent(job, VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_COMPLETED);
+            fireModuleSlotMigrationEvent(job, KVMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_COMPLETED);
         } else {
-            fireModuleSlotMigrationEvent(job, VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_ABORTED);
+            fireModuleSlotMigrationEvent(job, KVMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_ABORTED);
         }
     }
 }

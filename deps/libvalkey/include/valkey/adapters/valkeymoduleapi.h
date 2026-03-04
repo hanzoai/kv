@@ -1,126 +1,126 @@
-#ifndef VALKEY_ADAPTERS_VALKEYMODULEAPI_H
-#define VALKEY_ADAPTERS_VALKEYMODULEAPI_H
+#ifndef KV_ADAPTERS_KVMODULEAPI_H
+#define KV_ADAPTERS_KVMODULEAPI_H
 
 #include "../async.h"
-#include "../valkey.h"
-#include "valkeymodule.h"
+#include "../kv.h"
+#include "kvmodule.h"
 
 #include <sys/types.h>
 
-typedef struct valkeyModuleEvents {
-    valkeyAsyncContext *context;
-    ValkeyModuleCtx *module_ctx;
+typedef struct kvModuleEvents {
+    kvAsyncContext *context;
+    KVModuleCtx *module_ctx;
     int fd;
     int reading, writing;
     int timer_active;
-    ValkeyModuleTimerID timer_id;
-} valkeyModuleEvents;
+    KVModuleTimerID timer_id;
+} kvModuleEvents;
 
-static inline void valkeyModuleReadEvent(int fd, void *privdata, int mask) {
+static inline void kvModuleReadEvent(int fd, void *privdata, int mask) {
     (void)fd;
     (void)mask;
 
-    valkeyModuleEvents *e = (valkeyModuleEvents *)privdata;
-    valkeyAsyncHandleRead(e->context);
+    kvModuleEvents *e = (kvModuleEvents *)privdata;
+    kvAsyncHandleRead(e->context);
 }
 
-static inline void valkeyModuleWriteEvent(int fd, void *privdata, int mask) {
+static inline void kvModuleWriteEvent(int fd, void *privdata, int mask) {
     (void)fd;
     (void)mask;
 
-    valkeyModuleEvents *e = (valkeyModuleEvents *)privdata;
-    valkeyAsyncHandleWrite(e->context);
+    kvModuleEvents *e = (kvModuleEvents *)privdata;
+    kvAsyncHandleWrite(e->context);
 }
 
-static inline void valkeyModuleAddRead(void *privdata) {
-    valkeyModuleEvents *e = (valkeyModuleEvents *)privdata;
+static inline void kvModuleAddRead(void *privdata) {
+    kvModuleEvents *e = (kvModuleEvents *)privdata;
     if (!e->reading) {
         e->reading = 1;
-        ValkeyModule_EventLoopAdd(e->fd, VALKEYMODULE_EVENTLOOP_READABLE, valkeyModuleReadEvent, e);
+        KVModule_EventLoopAdd(e->fd, KVMODULE_EVENTLOOP_READABLE, kvModuleReadEvent, e);
     }
 }
 
-static inline void valkeyModuleDelRead(void *privdata) {
-    valkeyModuleEvents *e = (valkeyModuleEvents *)privdata;
+static inline void kvModuleDelRead(void *privdata) {
+    kvModuleEvents *e = (kvModuleEvents *)privdata;
     if (e->reading) {
         e->reading = 0;
-        ValkeyModule_EventLoopDel(e->fd, VALKEYMODULE_EVENTLOOP_READABLE);
+        KVModule_EventLoopDel(e->fd, KVMODULE_EVENTLOOP_READABLE);
     }
 }
 
-static inline void valkeyModuleAddWrite(void *privdata) {
-    valkeyModuleEvents *e = (valkeyModuleEvents *)privdata;
+static inline void kvModuleAddWrite(void *privdata) {
+    kvModuleEvents *e = (kvModuleEvents *)privdata;
     if (!e->writing) {
         e->writing = 1;
-        ValkeyModule_EventLoopAdd(e->fd, VALKEYMODULE_EVENTLOOP_WRITABLE, valkeyModuleWriteEvent, e);
+        KVModule_EventLoopAdd(e->fd, KVMODULE_EVENTLOOP_WRITABLE, kvModuleWriteEvent, e);
     }
 }
 
-static inline void valkeyModuleDelWrite(void *privdata) {
-    valkeyModuleEvents *e = (valkeyModuleEvents *)privdata;
+static inline void kvModuleDelWrite(void *privdata) {
+    kvModuleEvents *e = (kvModuleEvents *)privdata;
     if (e->writing) {
         e->writing = 0;
-        ValkeyModule_EventLoopDel(e->fd, VALKEYMODULE_EVENTLOOP_WRITABLE);
+        KVModule_EventLoopDel(e->fd, KVMODULE_EVENTLOOP_WRITABLE);
     }
 }
 
-static inline void valkeyModuleStopTimer(void *privdata) {
-    valkeyModuleEvents *e = (valkeyModuleEvents *)privdata;
+static inline void kvModuleStopTimer(void *privdata) {
+    kvModuleEvents *e = (kvModuleEvents *)privdata;
     if (e->timer_active) {
-        ValkeyModule_StopTimer(e->module_ctx, e->timer_id, NULL);
+        KVModule_StopTimer(e->module_ctx, e->timer_id, NULL);
     }
     e->timer_active = 0;
 }
 
-static inline void valkeyModuleCleanup(void *privdata) {
-    valkeyModuleEvents *e = (valkeyModuleEvents *)privdata;
-    valkeyModuleDelRead(privdata);
-    valkeyModuleDelWrite(privdata);
-    valkeyModuleStopTimer(privdata);
+static inline void kvModuleCleanup(void *privdata) {
+    kvModuleEvents *e = (kvModuleEvents *)privdata;
+    kvModuleDelRead(privdata);
+    kvModuleDelWrite(privdata);
+    kvModuleStopTimer(privdata);
     vk_free(e);
 }
 
-static inline void valkeyModuleTimeout(ValkeyModuleCtx *ctx, void *privdata) {
+static inline void kvModuleTimeout(KVModuleCtx *ctx, void *privdata) {
     (void)ctx;
 
-    valkeyModuleEvents *e = (valkeyModuleEvents *)privdata;
+    kvModuleEvents *e = (kvModuleEvents *)privdata;
     e->timer_active = 0;
-    valkeyAsyncHandleTimeout(e->context);
+    kvAsyncHandleTimeout(e->context);
 }
 
-static inline void valkeyModuleSetTimeout(void *privdata, struct timeval tv) {
-    valkeyModuleEvents *e = (valkeyModuleEvents *)privdata;
+static inline void kvModuleSetTimeout(void *privdata, struct timeval tv) {
+    kvModuleEvents *e = (kvModuleEvents *)privdata;
 
-    valkeyModuleStopTimer(privdata);
+    kvModuleStopTimer(privdata);
 
     mstime_t millis = tv.tv_sec * 1000 + tv.tv_usec / 1000.0;
-    e->timer_id = ValkeyModule_CreateTimer(e->module_ctx, millis, valkeyModuleTimeout, e);
+    e->timer_id = KVModule_CreateTimer(e->module_ctx, millis, kvModuleTimeout, e);
     e->timer_active = 1;
 }
 
 /* Check if Redis version is compatible with the adapter. */
-static inline int valkeyModuleCompatibilityCheck(void) {
-    if (!ValkeyModule_EventLoopAdd ||
-        !ValkeyModule_EventLoopDel ||
-        !ValkeyModule_CreateTimer ||
-        !ValkeyModule_StopTimer) {
-        return VALKEY_ERR;
+static inline int kvModuleCompatibilityCheck(void) {
+    if (!KVModule_EventLoopAdd ||
+        !KVModule_EventLoopDel ||
+        !KVModule_CreateTimer ||
+        !KVModule_StopTimer) {
+        return KV_ERR;
     }
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-static inline int valkeyModuleAttach(valkeyAsyncContext *ac, ValkeyModuleCtx *module_ctx) {
-    valkeyContext *c = &(ac->c);
-    valkeyModuleEvents *e;
+static inline int kvModuleAttach(kvAsyncContext *ac, KVModuleCtx *module_ctx) {
+    kvContext *c = &(ac->c);
+    kvModuleEvents *e;
 
     /* Nothing should be attached when something is already attached */
     if (ac->ev.data != NULL)
-        return VALKEY_ERR;
+        return KV_ERR;
 
     /* Create container for context and r/w events */
-    e = (valkeyModuleEvents *)vk_malloc(sizeof(*e));
+    e = (kvModuleEvents *)vk_malloc(sizeof(*e));
     if (e == NULL)
-        return VALKEY_ERR;
+        return KV_ERR;
 
     e->context = ac;
     e->module_ctx = module_ctx;
@@ -129,15 +129,15 @@ static inline int valkeyModuleAttach(valkeyAsyncContext *ac, ValkeyModuleCtx *mo
     e->timer_active = 0;
 
     /* Register functions to start/stop listening for events */
-    ac->ev.addRead = valkeyModuleAddRead;
-    ac->ev.delRead = valkeyModuleDelRead;
-    ac->ev.addWrite = valkeyModuleAddWrite;
-    ac->ev.delWrite = valkeyModuleDelWrite;
-    ac->ev.cleanup = valkeyModuleCleanup;
-    ac->ev.scheduleTimer = valkeyModuleSetTimeout;
+    ac->ev.addRead = kvModuleAddRead;
+    ac->ev.delRead = kvModuleDelRead;
+    ac->ev.addWrite = kvModuleAddWrite;
+    ac->ev.delWrite = kvModuleDelWrite;
+    ac->ev.cleanup = kvModuleCleanup;
+    ac->ev.scheduleTimer = kvModuleSetTimeout;
     ac->ev.data = e;
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-#endif /* VALKEY_ADAPTERS_VALKEYMODULEAPI_H */
+#endif /* KV_ADAPTERS_KVMODULEAPI_H */
