@@ -18,8 +18,8 @@ syncpid1=$!;
 perl -we 'use sigtrap "handler", sub{exit}, "CONT"; sleep 1; die "timeout"' &
 syncpid2=$!;
 
-# Start simulated valkey node #1
-timeout 5s ./simulated-valkey.pl -p 7403 -d --sigcont $syncpid1 <<'EOF' &
+# Start simulated kv node #1
+timeout 5s ./simulated-kv.pl -p 7403 -d --sigcont $syncpid1 <<'EOF' &
 # Setup initial slotmap
 EXPECT CONNECT
 EXPECT ["CLUSTER", "SLOTS"]
@@ -42,8 +42,8 @@ EXPECT CLOSE
 EOF
 server1=$!
 
-# Start simulated valkey node #2
-timeout 5s ./simulated-valkey.pl -p 7404 -d --sigcont $syncpid2 <<'EOF' &
+# Start simulated kv node #2
+timeout 5s ./simulated-kv.pl -p 7404 -d --sigcont $syncpid2 <<'EOF' &
 # Test 1: Handle MOVED redirect.
 EXPECT CONNECT
 EXPECT ["GET", "foo"]

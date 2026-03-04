@@ -1,0 +1,37 @@
+# example systemd template service unit file for multiple kv-servers
+#
+# You can use this file as a blueprint for your actual template service unit
+# file, if you intend to run multiple independent kv-server instances in
+# parallel using systemd's "template unit files" feature. If you do, you will
+# want to choose a better basename for your service unit by renaming this file
+# when copying it.
+#
+# Please take a look at the provided "systemd-kv_server.service" example
+# service unit file, too, if you choose to use this approach at managing
+# multiple kv-server instances via systemd.
+
+[Unit]
+Description=KV data structure server - instance %i
+Documentation=https://github.com/kv-io/kv-doc
+# This template unit assumes your kv-server configuration file(s)
+# to live at /etc/kv/kv_server_<INSTANCE_NAME>.conf
+AssertPathExists=/etc/kv/kv_server_%i.conf
+#Before=your_application.service another_example_application.service
+#AssertPathExists=/var/lib/kv
+
+[Service]
+ExecStart=/usr/local/bin/kv-server /etc/kv/kv_server_%i.conf
+LimitNOFILE=10032
+NoNewPrivileges=yes
+#OOMScoreAdjust=-900
+#PrivateTmp=yes
+Type=notify
+TimeoutStartSec=infinity
+TimeoutStopSec=infinity
+UMask=0077
+#User=kv
+#Group=kv
+#WorkingDirectory=/var/lib/kv
+
+[Install]
+WantedBy=multi-user.target

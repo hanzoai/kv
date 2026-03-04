@@ -15,21 +15,21 @@ const char *__asan_default_options(void) {
 
 /* Includes source files to test static functions. */
 #include "cluster.c"
-#include "valkey.c"
+#include "kv.c"
 
 #include <stdbool.h>
 
-valkeyReply *create_reply(const char *buf, size_t len);
+kvReply *create_reply(const char *buf, size_t len);
 char *resp_encode_array(char *p, sds *resp);
 
-valkeyClusterContext *createClusterContext(const valkeyClusterOptions *options) {
-    valkeyClusterContext *cc = vk_calloc(1, sizeof(valkeyClusterContext));
-    assert(valkeyClusterContextInit(cc, options) == VALKEY_OK);
+kvClusterContext *createClusterContext(const kvClusterOptions *options) {
+    kvClusterContext *cc = vk_calloc(1, sizeof(kvClusterContext));
+    assert(kvClusterContextInit(cc, options) == KV_OK);
     return cc;
 }
 
-/* Helper to create a valkeyReply that contains a bulkstring. */
-valkeyReply *create_cluster_nodes_reply(const char *str) {
+/* Helper to create a kvReply that contains a bulkstring. */
+kvReply *create_cluster_nodes_reply(const char *str) {
     /* Create a RESP Bulk String. */
     char buf[1024];
     int len = sprintf(buf, "$%zu\r\n%s\r\n", strlen(str), str);
@@ -45,25 +45,25 @@ valkeyReply *create_cluster_nodes_reply(const char *str) {
  * - null     example: null
  * See resp_encode_array for details.
  */
-valkeyReply *create_cluster_slots_reply(const char *str) {
+kvReply *create_cluster_slots_reply(const char *str) {
     sds resp = sdsempty();
 
     char *s = strdup(str);
     resp_encode_array(s, &resp);
     free(s);
 
-    valkeyReply *reply = create_reply(resp, sdslen(resp));
+    kvReply *reply = create_reply(resp, sdslen(resp));
     sdsfree(resp);
     return reply;
 }
 
-/* Create a valkeyReply from a RESP encoded buffer. */
-valkeyReply *create_reply(const char *buf, size_t len) {
-    valkeyReply *reply;
-    valkeyReader *reader = valkeyReaderCreate();
-    valkeyReaderFeed(reader, buf, len);
-    assert(valkeyReaderGetReply(reader, (void **)&reply) == VALKEY_OK);
-    valkeyReaderFree(reader);
+/* Create a kvReply from a RESP encoded buffer. */
+kvReply *create_reply(const char *buf, size_t len) {
+    kvReply *reply;
+    kvReader *reader = kvReaderCreate();
+    kvReaderFeed(reader, buf, len);
+    assert(kvReaderGetReply(reader, (void **)&reply) == KV_OK);
+    kvReaderFree(reader);
     return reply;
 }
 
@@ -129,17 +129,17 @@ char *resp_encode_array(char *p, sds *resp) {
 
 /* Parse a cluster nodes reply from a basic deployment. */
 void test_parse_cluster_nodes(bool parse_replicas) {
-    valkeyClusterOptions options = {0};
+    kvClusterOptions options = {0};
     if (parse_replicas)
-        options.options |= VALKEY_OPT_USE_REPLICAS;
+        options.options |= KV_OPT_USE_REPLICAS;
 
-    valkeyClusterContext *cc = createClusterContext(&options);
-    valkeyContext *c = valkeyContextInit();
-    valkeyClusterNode *node;
+    kvClusterContext *cc = createClusterContext(&options);
+    kvContext *c = kvContextInit();
+    kvClusterNode *node;
     cluster_slot *slot;
     dictIterator di;
 
-    valkeyReply *reply = create_cluster_nodes_reply(
+    kvReply *reply = create_cluster_nodes_reply(
         "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1:30004@31004,hostname4 slave e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca 0 1426238317239 4 connected\n"
         "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1:30002@31002,hostname2 master - 0 1426238316232 2 connected 5461-10922\n"
         "292f8b365bb7edb5e285caf0b7e6ddc7265d2f4f 127.0.0.1:30003@31003,hostname3 master - 0 1426238318243 3 connected 10923-16383\n"
@@ -158,7 +158,7 @@ void test_parse_cluster_nodes(bool parse_replicas) {
     assert(strcmp(node->addr, "127.0.0.1:30001") == 0);
     assert(strcmp(node->host, "127.0.0.1") == 0);
     assert(node->port == 30001);
-    assert(node->role == VALKEY_ROLE_PRIMARY);
+    assert(node->role == KV_ROLE_PRIMARY);
     assert(listLength(node->slots) == 1); /* 1 slot range */
     slot = listNodeValue(listFirst(node->slots));
     assert(slot->start == 0);
@@ -167,7 +167,7 @@ void test_parse_cluster_nodes(bool parse_replicas) {
         assert(listLength(node->replicas) == 1);
         node = listNodeValue(listFirst(node->replicas));
         assert(strcmp(node->name, "07c37dfeb235213a872192d90877d0cd55635b91") == 0);
-        assert(node->role == VALKEY_ROLE_REPLICA);
+        assert(node->role == KV_ROLE_REPLICA);
     } else {
         assert(node->replicas == NULL);
     }
@@ -177,7 +177,7 @@ void test_parse_cluster_nodes(bool parse_replicas) {
     assert(strcmp(node->addr, "127.0.0.1:30002") == 0);
     assert(strcmp(node->host, "127.0.0.1") == 0);
     assert(node->port == 30002);
-    assert(node->role == VALKEY_ROLE_PRIMARY);
+    assert(node->role == KV_ROLE_PRIMARY);
     assert(listLength(node->slots) == 1); /* 1 slot range */
     slot = listNodeValue(listFirst(node->slots));
     assert(slot->start == 5461);
@@ -186,7 +186,7 @@ void test_parse_cluster_nodes(bool parse_replicas) {
         assert(listLength(node->replicas) == 1);
         node = listNodeValue(listFirst(node->replicas));
         assert(strcmp(node->name, "6ec23923021cf3ffec47632106199cb7f496ce01") == 0);
-        assert(node->role == VALKEY_ROLE_REPLICA);
+        assert(node->role == KV_ROLE_REPLICA);
     } else {
         assert(node->replicas == NULL);
     }
@@ -196,7 +196,7 @@ void test_parse_cluster_nodes(bool parse_replicas) {
     assert(strcmp(node->addr, "127.0.0.1:30003") == 0);
     assert(strcmp(node->host, "127.0.0.1") == 0);
     assert(node->port == 30003);
-    assert(node->role == VALKEY_ROLE_PRIMARY);
+    assert(node->role == KV_ROLE_PRIMARY);
     assert(listLength(node->slots) == 1); /* 1 slot range */
     slot = listNodeValue(listFirst(node->slots));
     assert(slot->start == 10923);
@@ -205,26 +205,26 @@ void test_parse_cluster_nodes(bool parse_replicas) {
         assert(listLength(node->replicas) == 1);
         node = listNodeValue(listFirst(node->replicas));
         assert(strcmp(node->name, "824fe116063bc5fcf9f4ffd895bc17aee7731ac3") == 0);
-        assert(node->role == VALKEY_ROLE_REPLICA);
+        assert(node->role == KV_ROLE_REPLICA);
     } else {
         assert(node->replicas == NULL);
     }
 
     dictRelease(nodes);
-    valkeyFree(c);
-    valkeyClusterFree(cc);
+    kvFree(c);
+    kvClusterFree(cc);
 }
 
 void test_parse_cluster_nodes_during_failover(void) {
-    valkeyClusterOptions options = {0};
-    valkeyClusterContext *cc = createClusterContext(&options);
-    valkeyContext *c = valkeyContextInit();
-    valkeyClusterNode *node;
+    kvClusterOptions options = {0};
+    kvClusterContext *cc = createClusterContext(&options);
+    kvContext *c = kvContextInit();
+    kvClusterNode *node;
     cluster_slot *slot;
     dictIterator di;
 
     /* 10.10.10.122 crashed and 10.10.10.126 promoted to master. */
-    valkeyReply *reply = create_cluster_nodes_reply(
+    kvReply *reply = create_cluster_nodes_reply(
         "184ada329264e994781412f3986c425a248f386e 10.10.10.126:7000@17000 master - 0 1625255654350 7 connected 5461-10922\n"
         "5cc0f693985913c553c6901e102ea3cb8d6678bd 10.10.10.122:7000@17000 master,fail - 1625255622147 1625255621143 2 disconnected\n"
         "22de56650b3714c1c42fc0d120f80c66c24d8795 10.10.10.123:7000@17000 master - 0 1625255654000 3 connected 10923-16383\n"
@@ -276,19 +276,19 @@ void test_parse_cluster_nodes_during_failover(void) {
     assert(slot->end == 5460);
 
     dictRelease(nodes);
-    valkeyFree(c);
-    valkeyClusterFree(cc);
+    kvFree(c);
+    kvClusterFree(cc);
 }
 
 /* Skip nodes with the `noaddr` flag. */
 void test_parse_cluster_nodes_with_noaddr(void) {
-    valkeyClusterOptions options = {0};
-    valkeyClusterContext *cc = createClusterContext(&options);
-    valkeyContext *c = valkeyContextInit();
-    valkeyClusterNode *node;
+    kvClusterOptions options = {0};
+    kvClusterContext *cc = createClusterContext(&options);
+    kvContext *c = kvContextInit();
+    kvClusterNode *node;
     dictIterator di;
 
-    valkeyReply *reply = create_cluster_nodes_reply(
+    kvReply *reply = create_cluster_nodes_reply(
         "752d150249c157c7cb312b6b056517bbbecb42d2 :0@0 master,noaddr - 1658754833817 1658754833000 3 disconnected 5461-10922\n"
         "e839a12fbed631de867016f636d773e644562e72 127.0.0.0:6379@16379 myself,master - 0 1658755601000 1 connected 0-5460\n"
         "87f785c4a51f58c06e4be55de8c112210a811db9 127.0.0.2:6379@16379 master - 0 1658755602418 3 connected 10923-16383\n");
@@ -306,21 +306,21 @@ void test_parse_cluster_nodes_with_noaddr(void) {
     assert(strcmp(node->addr, "127.0.0.2:6379") == 0);
 
     dictRelease(nodes);
-    valkeyFree(c);
-    valkeyClusterFree(cc);
+    kvFree(c);
+    kvClusterFree(cc);
 }
 
 void test_parse_cluster_nodes_with_empty_ip(void) {
-    valkeyClusterOptions options = {0};
-    valkeyClusterContext *cc = createClusterContext(&options);
-    valkeyClusterNode *node;
+    kvClusterOptions options = {0};
+    kvClusterContext *cc = createClusterContext(&options);
+    kvClusterNode *node;
     dictIterator di;
 
     /* Set the IP from which the response is received from. */
-    valkeyContext *c = valkeyContextInit();
+    kvContext *c = kvContextInit();
     c->tcp.host = strdup("127.0.0.99");
 
-    valkeyReply *reply = create_cluster_nodes_reply(
+    kvReply *reply = create_cluster_nodes_reply(
         "752d150249c157c7cb312b6b056517bbbecb42d2 :6379@16379 myself,master - 0 0 0 connected 5461-10922\n"
         "e839a12fbed631de867016f636d773e644562e72 127.0.0.1:6379@16379 master - 0 1658755601000 1 connected 0-5460\n"
         "87f785c4a51f58c06e4be55de8c112210a811db9 127.0.0.2:6379@16379 master - 0 1658755602418 3 connected 10923-16383\n");
@@ -341,23 +341,23 @@ void test_parse_cluster_nodes_with_empty_ip(void) {
     assert(strcmp(node->addr, "127.0.0.99:6379") == 0); /* Uses the IP from which the response was received from. */
 
     dictRelease(nodes);
-    valkeyFree(c);
-    valkeyClusterFree(cc);
+    kvFree(c);
+    kvClusterFree(cc);
 }
 
 /* Parse replies with additional importing and migrating information. */
 void test_parse_cluster_nodes_with_special_slot_entries(void) {
-    valkeyClusterOptions options = {0};
-    valkeyClusterContext *cc = createClusterContext(&options);
-    valkeyContext *c = valkeyContextInit();
-    valkeyClusterNode *node;
+    kvClusterOptions options = {0};
+    kvClusterContext *cc = createClusterContext(&options);
+    kvContext *c = kvContextInit();
+    kvClusterNode *node;
     cluster_slot *slot;
     dictIterator di;
     listIter li;
 
     /* The reply contains special slot entries with migrating slot and
      * importing slot information that will be ignored. */
-    valkeyReply *reply = create_cluster_nodes_reply(
+    kvReply *reply = create_cluster_nodes_reply(
         "4394d8eb03de1f524b56cb385f0eb9052ce65283 10.10.10.121:7000@17000 myself,master - 0 1625255653000 1 connected 0 2-5460 [0->-e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca] [1-<-292f8b365bb7edb5e285caf0b7e6ddc7265d2f4f]\n");
     dict *nodes = parse_cluster_nodes(cc, c, reply);
     freeReplyObject(reply);
@@ -382,23 +382,23 @@ void test_parse_cluster_nodes_with_special_slot_entries(void) {
     assert(slot->end == 5460);
 
     dictRelease(nodes);
-    valkeyFree(c);
-    valkeyClusterFree(cc);
+    kvFree(c);
+    kvClusterFree(cc);
 }
 
 /* Parse a cluster nodes reply containing a primary with multiple replicas. */
 void test_parse_cluster_nodes_with_multiple_replicas(void) {
-    valkeyClusterOptions options = {0};
-    options.options |= VALKEY_OPT_USE_REPLICAS;
+    kvClusterOptions options = {0};
+    options.options |= KV_OPT_USE_REPLICAS;
 
-    valkeyClusterContext *cc = createClusterContext(&options);
-    valkeyContext *c = valkeyContextInit();
-    valkeyClusterNode *node;
+    kvClusterContext *cc = createClusterContext(&options);
+    kvContext *c = kvContextInit();
+    kvClusterNode *node;
     cluster_slot *slot;
     dictIterator di;
     listIter li;
 
-    valkeyReply *reply = create_cluster_nodes_reply(
+    kvReply *reply = create_cluster_nodes_reply(
         "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1:30004@31004,hostname4 slave e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca 0 1426238317239 4 connected\n"
         "6ec23923021cf3ffec47632106199cb7f496ce01 127.0.0.1:30005@31005,hostname5 slave e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca 0 1426238316232 5 connected\n"
         "824fe116063bc5fcf9f4ffd895bc17aee7731ac3 127.0.0.1:30006@31006,hostname6 slave e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca 0 1426238317741 6 connected\n"
@@ -417,7 +417,7 @@ void test_parse_cluster_nodes_with_multiple_replicas(void) {
     assert(strcmp(node->addr, "127.0.0.1:30001") == 0);
     assert(strcmp(node->host, "127.0.0.1") == 0);
     assert(node->port == 30001);
-    assert(node->role == VALKEY_ROLE_PRIMARY);
+    assert(node->role == KV_ROLE_PRIMARY);
     assert(listLength(node->slots) == 1); /* 1 slot range */
     slot = listNodeValue(listFirst(node->slots));
     assert(slot->start == 0);
@@ -429,35 +429,35 @@ void test_parse_cluster_nodes_with_multiple_replicas(void) {
     node = listNodeValue(listNext(&li));
     assert(strcmp(node->name, "07c37dfeb235213a872192d90877d0cd55635b91") == 0);
     assert(strcmp(node->addr, "127.0.0.1:30004") == 0);
-    assert(node->role == VALKEY_ROLE_REPLICA);
+    assert(node->role == KV_ROLE_REPLICA);
     node = listNodeValue(listNext(&li));
     assert(strcmp(node->name, "6ec23923021cf3ffec47632106199cb7f496ce01") == 0);
     assert(strcmp(node->addr, "127.0.0.1:30005") == 0);
-    assert(node->role == VALKEY_ROLE_REPLICA);
+    assert(node->role == KV_ROLE_REPLICA);
     node = listNodeValue(listNext(&li));
     assert(strcmp(node->name, "824fe116063bc5fcf9f4ffd895bc17aee7731ac3") == 0);
     assert(strcmp(node->addr, "127.0.0.1:30006") == 0);
-    assert(node->role == VALKEY_ROLE_REPLICA);
+    assert(node->role == KV_ROLE_REPLICA);
     node = listNodeValue(listNext(&li));
     assert(strcmp(node->name, "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1") == 0);
     assert(strcmp(node->addr, "127.0.0.1:30002") == 0);
-    assert(node->role == VALKEY_ROLE_REPLICA);
+    assert(node->role == KV_ROLE_REPLICA);
     node = listNodeValue(listNext(&li));
     assert(strcmp(node->name, "292f8b365bb7edb5e285caf0b7e6ddc7265d2f4f") == 0);
     assert(strcmp(node->addr, "127.0.0.1:30003") == 0);
-    assert(node->role == VALKEY_ROLE_REPLICA);
+    assert(node->role == KV_ROLE_REPLICA);
 
     dictRelease(nodes);
-    valkeyFree(c);
-    valkeyClusterFree(cc);
+    kvFree(c);
+    kvClusterFree(cc);
 }
 
 /* Give error when parsing erroneous data. */
 void test_parse_cluster_nodes_with_parse_error(void) {
-    valkeyClusterOptions options = {0};
-    valkeyClusterContext *cc = createClusterContext(&options);
-    valkeyContext *c = valkeyContextInit();
-    valkeyReply *reply;
+    kvClusterOptions options = {0};
+    kvClusterContext *cc = createClusterContext(&options);
+    kvContext *c = kvContextInit();
+    kvReply *reply;
     dict *nodes;
 
     /* Missing link-state (and slots). */
@@ -466,8 +466,8 @@ void test_parse_cluster_nodes_with_parse_error(void) {
     nodes = parse_cluster_nodes(cc, c, reply);
     freeReplyObject(reply);
     assert(nodes == NULL);
-    assert(cc->err == VALKEY_ERR_OTHER);
-    valkeyClusterClearError(cc);
+    assert(cc->err == KV_ERR_OTHER);
+    kvClusterClearError(cc);
 
     /* Missing port. */
     reply = create_cluster_nodes_reply(
@@ -475,8 +475,8 @@ void test_parse_cluster_nodes_with_parse_error(void) {
     nodes = parse_cluster_nodes(cc, c, reply);
     freeReplyObject(reply);
     assert(nodes == NULL);
-    assert(cc->err == VALKEY_ERR_OTHER);
-    valkeyClusterClearError(cc);
+    assert(cc->err == KV_ERR_OTHER);
+    kvClusterClearError(cc);
 
     /* Missing port and cport. */
     reply = create_cluster_nodes_reply(
@@ -484,8 +484,8 @@ void test_parse_cluster_nodes_with_parse_error(void) {
     nodes = parse_cluster_nodes(cc, c, reply);
     freeReplyObject(reply);
     assert(nodes == NULL);
-    assert(cc->err == VALKEY_ERR_OTHER);
-    valkeyClusterClearError(cc);
+    assert(cc->err == KV_ERR_OTHER);
+    kvClusterClearError(cc);
 
     /* Invalid port. */
     reply = create_cluster_nodes_reply(
@@ -493,23 +493,23 @@ void test_parse_cluster_nodes_with_parse_error(void) {
     nodes = parse_cluster_nodes(cc, c, reply);
     freeReplyObject(reply);
     assert(nodes == NULL);
-    assert(cc->err == VALKEY_ERR_OTHER);
-    valkeyClusterClearError(cc);
+    assert(cc->err == KV_ERR_OTHER);
+    kvClusterClearError(cc);
 
-    valkeyFree(c);
-    valkeyClusterFree(cc);
+    kvFree(c);
+    kvClusterFree(cc);
 }
 
 /* Redis pre-v4.0 returned node addresses without the clusterbus port,
  * i.e. `ip:port` instead of `ip:port@cport` */
 void test_parse_cluster_nodes_with_legacy_format(void) {
-    valkeyClusterOptions options = {0};
-    valkeyClusterContext *cc = createClusterContext(&options);
-    valkeyContext *c = valkeyContextInit();
-    valkeyClusterNode *node;
+    kvClusterOptions options = {0};
+    kvClusterContext *cc = createClusterContext(&options);
+    kvContext *c = kvContextInit();
+    kvClusterNode *node;
     dictIterator di;
 
-    valkeyReply *reply = create_cluster_nodes_reply(
+    kvReply *reply = create_cluster_nodes_reply(
         "e839a12fbed631de867016f636d773e644562e72 127.0.0.0:6379 myself,master - 0 1658755601000 1 connected 0-5460\n"
         "752d150249c157c7cb312b6b056517bbbecb42d2 :0 master,noaddr - 1658754833817 1658754833000 3 disconnected 5461-10922\n");
     dict *nodes = parse_cluster_nodes(cc, c, reply);
@@ -522,23 +522,23 @@ void test_parse_cluster_nodes_with_legacy_format(void) {
     assert(strcmp(node->addr, "127.0.0.0:6379") == 0);
 
     dictRelease(nodes);
-    valkeyFree(c);
-    valkeyClusterFree(cc);
+    kvFree(c);
+    kvClusterFree(cc);
 }
 
 /* Parse a cluster slots reply from a basic deployment. */
 void test_parse_cluster_slots(bool parse_replicas) {
-    valkeyClusterOptions options = {0};
+    kvClusterOptions options = {0};
     if (parse_replicas)
-        options.options |= VALKEY_OPT_USE_REPLICAS;
+        options.options |= KV_OPT_USE_REPLICAS;
 
-    valkeyClusterContext *cc = createClusterContext(&options);
-    valkeyContext *c = valkeyContextInit();
-    valkeyClusterNode *node;
+    kvClusterContext *cc = createClusterContext(&options);
+    kvContext *c = kvContextInit();
+    kvClusterNode *node;
     cluster_slot *slot;
     dictIterator di;
 
-    valkeyReply *reply = create_cluster_slots_reply(
+    kvReply *reply = create_cluster_slots_reply(
         "[[0, 5460, ['127.0.0.1', 30001, 'e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca', ['hostname', 'localhost']],"
         "           ['127.0.0.1', 30004, '07c37dfeb235213a872192d90877d0cd55635b91', ['hostname', 'localhost']]],"
         " [5461, 10922, ['127.0.0.1', 30002, '67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1', ['hostname', 'localhost']],"
@@ -557,7 +557,7 @@ void test_parse_cluster_slots(bool parse_replicas) {
     assert(strcmp(node->addr, "127.0.0.1:30001") == 0);
     assert(strcmp(node->host, "127.0.0.1") == 0);
     assert(node->port == 30001);
-    assert(node->role == VALKEY_ROLE_PRIMARY);
+    assert(node->role == KV_ROLE_PRIMARY);
     assert(listLength(node->slots) == 1); /* 1 slot range */
     slot = listNodeValue(listFirst(node->slots));
     assert(slot->start == 0);
@@ -566,7 +566,7 @@ void test_parse_cluster_slots(bool parse_replicas) {
         assert(listLength(node->replicas) == 1);
         node = listNodeValue(listFirst(node->replicas));
         assert(strcmp(node->addr, "127.0.0.1:30004") == 0);
-        assert(node->role == VALKEY_ROLE_REPLICA);
+        assert(node->role == KV_ROLE_REPLICA);
     } else {
         assert(node->replicas == NULL);
     }
@@ -575,7 +575,7 @@ void test_parse_cluster_slots(bool parse_replicas) {
     assert(strcmp(node->addr, "127.0.0.1:30002") == 0);
     assert(strcmp(node->host, "127.0.0.1") == 0);
     assert(node->port == 30002);
-    assert(node->role == VALKEY_ROLE_PRIMARY);
+    assert(node->role == KV_ROLE_PRIMARY);
     assert(listLength(node->slots) == 1); /* 1 slot range */
     slot = listNodeValue(listFirst(node->slots));
     assert(slot->start == 5461);
@@ -584,7 +584,7 @@ void test_parse_cluster_slots(bool parse_replicas) {
         assert(listLength(node->replicas) == 1);
         node = listNodeValue(listFirst(node->replicas));
         assert(strcmp(node->addr, "127.0.0.1:30005") == 0);
-        assert(node->role == VALKEY_ROLE_REPLICA);
+        assert(node->role == KV_ROLE_REPLICA);
     } else {
         assert(node->replicas == NULL);
     }
@@ -593,7 +593,7 @@ void test_parse_cluster_slots(bool parse_replicas) {
     assert(strcmp(node->addr, "127.0.0.1:30003") == 0);
     assert(strcmp(node->host, "127.0.0.1") == 0);
     assert(node->port == 30003);
-    assert(node->role == VALKEY_ROLE_PRIMARY);
+    assert(node->role == KV_ROLE_PRIMARY);
     assert(listLength(node->slots) == 1); /* 1 slot range */
     slot = listNodeValue(listFirst(node->slots));
     assert(slot->start == 10923);
@@ -602,27 +602,27 @@ void test_parse_cluster_slots(bool parse_replicas) {
         assert(listLength(node->replicas) == 1);
         node = listNodeValue(listFirst(node->replicas));
         assert(strcmp(node->addr, "127.0.0.1:30006") == 0);
-        assert(node->role == VALKEY_ROLE_REPLICA);
+        assert(node->role == KV_ROLE_REPLICA);
     } else {
         assert(node->replicas == NULL);
     }
 
     dictRelease(nodes);
-    valkeyFree(c);
-    valkeyClusterFree(cc);
+    kvFree(c);
+    kvClusterFree(cc);
 }
 
 void test_parse_cluster_slots_with_empty_ip(void) {
-    valkeyClusterOptions options = {0};
-    valkeyClusterContext *cc = createClusterContext(&options);
-    valkeyClusterNode *node;
+    kvClusterOptions options = {0};
+    kvClusterContext *cc = createClusterContext(&options);
+    kvClusterNode *node;
     dictIterator di;
 
     /* Set the IP from which the response is received from. */
-    valkeyContext *c = valkeyContextInit();
+    kvContext *c = kvContextInit();
     c->tcp.host = strdup("127.0.0.99");
 
-    valkeyReply *reply = create_cluster_slots_reply(
+    kvReply *reply = create_cluster_slots_reply(
         "[[0, 5460, ['', 6379, 'e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca']],"
         " [5461, 10922, ['127.0.0.1', 6379, '67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1']],"
         " [10923, 16383, ['127.0.0.2', 6379, '292f8b365bb7edb5e285caf0b7e6ddc7265d2f4f']]]");
@@ -644,21 +644,21 @@ void test_parse_cluster_slots_with_empty_ip(void) {
     assert(strcmp(node->addr, "127.0.0.99:6379") == 0); /* Uses the IP from which the response was received from. */
 
     dictRelease(nodes);
-    valkeyFree(c);
-    valkeyClusterFree(cc);
+    kvFree(c);
+    kvClusterFree(cc);
 }
 
 void test_parse_cluster_slots_with_null_ip(void) {
-    valkeyClusterOptions options = {0};
-    valkeyClusterContext *cc = createClusterContext(&options);
-    valkeyClusterNode *node;
+    kvClusterOptions options = {0};
+    kvClusterContext *cc = createClusterContext(&options);
+    kvClusterNode *node;
     dictIterator di;
 
     /* Set the IP from which the response is received from. */
-    valkeyContext *c = valkeyContextInit();
+    kvContext *c = kvContextInit();
     c->tcp.host = strdup("127.0.0.99");
 
-    valkeyReply *reply = create_cluster_slots_reply(
+    kvReply *reply = create_cluster_slots_reply(
         "[[0, 5460, [null, 6379, 'e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca']],"
         " [5461, 10922, ['127.0.0.1', 6379, '67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1']],"
         " [10923, 16383, ['127.0.0.2', 6379, '292f8b365bb7edb5e285caf0b7e6ddc7265d2f4f']]]");
@@ -680,23 +680,23 @@ void test_parse_cluster_slots_with_null_ip(void) {
     assert(strcmp(node->addr, "127.0.0.99:6379") == 0); /* Uses the IP from which the response was received from. */
 
     dictRelease(nodes);
-    valkeyFree(c);
-    valkeyClusterFree(cc);
+    kvFree(c);
+    kvClusterFree(cc);
 }
 
 /* Parse a cluster slots reply containing a primary with multiple replicas. */
 void test_parse_cluster_slots_with_multiple_replicas(void) {
-    valkeyClusterOptions options = {0};
-    options.options |= VALKEY_OPT_USE_REPLICAS;
+    kvClusterOptions options = {0};
+    options.options |= KV_OPT_USE_REPLICAS;
 
-    valkeyClusterContext *cc = createClusterContext(&options);
-    valkeyContext *c = valkeyContextInit();
-    valkeyClusterNode *node;
+    kvClusterContext *cc = createClusterContext(&options);
+    kvContext *c = kvContextInit();
+    kvClusterNode *node;
     cluster_slot *slot;
     dictIterator di;
     listIter li;
 
-    valkeyReply *reply = create_cluster_slots_reply(
+    kvReply *reply = create_cluster_slots_reply(
         "[[0, 16383, ['127.0.0.1', 30001, 'e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca'],"
         "            ['127.0.0.1', 30004, '07c37dfeb235213a872192d90877d0cd55635b91'],"
         "            ['127.0.0.1', 30005, '67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1'],"
@@ -715,7 +715,7 @@ void test_parse_cluster_slots_with_multiple_replicas(void) {
     assert(strcmp(node->addr, "127.0.0.1:30001") == 0);
     assert(strcmp(node->host, "127.0.0.1") == 0);
     assert(node->port == 30001);
-    assert(node->role == VALKEY_ROLE_PRIMARY);
+    assert(node->role == KV_ROLE_PRIMARY);
     assert(listLength(node->slots) == 1); /* 1 slot range */
     slot = listNodeValue(listFirst(node->slots));
     assert(slot->start == 0);
@@ -726,37 +726,37 @@ void test_parse_cluster_slots_with_multiple_replicas(void) {
     listRewind(node->replicas, &li);
     node = listNodeValue(listNext(&li));
     assert(strcmp(node->addr, "127.0.0.1:30004") == 0);
-    assert(node->role == VALKEY_ROLE_REPLICA);
+    assert(node->role == KV_ROLE_REPLICA);
     node = listNodeValue(listNext(&li));
     assert(strcmp(node->addr, "127.0.0.1:30005") == 0);
-    assert(node->role == VALKEY_ROLE_REPLICA);
+    assert(node->role == KV_ROLE_REPLICA);
     node = listNodeValue(listNext(&li));
     assert(strcmp(node->addr, "127.0.0.1:30006") == 0);
-    assert(node->role == VALKEY_ROLE_REPLICA);
+    assert(node->role == KV_ROLE_REPLICA);
     node = listNodeValue(listNext(&li));
     assert(strcmp(node->addr, "127.0.0.1:30002") == 0);
-    assert(node->role == VALKEY_ROLE_REPLICA);
+    assert(node->role == KV_ROLE_REPLICA);
     node = listNodeValue(listNext(&li));
     assert(strcmp(node->addr, "127.0.0.1:30003") == 0);
-    assert(node->role == VALKEY_ROLE_REPLICA);
+    assert(node->role == KV_ROLE_REPLICA);
 
     dictRelease(nodes);
-    valkeyFree(c);
-    valkeyClusterFree(cc);
+    kvFree(c);
+    kvClusterFree(cc);
 }
 
 void test_parse_cluster_slots_with_noncontiguous_slots(void) {
-    valkeyClusterOptions options = {0};
-    options.options |= VALKEY_OPT_USE_REPLICAS;
+    kvClusterOptions options = {0};
+    options.options |= KV_OPT_USE_REPLICAS;
 
-    valkeyClusterContext *cc = createClusterContext(&options);
-    valkeyContext *c = valkeyContextInit();
-    valkeyClusterNode *node;
+    kvClusterContext *cc = createClusterContext(&options);
+    kvContext *c = kvContextInit();
+    kvClusterNode *node;
     cluster_slot *slot;
     dictIterator di;
     listIter li;
 
-    valkeyReply *reply = create_cluster_slots_reply(
+    kvReply *reply = create_cluster_slots_reply(
         "[[0, 0, ['127.0.0.1', 30001, 'e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca'],"
         "        ['127.0.0.1', 30004, '07c37dfeb235213a872192d90877d0cd55635b91']],"
         " [2, 2, ['127.0.0.1', 30001, 'e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca'],"
@@ -775,7 +775,7 @@ void test_parse_cluster_slots_with_noncontiguous_slots(void) {
     assert(strcmp(node->addr, "127.0.0.1:30001") == 0);
     assert(strcmp(node->host, "127.0.0.1") == 0);
     assert(node->port == 30001);
-    assert(node->role == VALKEY_ROLE_PRIMARY);
+    assert(node->role == KV_ROLE_PRIMARY);
     assert(listLength(node->slots) == 3); /* 3 slot range */
     listRewind(node->slots, &li);
     slot = listNodeValue(listNext(&li));
@@ -793,11 +793,11 @@ void test_parse_cluster_slots_with_noncontiguous_slots(void) {
     listRewind(node->replicas, &li);
     node = listNodeValue(listNext(&li));
     assert(strcmp(node->addr, "127.0.0.1:30004") == 0);
-    assert(node->role == VALKEY_ROLE_REPLICA);
+    assert(node->role == KV_ROLE_REPLICA);
 
     dictRelease(nodes);
-    valkeyFree(c);
-    valkeyClusterFree(cc);
+    kvFree(c);
+    kvClusterFree(cc);
 }
 
 int main(void) {

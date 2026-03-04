@@ -22,7 +22,7 @@ proc get_instance_id_by_port {type port} {
 # as a starting point to talk with the cluster.
 proc cluster_write_test {port} {
     set prefix [randstring 20 20 alpha]
-    set cluster [valkey_cluster 127.0.0.1:$port]
+    set cluster [kv_cluster 127.0.0.1:$port]
     for {set j 0} {$j < 100} {incr j} {
         $cluster set key.$j $prefix.$j
     }
@@ -70,18 +70,18 @@ proc cluster_find_available_replica {first} {
 
 proc fix_cluster {addr} {
     set code [catch {
-        exec $::VALKEY_CLI_BIN {*}[valkeycli_tls_config "./tests"] --cluster fix $addr << yes
+        exec $::KV_CLI_BIN {*}[kvcli_tls_config "./tests"] --cluster fix $addr << yes
     } result]
     if {$code != 0} {
-        puts "valkey-cli --cluster fix returns non-zero exit code, output below:\n$result"
+        puts "kv-cli --cluster fix returns non-zero exit code, output below:\n$result"
     }
-    # Note: valkey-cli --cluster fix may return a non-zero exit code if nodes don't agree,
+    # Note: kv-cli --cluster fix may return a non-zero exit code if nodes don't agree,
     # but we can ignore that and rely on the check below.
     wait_for_cluster_state ok
     wait_for_condition 100 100 {
-        [catch {exec $::VALKEY_CLI_BIN {*}[valkeycli_tls_config "./tests"] --cluster check $addr} result] == 0
+        [catch {exec $::KV_CLI_BIN {*}[kvcli_tls_config "./tests"] --cluster check $addr} result] == 0
     } else {
-        puts "valkey-cli --cluster check returns non-zero exit code, output below:\n$result"
+        puts "kv-cli --cluster check returns non-zero exit code, output below:\n$result"
         fail "Cluster could not settle with configuration"
     }
 }

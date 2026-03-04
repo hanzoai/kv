@@ -47,7 +47,7 @@ test "Main db not affected when fail to diskless load" {
     # backlog size is very small, and dumping rdb will cost several seconds.
     set num 10000
     set value [string repeat A 1024]
-    set rd [valkey_deferring_client valkey $master_id]
+    set rd [kv_deferring_client kv $master_id]
     for {set j 0} {$j < $num} {incr j} {
         $rd set $j $value
     }

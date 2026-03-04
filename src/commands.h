@@ -1,5 +1,5 @@
-#ifndef VALKEY_COMMANDS_H
-#define VALKEY_COMMANDS_H
+#ifndef KV_COMMANDS_H
+#define KV_COMMANDS_H
 
 /* Must be synced with ARG_TYPE_STR and generate-command-code.py */
 typedef enum {

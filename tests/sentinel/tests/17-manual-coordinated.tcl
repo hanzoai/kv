@@ -17,7 +17,7 @@ test "Manual coordinated failover works" {
     set addr [S 0 SENTINEL GET-PRIMARY-ADDR-BY-NAME mymaster]
     assert {[lindex $addr 1] == $old_port}
 
-    set rd [valkey_client valkey $master_id]
+    set rd [kv_client kv $master_id]
     $rd reconnect 0
     $rd DEL FOO
 
@@ -52,7 +52,7 @@ test "Manual coordinated failover works" {
         }
     }
     set addr [S 0 SENTINEL GET-PRIMARY-ADDR-BY-NAME mymaster]
-    set master_id [get_instance_id_by_port valkey [lindex $addr 1]]
+    set master_id [get_instance_id_by_port kv [lindex $addr 1]]
 }
 
 test "New primary [join $addr {:}] role matches" {
@@ -68,12 +68,12 @@ test "No blocked clients (by sentinel hello PUBLISH commands) on the old primary
 }
 
 test "All the other replicas now point to the new primary" {
-    foreach_valkey_id id {
+    foreach_kv_id id {
         if {$id != $master_id && $id != 0} {
             wait_for_condition 1000 50 {
                 [RI $id master_port] == [lindex $addr 1]
             } else {
-                fail "Valkey ID $id not configured to replicate with new master"
+                fail "KV ID $id not configured to replicate with new master"
             }
         }
     }
@@ -83,7 +83,7 @@ test "Check data consistency" {
     # New primary must be synced already
     assert_equal $val [R $master_id GET FOO]
     # Replicas will get the value eventually
-    foreach_valkey_id id {
+    foreach_kv_id id {
         wait_for_condition 100 50 {
             [R $id GET FOO] == $val
         } else {
@@ -94,8 +94,8 @@ test "Check data consistency" {
 
 test "Failover fails and times out" {
     set addr [S 0 SENTINEL GET-PRIMARY-ADDR-BY-NAME mymaster]
-    set master_id [get_instance_id_by_port valkey [lindex $addr 1]]
-    foreach_valkey_id id {
+    set master_id [get_instance_id_by_port kv [lindex $addr 1]]
+    foreach_kv_id id {
         # Do not accept PSYNC (used during FAILOVER) on any replica
         if {$id != $master_id} {
             R $id ACL SETUSER default -psync
@@ -116,7 +116,7 @@ test "Failover fails and times out" {
     } else {
         fail "Failover did not timeout"
     }
-    foreach_valkey_id id {
+    foreach_kv_id id {
         # Re-enable psync
         R $id ACL SETUSER default +psync
     }
@@ -127,7 +127,7 @@ test "No change after failed failover: primary [join $addr {:}] role matches" {
 }
 
 test "No change after failed failover: All the other replicas still point to the primary" {
-    foreach_valkey_id id {
+    foreach_kv_id id {
         if {$id != $master_id} {
             assert {[RI $id master_port] == [lindex $addr 1]}
         }

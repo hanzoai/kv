@@ -28,8 +28,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef VALKEY_CONNECTION_H
-#define VALKEY_CONNECTION_H
+#ifndef KV_CONNECTION_H
+#define KV_CONNECTION_H
 
 #include <errno.h>
 #include <stdio.h>

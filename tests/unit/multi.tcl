@@ -1,5 +1,5 @@
 proc wait_for_dbsize {size} {
-    set r2 [valkey_client]
+    set r2 [kv_client]
     wait_for_condition 50 100 {
         [$r2 dbsize] == $size
     } else {
@@ -64,7 +64,7 @@ start_server {tags {"multi"}} {
     } {0 0}
 
     test {EXEC fails if there are errors while queueing commands #2} {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         r del foo1{t} foo2{t}
         r multi
         r set foo1{t} bar1
@@ -520,7 +520,7 @@ start_server {tags {"multi"}} {
     } {OK} {needs:repl cluster:skip}
 
     test {DISCARD should not fail during OOM} {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd config set maxmemory 1
         assert  {[$rd read] eq {OK}}
         r multi
@@ -536,8 +536,8 @@ start_server {tags {"multi"}} {
     test {MULTI and script timeout} {
         # check that if MULTI arrives during timeout, it is either refused, or
         # allowed to pass, and we don't end up executing half of the transaction
-        set rd1 [valkey_deferring_client]
-        set r2 [valkey_client]
+        set rd1 [kv_deferring_client]
+        set r2 [kv_client]
         r config set lua-time-limit 10
         r set xx 1
         $rd1 eval {while true do end} 0
@@ -561,8 +561,8 @@ start_server {tags {"multi"}} {
     test {EXEC and script timeout} {
         # check that if EXEC arrives during timeout, we don't end up executing
         # half of the transaction, and also that we exit the multi state
-        set rd1 [valkey_deferring_client]
-        set r2 [valkey_client]
+        set rd1 [kv_deferring_client]
+        set r2 [kv_client]
         r config set lua-time-limit 10
         r set xx 1
         catch { $r2 multi; } e
@@ -586,8 +586,8 @@ start_server {tags {"multi"}} {
     test {MULTI-EXEC body and script timeout} {
         # check that we don't run an incomplete transaction due to some commands
         # arriving during busy script
-        set rd1 [valkey_deferring_client]
-        set r2 [valkey_client]
+        set rd1 [kv_deferring_client]
+        set r2 [kv_client]
         r config set lua-time-limit 10
         r set xx 1
         catch { $r2 multi; } e
@@ -611,8 +611,8 @@ start_server {tags {"multi"}} {
     test {just EXEC and script timeout} {
         # check that if EXEC arrives during timeout, we don't end up executing
         # actual commands during busy script, and also that we exit the multi state
-        set rd1 [valkey_deferring_client]
-        set r2 [valkey_client]
+        set rd1 [kv_deferring_client]
+        set r2 [kv_client]
         r config set lua-time-limit 10
         r set xx 1
         catch { $r2 multi; } e
@@ -634,7 +634,7 @@ start_server {tags {"multi"}} {
 
     test {exec with write commands and state change} {
         # check that exec that contains write commands fails if server state changed since they were queued
-        set r1 [valkey_client]
+        set r1 [kv_client]
         r set xx 1
         r multi
         r incr xx
@@ -651,7 +651,7 @@ start_server {tags {"multi"}} {
     test {exec with read commands and stale replica state change} {
         # check that exec that contains read commands fails if server state changed since they were queued
         r config set replica-serve-stale-data no
-        set r1 [valkey_client]
+        set r1 [kv_client]
         r set xx 1
 
         # check that GET and PING are disallowed on stale replica, even if the replica becomes stale only after queuing.
@@ -682,7 +682,7 @@ start_server {tags {"multi"}} {
     } {0} {needs:repl cluster:skip}
 
     test {EXEC with only read commands should not be rejected when OOM} {
-        set r2 [valkey_client]
+        set r2 [kv_client]
 
         r set x value
         r multi
@@ -701,7 +701,7 @@ start_server {tags {"multi"}} {
     } {0} {needs:config-maxmemory}
 
     test {EXEC with at least one use-memory command should fail} {
-        set r2 [valkey_client]
+        set r2 [kv_client]
 
         r multi
         r set x 1
@@ -919,7 +919,7 @@ start_server {tags {"multi"}} {
     }
 
     test "CLIENT REPLY OFF/SKIP: multi command" {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
 
         # Turning the reply off
         $rd client reply off

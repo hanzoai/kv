@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version of Valkey to build
+        description: Version of KV to build
         required: true
       environment:
         description: Environment to build
@@ -41,7 +41,7 @@ jobs:
         uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4.0.1
         with:
           token: ${{ secrets.AUTOMATION_PAT }}
-          repository: ${{ github.repository_owner }}/valkey-release-automation
+          repository: ${{ github.repository_owner }}/kv-release-automation
           event-type: build-release
           client-payload: >
             {

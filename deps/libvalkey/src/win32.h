@@ -28,8 +28,8 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef VALKEY_WIN32_H
-#define VALKEY_WIN32_H
+#ifndef KV_WIN32_H
+#define KV_WIN32_H
 #ifdef _MSC_VER
 
 #include <winsock2.h> /* for struct timeval */
@@ -98,4 +98,4 @@ __inline int c99_snprintf(char *str, size_t size, const char *format, ...) {
 
 #endif /* _WIN32 */
 
-#endif /* VALKEY_WIN32_H */
+#endif /* KV_WIN32_H */

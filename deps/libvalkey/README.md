@@ -1,6 +1,6 @@
-# Libvalkey
+# Libkv
 
-Libvalkey is the official C client for the [Valkey](https://valkey.io) database. It also supports any server that uses the `RESP` protocol (version 2 or 3). This project supports both standalone and cluster modes.
+Libkv is the official C client for the [KV](https://hanzo.ai) database. It also supports any server that uses the `RESP` protocol (version 2 or 3). This project supports both standalone and cluster modes.
 
 ## Table of Contents
 
@@ -31,7 +31,7 @@ This library supports and is tested against `Linux`, `FreeBSD`, `macOS`, and `Wi
 
 ## Building
 
-Libvalkey is written in C targeting C99. Unfortunately we have no plans on supporting C89 or earlier. The project does use a few widely supported compiler extensions, specifically for the bundled `sds` string library, although we have plans to remove this from the library.
+Libkv is written in C targeting C99. Unfortunately we have no plans on supporting C89 or earlier. The project does use a few widely supported compiler extensions, specifically for the bundled `sds` string library, although we have plans to remove this from the library.
 
 We support plain GNU make and CMake. Following is information on how to build the library.
 
@@ -66,4 +66,4 @@ sudo make install
 
 ## Contributing
 
-Please see [`CONTRIBUTING.md`](https://github.com/valkey-io/libvalkey/blob/main/CONTRIBUTING.md).
+Please see [`CONTRIBUTING.md`](https://github.com/hanzoai/kv/blob/main/CONTRIBUTING.md).

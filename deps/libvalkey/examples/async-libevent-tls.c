@@ -1,34 +1,34 @@
-#include <valkey/async.h>
-#include <valkey/tls.h>
-#include <valkey/valkey.h>
+#include <kv/async.h>
+#include <kv/tls.h>
+#include <kv/kv.h>
 
-#include <valkey/adapters/libevent.h>
+#include <kv/adapters/libevent.h>
 
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-void getCallback(valkeyAsyncContext *c, void *r, void *privdata) {
-    valkeyReply *reply = r;
+void getCallback(kvAsyncContext *c, void *r, void *privdata) {
+    kvReply *reply = r;
     if (reply == NULL)
         return;
     printf("argv[%s]: %s\n", (char *)privdata, reply->str);
 
     /* Disconnect after receiving the reply to GET */
-    valkeyAsyncDisconnect(c);
+    kvAsyncDisconnect(c);
 }
 
-void connectCallback(valkeyAsyncContext *c, int status) {
-    if (status != VALKEY_OK) {
+void connectCallback(kvAsyncContext *c, int status) {
+    if (status != KV_OK) {
         printf("Error: %s\n", c->errstr);
         return;
     }
     printf("Connected...\n");
 }
 
-void disconnectCallback(const valkeyAsyncContext *c, int status) {
-    if (status != VALKEY_OK) {
+void disconnectCallback(const kvAsyncContext *c, int status) {
+    if (status != KV_OK) {
         printf("Error: %s\n", c->errstr);
         return;
     }
@@ -57,36 +57,36 @@ int main(int argc, char **argv) {
     const char *certKey = argv[5];
     const char *caCert = argc > 5 ? argv[6] : NULL;
 
-    valkeyTLSContext *tls;
-    valkeyTLSContextError tls_error = VALKEY_TLS_CTX_NONE;
+    kvTLSContext *tls;
+    kvTLSContextError tls_error = KV_TLS_CTX_NONE;
 
-    valkeyInitOpenSSL();
+    kvInitOpenSSL();
 
-    tls = valkeyCreateTLSContext(caCert, NULL,
+    tls = kvCreateTLSContext(caCert, NULL,
                                  cert, certKey, NULL, &tls_error);
     if (!tls) {
-        printf("Error: %s\n", valkeyTLSContextGetError(tls_error));
+        printf("Error: %s\n", kvTLSContextGetError(tls_error));
         return 1;
     }
 
-    valkeyAsyncContext *c = valkeyAsyncConnect(hostname, port);
+    kvAsyncContext *c = kvAsyncConnect(hostname, port);
     if (c->err) {
         /* Let *c leak for now... */
         printf("Error: %s\n", c->errstr);
         return 1;
     }
-    if (valkeyInitiateTLSWithContext(&c->c, tls) != VALKEY_OK) {
+    if (kvInitiateTLSWithContext(&c->c, tls) != KV_OK) {
         printf("TLS Error!\n");
         exit(1);
     }
 
-    valkeyLibeventAttach(c, base);
-    valkeyAsyncSetConnectCallback(c, connectCallback);
-    valkeyAsyncSetDisconnectCallback(c, disconnectCallback);
-    valkeyAsyncCommand(c, NULL, NULL, "SET key %b", value, nvalue);
-    valkeyAsyncCommand(c, getCallback, (char *)"end-1", "GET key");
+    kvLibeventAttach(c, base);
+    kvAsyncSetConnectCallback(c, connectCallback);
+    kvAsyncSetDisconnectCallback(c, disconnectCallback);
+    kvAsyncCommand(c, NULL, NULL, "SET key %b", value, nvalue);
+    kvAsyncCommand(c, getCallback, (char *)"end-1", "GET key");
     event_base_dispatch(base);
 
-    valkeyFreeTLSContext(tls);
+    kvFreeTLSContext(tls);
     return 0;
 }

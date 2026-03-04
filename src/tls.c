@@ -27,7 +27,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#define VALKEYMODULE_CORE_MODULE /* A module that's part of the server core, uses server.h too. */
+#define KVMODULE_CORE_MODULE /* A module that's part of the server core, uses server.h too. */
 
 #include "server.h"
 #include "connhelpers.h"
@@ -71,8 +71,8 @@
 #define REDIS_TLS_PROTO_DEFAULT (REDIS_TLS_PROTO_TLSv1_2)
 #endif
 
-SSL_CTX *valkey_tls_ctx = NULL;
-SSL_CTX *valkey_tls_client_ctx = NULL;
+SSL_CTX *kv_tls_ctx = NULL;
+SSL_CTX *kv_tls_client_ctx = NULL;
 
 static int parseProtocolsConfig(const char *str) {
     int i, count = 0;
@@ -191,13 +191,13 @@ static void tlsClearAllCertInfo(void);
 static void tlsRefreshAllCertInfo(void);
 
 static void tlsCleanup(void) {
-    if (valkey_tls_ctx) {
-        SSL_CTX_free(valkey_tls_ctx);
-        valkey_tls_ctx = NULL;
+    if (kv_tls_ctx) {
+        SSL_CTX_free(kv_tls_ctx);
+        kv_tls_ctx = NULL;
     }
-    if (valkey_tls_client_ctx) {
-        SSL_CTX_free(valkey_tls_client_ctx);
-        valkey_tls_client_ctx = NULL;
+    if (kv_tls_client_ctx) {
+        SSL_CTX_free(kv_tls_client_ctx);
+        kv_tls_client_ctx = NULL;
     }
     tlsClearAllCertInfo();
 
@@ -398,14 +398,14 @@ static int tlsUpdateCertInfoFromDir(const char *path, long long *expiry, sds *se
 }
 
 static void tlsRefreshServerCertInfo(void) {
-    if (!(server.tls_port || server.tls_replication || server.tls_cluster) || !valkey_tls_ctx ||
-        tlsUpdateCertInfoFromCtx(valkey_tls_ctx, &server.tls_server_cert_expire_time, &server.tls_server_cert_serial) == C_ERR) {
+    if (!(server.tls_port || server.tls_replication || server.tls_cluster) || !kv_tls_ctx ||
+        tlsUpdateCertInfoFromCtx(kv_tls_ctx, &server.tls_server_cert_expire_time, &server.tls_server_cert_serial) == C_ERR) {
         tlsClearCertInfo(&server.tls_server_cert_expire_time, &server.tls_server_cert_serial);
     }
 }
 
 static void tlsRefreshClientCertInfo(void) {
-    if (tlsUpdateCertInfoFromCtx(valkey_tls_client_ctx, &server.tls_client_cert_expire_time, &server.tls_client_cert_serial) == C_ERR) {
+    if (tlsUpdateCertInfoFromCtx(kv_tls_client_ctx, &server.tls_client_cert_expire_time, &server.tls_client_cert_serial) == C_ERR) {
         tlsClearCertInfo(&server.tls_client_cert_expire_time, &server.tls_client_cert_serial);
     }
 }
@@ -886,7 +886,7 @@ static pthread_mutex_t pending_reload_mutex = PTHREAD_MUTEX_INITIALIZER;
  * leave the SSL_CTX unchanged if it fails.
  *
  * If reconfigure is true, always reconfigure; if false, only configure if
- * valkey_tls_ctx is NULL.
+ * kv_tls_ctx is NULL.
  *
  * If background is true, check for changes and do heavy work in background thread;
  * if false, do work synchronously and swap immediately.
@@ -896,7 +896,7 @@ static int tlsConfigure(void *priv, int reconfigure, bool background) {
     SSL_CTX *ctx = NULL;
     SSL_CTX *client_ctx = NULL;
 
-    if (!reconfigure && valkey_tls_ctx) {
+    if (!reconfigure && kv_tls_ctx) {
         return C_OK;
     }
 
@@ -939,10 +939,10 @@ static int tlsConfigure(void *priv, int reconfigure, bool background) {
             return C_ERR;
         }
 
-        SSL_CTX_free(valkey_tls_ctx);
-        SSL_CTX_free(valkey_tls_client_ctx);
-        valkey_tls_ctx = ctx;
-        valkey_tls_client_ctx = client_ctx;
+        SSL_CTX_free(kv_tls_ctx);
+        SSL_CTX_free(kv_tls_client_ctx);
+        kv_tls_ctx = ctx;
+        kv_tls_client_ctx = client_ctx;
         captureMetadata(ctx_config, &active_metadata);
         tlsRefreshAllCertInfo();
     }
@@ -988,11 +988,11 @@ void tlsApplyPendingReload(void) {
     memset(&pending_reload, 0, sizeof(pending_reload));
     pthread_mutex_unlock(&pending_reload_mutex);
 
-    SSL_CTX *old_ctx = valkey_tls_ctx;
-    SSL_CTX *old_client_ctx = valkey_tls_client_ctx;
+    SSL_CTX *old_ctx = kv_tls_ctx;
+    SSL_CTX *old_client_ctx = kv_tls_client_ctx;
 
-    valkey_tls_ctx = local_pending.ctx;
-    valkey_tls_client_ctx = local_pending.client_ctx;
+    kv_tls_ctx = local_pending.ctx;
+    kv_tls_client_ctx = local_pending.client_ctx;
 
     active_metadata = local_pending.metadata;
 
@@ -1062,8 +1062,8 @@ static void updateTLSError(tls_connection *conn) {
 }
 
 static connection *createTLSConnection(int client_side) {
-    SSL_CTX *ctx = valkey_tls_ctx;
-    if (client_side && valkey_tls_client_ctx) ctx = valkey_tls_client_ctx;
+    SSL_CTX *ctx = kv_tls_ctx;
+    if (client_side && kv_tls_client_ctx) ctx = kv_tls_client_ctx;
     tls_connection *conn = zcalloc(sizeof(tls_connection));
     conn->c.type = &CT_TLS;
     conn->c.fd = -1;
@@ -1909,34 +1909,34 @@ static void tlsClearAllCertInfo(void) {
 
 #include "release.h"
 
-int ValkeyModule_OnLoad(void *ctx, ValkeyModuleString **argv, int argc) {
+int KVModule_OnLoad(void *ctx, KVModuleString **argv, int argc) {
     UNUSED(argv);
     UNUSED(argc);
 
     /* Connection modules must be part of the same build as the server. */
     if (strcmp(REDIS_BUILD_ID_RAW, serverBuildIdRaw())) {
-        serverLog(LL_NOTICE, "Connection type %s was not built together with the valkey-server used.", getConnectionTypeName(CONN_TYPE_TLS));
-        return VALKEYMODULE_ERR;
+        serverLog(LL_NOTICE, "Connection type %s was not built together with the kv-server used.", getConnectionTypeName(CONN_TYPE_TLS));
+        return KVMODULE_ERR;
     }
 
-    if (ValkeyModule_Init(ctx, "tls", 1, VALKEYMODULE_APIVER_1) == VALKEYMODULE_ERR) return VALKEYMODULE_ERR;
+    if (KVModule_Init(ctx, "tls", 1, KVMODULE_APIVER_1) == KVMODULE_ERR) return KVMODULE_ERR;
 
     /* Connection modules is available only bootup. */
-    if ((ValkeyModule_GetContextFlags(ctx) & VALKEYMODULE_CTX_FLAGS_SERVER_STARTUP) == 0) {
+    if ((KVModule_GetContextFlags(ctx) & KVMODULE_CTX_FLAGS_SERVER_STARTUP) == 0) {
         serverLog(LL_NOTICE, "Connection type %s can be loaded only during bootup", getConnectionTypeName(CONN_TYPE_TLS));
-        return VALKEYMODULE_ERR;
+        return KVMODULE_ERR;
     }
 
-    ValkeyModule_SetModuleOptions(ctx, VALKEYMODULE_OPTIONS_HANDLE_REPL_ASYNC_LOAD | VALKEYMODULE_OPTIONS_HANDLE_ATOMIC_SLOT_MIGRATION);
+    KVModule_SetModuleOptions(ctx, KVMODULE_OPTIONS_HANDLE_REPL_ASYNC_LOAD | KVMODULE_OPTIONS_HANDLE_ATOMIC_SLOT_MIGRATION);
 
-    if (connTypeRegister(&CT_TLS) != C_OK) return VALKEYMODULE_ERR;
+    if (connTypeRegister(&CT_TLS) != C_OK) return KVMODULE_ERR;
 
-    return VALKEYMODULE_OK;
+    return KVMODULE_OK;
 }
 
-int ValkeyModule_OnUnload(void *arg) {
+int KVModule_OnUnload(void *arg) {
     UNUSED(arg);
     serverLog(LL_NOTICE, "Connection type %s can not be unloaded", getConnectionTypeName(CONN_TYPE_TLS));
-    return VALKEYMODULE_ERR;
+    return KVMODULE_ERR;
 }
 #endif

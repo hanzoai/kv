@@ -233,7 +233,7 @@ start_server {tags {"commandlog"} overrides {commandlog-execution-slower-than 10
         assert_equal {INCRBYFLOAT A 1.0} [lindex [lindex [r commandlog get -1 slow] 0] 3]
 
         # blocked BLPOP is replicated as LPOP
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd blpop l 0
         wait_for_blocked_clients_count 1 50 100
         r multi
@@ -321,7 +321,7 @@ start_server {tags {"commandlog"} overrides {commandlog-execution-slower-than 10
         # Cleanup first
         r del mylist
         # create a test client
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         
         # config the slowlog and reset
         r config set commandlog-execution-slower-than 0

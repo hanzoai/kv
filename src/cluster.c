@@ -27,7 +27,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -939,8 +939,8 @@ void clusterCommand(client *c) {
         for (unsigned int i = 0; i < numkeys; i++) {
             void *next;
             serverAssert(kvstoreHashtableIteratorNext(kvs_di, &next));
-            robj *valkey = next;
-            sds sdskey = objectGetKey(valkey);
+            robj *kv = next;
+            sds sdskey = objectGetKey(kv);
             addReplyBulkCBuffer(c, sdskey, sdslen(sdskey));
         }
         kvstoreReleaseHashtableIterator(kvs_di);
