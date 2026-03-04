@@ -28,7 +28,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#define VALKEY_SOCKCOMPAT_IMPLEMENTATION
+#define KV_SOCKCOMPAT_IMPLEMENTATION
 #include "sockcompat.h"
 
 #ifdef _WIN32
@@ -287,7 +287,7 @@ int win32_poll(struct pollfd *fds, nfds_t nfds, int timeout) {
     return ret != SOCKET_ERROR ? ret : -1;
 }
 
-int win32_valkeyKeepAlive(SOCKET sockfd, int interval_ms) {
+int win32_kvKeepAlive(SOCKET sockfd, int interval_ms) {
     struct tcp_keepalive cfg;
     DWORD bytes_in;
     int res;

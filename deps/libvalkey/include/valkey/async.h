@@ -29,9 +29,9 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef VALKEY_ASYNC_H
-#define VALKEY_ASYNC_H
-#include "valkey.h"
+#ifndef KV_ASYNC_H
+#define KV_ASYNC_H
+#include "kv.h"
 #include "visibility.h"
 
 #ifdef __cplusplus
@@ -40,45 +40,45 @@ extern "C" {
 
 /* For the async cluster attach functions. */
 #if defined(__GNUC__) || defined(__clang__)
-#define VALKEY_UNUSED __attribute__((unused))
+#define KV_UNUSED __attribute__((unused))
 #else
-#define VALKEY_UNUSED
+#define KV_UNUSED
 #endif
 
-struct valkeyAsyncContext; /* need forward declaration of valkeyAsyncContext */
+struct kvAsyncContext; /* need forward declaration of kvAsyncContext */
 struct dict;               /* dictionary header is included in async.c */
 
 /* Reply callback prototype and container */
-typedef void(valkeyCallbackFn)(struct valkeyAsyncContext *, void *, void *);
-typedef struct valkeyCallback {
-    struct valkeyCallback *next; /* simple singly linked list */
-    valkeyCallbackFn *fn;
+typedef void(kvCallbackFn)(struct kvAsyncContext *, void *, void *);
+typedef struct kvCallback {
+    struct kvCallback *next; /* simple singly linked list */
+    kvCallbackFn *fn;
     int pending_subs;
     int unsubscribe_sent;
     void *privdata;
     int subscribed;
-} valkeyCallback;
+} kvCallback;
 
 /* List of callbacks for either regular replies or pub/sub */
-typedef struct valkeyCallbackList {
-    valkeyCallback *head, *tail;
-} valkeyCallbackList;
+typedef struct kvCallbackList {
+    kvCallback *head, *tail;
+} kvCallbackList;
 
 /* Connection callback prototypes */
-typedef void(valkeyDisconnectCallback)(const struct valkeyAsyncContext *, int status);
-typedef void(valkeyConnectCallback)(struct valkeyAsyncContext *, int status);
-typedef void(valkeyTimerCallback)(void *timer, void *privdata);
+typedef void(kvDisconnectCallback)(const struct kvAsyncContext *, int status);
+typedef void(kvConnectCallback)(struct kvAsyncContext *, int status);
+typedef void(kvTimerCallback)(void *timer, void *privdata);
 
-/* Context for an async connection to Valkey */
-typedef struct valkeyAsyncContext {
+/* Context for an async connection to KV */
+typedef struct kvAsyncContext {
     /* Hold the regular context, so it can be realloc'ed. */
-    valkeyContext c;
+    kvContext c;
 
     /* Setup error flags so they can be used directly. */
     int err;
     char *errstr;
 
-    /* Not used by libvalkey */
+    /* Not used by libkv */
     void *data;
     void (*dataCleanup)(void *privdata);
 
@@ -97,14 +97,14 @@ typedef struct valkeyAsyncContext {
     } ev;
 
     /* Called when either the connection is terminated due to an error or per
-     * user request. The status is set accordingly (VALKEY_OK, VALKEY_ERR). */
-    valkeyDisconnectCallback *onDisconnect;
+     * user request. The status is set accordingly (KV_OK, KV_ERR). */
+    kvDisconnectCallback *onDisconnect;
 
     /* Called when the first write event was received. */
-    valkeyConnectCallback *onConnect;
+    kvConnectCallback *onConnect;
 
     /* Regular command callbacks */
-    valkeyCallbackList replies;
+    kvCallbackList replies;
 
     /* Address used for connect() */
     struct sockaddr *saddr;
@@ -112,7 +112,7 @@ typedef struct valkeyAsyncContext {
 
     /* Subscription callbacks */
     struct {
-        valkeyCallbackList replies;
+        kvCallbackList replies;
         struct dict *channels;
         struct dict *patterns;
         struct dict *schannels;
@@ -120,39 +120,39 @@ typedef struct valkeyAsyncContext {
     } sub;
 
     /* Any configured RESP3 PUSH handler */
-    valkeyAsyncPushFn *push_cb;
-} valkeyAsyncContext;
+    kvAsyncPushFn *push_cb;
+} kvAsyncContext;
 
-LIBVALKEY_API valkeyAsyncContext *valkeyAsyncConnectWithOptions(const valkeyOptions *options);
-LIBVALKEY_API valkeyAsyncContext *valkeyAsyncConnect(const char *ip, int port);
-LIBVALKEY_API valkeyAsyncContext *valkeyAsyncConnectBind(const char *ip, int port, const char *source_addr);
-LIBVALKEY_API valkeyAsyncContext *valkeyAsyncConnectBindWithReuse(const char *ip, int port,
+LIBKV_API kvAsyncContext *kvAsyncConnectWithOptions(const kvOptions *options);
+LIBKV_API kvAsyncContext *kvAsyncConnect(const char *ip, int port);
+LIBKV_API kvAsyncContext *kvAsyncConnectBind(const char *ip, int port, const char *source_addr);
+LIBKV_API kvAsyncContext *kvAsyncConnectBindWithReuse(const char *ip, int port,
                                                                   const char *source_addr);
-LIBVALKEY_API valkeyAsyncContext *valkeyAsyncConnectUnix(const char *path);
-LIBVALKEY_API int valkeyAsyncSetConnectCallback(valkeyAsyncContext *ac, valkeyConnectCallback *fn);
-LIBVALKEY_API int valkeyAsyncSetDisconnectCallback(valkeyAsyncContext *ac, valkeyDisconnectCallback *fn);
+LIBKV_API kvAsyncContext *kvAsyncConnectUnix(const char *path);
+LIBKV_API int kvAsyncSetConnectCallback(kvAsyncContext *ac, kvConnectCallback *fn);
+LIBKV_API int kvAsyncSetDisconnectCallback(kvAsyncContext *ac, kvDisconnectCallback *fn);
 
-LIBVALKEY_API valkeyAsyncPushFn *valkeyAsyncSetPushCallback(valkeyAsyncContext *ac, valkeyAsyncPushFn *fn);
-LIBVALKEY_API int valkeyAsyncSetTimeout(valkeyAsyncContext *ac, struct timeval tv);
-LIBVALKEY_API void valkeyAsyncDisconnect(valkeyAsyncContext *ac);
-LIBVALKEY_API void valkeyAsyncFree(valkeyAsyncContext *ac);
+LIBKV_API kvAsyncPushFn *kvAsyncSetPushCallback(kvAsyncContext *ac, kvAsyncPushFn *fn);
+LIBKV_API int kvAsyncSetTimeout(kvAsyncContext *ac, struct timeval tv);
+LIBKV_API void kvAsyncDisconnect(kvAsyncContext *ac);
+LIBKV_API void kvAsyncFree(kvAsyncContext *ac);
 
 /* Handle read/write events */
-LIBVALKEY_API void valkeyAsyncHandleRead(valkeyAsyncContext *ac);
-LIBVALKEY_API void valkeyAsyncHandleWrite(valkeyAsyncContext *ac);
-LIBVALKEY_API void valkeyAsyncHandleTimeout(valkeyAsyncContext *ac);
-LIBVALKEY_API void valkeyAsyncRead(valkeyAsyncContext *ac);
-LIBVALKEY_API void valkeyAsyncWrite(valkeyAsyncContext *ac);
+LIBKV_API void kvAsyncHandleRead(kvAsyncContext *ac);
+LIBKV_API void kvAsyncHandleWrite(kvAsyncContext *ac);
+LIBKV_API void kvAsyncHandleTimeout(kvAsyncContext *ac);
+LIBKV_API void kvAsyncRead(kvAsyncContext *ac);
+LIBKV_API void kvAsyncWrite(kvAsyncContext *ac);
 
 /* Command functions for an async context. Write the command to the
  * output buffer and register the provided callback. */
-LIBVALKEY_API int valkeyvAsyncCommand(valkeyAsyncContext *ac, valkeyCallbackFn *fn, void *privdata, const char *format, va_list ap);
-LIBVALKEY_API int valkeyAsyncCommand(valkeyAsyncContext *ac, valkeyCallbackFn *fn, void *privdata, const char *format, ...);
-LIBVALKEY_API int valkeyAsyncCommandArgv(valkeyAsyncContext *ac, valkeyCallbackFn *fn, void *privdata, int argc, const char **argv, const size_t *argvlen);
-LIBVALKEY_API int valkeyAsyncFormattedCommand(valkeyAsyncContext *ac, valkeyCallbackFn *fn, void *privdata, const char *cmd, size_t len);
+LIBKV_API int kvvAsyncCommand(kvAsyncContext *ac, kvCallbackFn *fn, void *privdata, const char *format, va_list ap);
+LIBKV_API int kvAsyncCommand(kvAsyncContext *ac, kvCallbackFn *fn, void *privdata, const char *format, ...);
+LIBKV_API int kvAsyncCommandArgv(kvAsyncContext *ac, kvCallbackFn *fn, void *privdata, int argc, const char **argv, const size_t *argvlen);
+LIBKV_API int kvAsyncFormattedCommand(kvAsyncContext *ac, kvCallbackFn *fn, void *privdata, const char *cmd, size_t len);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* VALKEY_ASYNC_H */
+#endif /* KV_ASYNC_H */

@@ -6,10 +6,10 @@ test "Cluster is up" {
     wait_for_cluster_state ok
 }
 
-set cluster [valkey_cluster 127.0.0.1:[srv 0 port]]
+set cluster [kv_cluster 127.0.0.1:[srv 0 port]]
 
 proc get_addr_replica_serving_slot slot {
-    set cluster [valkey_cluster 127.0.0.1:[srv 0 port]]
+    set cluster [kv_cluster 127.0.0.1:[srv 0 port]]
     array set node [$cluster masternode_for_slot $slot]
 
     set replicanodeinfo [$cluster cluster replicas $node(id)]
@@ -28,7 +28,7 @@ test "Migrate a slot, verify client receives sunsubscribe on primary serving the
     array set nodefrom [$cluster masternode_for_slot $slot]
     array set nodeto [$cluster masternode_notfor_slot $slot]
 
-    set subscribeclient [valkey_deferring_client_by_addr $nodefrom(host) $nodefrom(port)]
+    set subscribeclient [kv_deferring_client_by_addr $nodefrom(host) $nodefrom(port)]
 
     $subscribeclient deferred 1
     $subscribeclient ssubscribe $channelname
@@ -62,7 +62,7 @@ test "Client subscribes to multiple channels, migrate a slot, verify client rece
     array set nodefrom [$cluster masternode_for_slot $slot]
     array set nodeto [$cluster masternode_notfor_slot $slot]
 
-    set subscribeclient [valkey_deferring_client_by_addr $nodefrom(host) $nodefrom(port)]
+    set subscribeclient [kv_deferring_client_by_addr $nodefrom(host) $nodefrom(port)]
 
     $subscribeclient deferred 1
     $subscribeclient ssubscribe $channelname
@@ -111,7 +111,7 @@ test "Migrate a slot, verify client receives sunsubscribe on replica serving the
     set replica_addr [get_addr_replica_serving_slot $slot]
     set replicahost [lindex $replica_addr 0]
     set replicaport [lindex $replica_addr 1]
-    set subscribeclient [valkey_deferring_client_by_addr $replicahost $replicaport]
+    set subscribeclient [kv_deferring_client_by_addr $replicahost $replicaport]
 
     $subscribeclient deferred 1
     $subscribeclient ssubscribe $channelname
@@ -145,8 +145,8 @@ test "Move a replica to another primary, verify client receives sunsubscribe on 
     set replica_addr [get_addr_replica_serving_slot $slot]
     set replica_host [lindex $replica_addr 0]
     set replica_port [lindex $replica_addr 1]
-    set replica_client [valkey_client_by_addr $replica_host $replica_port]
-    set subscribeclient [valkey_deferring_client_by_addr $replica_host $replica_port]
+    set replica_client [kv_client_by_addr $replica_host $replica_port]
+    set subscribeclient [kv_deferring_client_by_addr $replica_host $replica_port]
 
     $subscribeclient deferred 1
     $subscribeclient ssubscribe $channelname
@@ -172,7 +172,7 @@ test "Delete a slot, verify sunsubscribe message" {
 
     array set primary_client [$cluster masternode_for_slot $slot]
 
-    set subscribeclient [valkey_deferring_client_by_addr $primary_client(host) $primary_client(port)]
+    set subscribeclient [kv_deferring_client_by_addr $primary_client(host) $primary_client(port)]
     $subscribeclient deferred 1
     $subscribeclient ssubscribe $channelname
     $subscribeclient read
@@ -193,7 +193,7 @@ test "Reset cluster, verify sunsubscribe message" {
 
     array set primary_client [$cluster masternode_for_slot $slot]
 
-    set subscribeclient [valkey_deferring_client_by_addr $primary_client(host) $primary_client(port)]
+    set subscribeclient [kv_deferring_client_by_addr $primary_client(host) $primary_client(port)]
     $subscribeclient deferred 1
     $subscribeclient ssubscribe $channelname
     $subscribeclient read

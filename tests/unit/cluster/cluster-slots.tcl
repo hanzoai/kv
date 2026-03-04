@@ -32,13 +32,13 @@ test "client do not break when cluster slot" {
 }
 
 test "client can handle keys with hash tag" {
-    set cluster [valkey_cluster 127.0.0.1:[srv 0 port]]
+    set cluster [kv_cluster 127.0.0.1:[srv 0 port]]
     $cluster set foo{tag} bar
     $cluster close
 }
 
 test "slot migration is valid from primary to another primary" {
-    set cluster [valkey_cluster 127.0.0.1:[srv 0 port]]
+    set cluster [kv_cluster 127.0.0.1:[srv 0 port]]
     set key order1
     set slot [$cluster cluster keyslot $key]
     array set nodefrom [$cluster masternode_for_slot $slot]
@@ -49,7 +49,7 @@ test "slot migration is valid from primary to another primary" {
 }
 
 test "slot migration is invalid from primary to replica" {
-    set cluster [valkey_cluster 127.0.0.1:[srv 0 port]]
+    set cluster [kv_cluster 127.0.0.1:[srv 0 port]]
     set key order1
     set slot [$cluster cluster keyslot $key]
     array set nodefrom [$cluster masternode_for_slot $slot]
@@ -105,7 +105,7 @@ if {$::tls} {
         set slots_tls [R 0 cluster slots]
         set host [srv 0 host]
         set plaintext_port [srv 0 pport]
-        set client_plain [valkey $host $plaintext_port 0 0]
+        set client_plain [kv $host $plaintext_port 0 0]
         set slots_plain [$client_plain cluster slots]
         $client_plain close
         # Compare the ports in the first row

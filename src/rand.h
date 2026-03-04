@@ -27,8 +27,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef VALKEY_RANDOM_H
-#define VALKEY_RANDOM_H
+#ifndef KV_RANDOM_H
+#define KV_RANDOM_H
 
 int32_t serverLrand48(void);
 void serverSrand48(int32_t seedval);

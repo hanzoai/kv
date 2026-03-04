@@ -1,9 +1,9 @@
-This directory contains all Valkey dependencies, except for the libc that
+This directory contains all KV dependencies, except for the libc that
 should be provided by the operating system.
 
 * **Jemalloc** is our memory allocator, used as replacement for libc malloc on Linux by default. It has good performances and excellent fragmentation behavior. This component is upgraded from time to time.
-* **libvalkey** is the official C client library for Valkey. It is used by valkey-cli, valkey-benchmark and Valkey Sentinel. It is managed in a separate project and updated as needed.
-* **linenoise** is a readline replacement. It is developed by the same authors of Valkey but is managed as a separated project and updated as needed.
+* **libkv** is the official C client library for KV. It is used by kv-cli, kv-benchmark and KV Sentinel. It is managed in a separate project and updated as needed.
+* **linenoise** is a readline replacement. It is developed by the same authors of KV but is managed as a separated project and updated as needed.
 * **lua** is Lua 5.1 with minor changes for security and additional libraries.
 * **hdr_histogram** Used for per-command latency tracking histograms.
 * **fast_float** is a replacement for strtod to convert strings to floats efficiently. 
@@ -14,10 +14,10 @@ How to upgrade the above dependencies
 Jemalloc
 ---
 
-Jemalloc is modified with changes that allow us to implement the Valkey
-active defragmentation logic. However this feature of Valkey is not mandatory
-and Valkey is able to understand if the Jemalloc version it is compiled
-against supports such Valkey-specific modifications. So in theory, if you
+Jemalloc is modified with changes that allow us to implement the KV
+active defragmentation logic. However this feature of KV is not mandatory
+and KV is able to understand if the Jemalloc version it is compiled
+against supports such KV-specific modifications. So in theory, if you
 are not interested in the active defragmentation, you can replace Jemalloc
 just following these steps:
 
@@ -29,7 +29,7 @@ just following these steps:
    Jemalloc configuration script is broken and will not work nested in another
    git repository.
 
-However note that we change Jemalloc settings via the `configure` script of Jemalloc using the `--with-lg-quantum` option, setting it to the value of 3 instead of 4. This provides us with more size classes that better suit the Valkey data structures, in order to gain memory efficiency.
+However note that we change Jemalloc settings via the `configure` script of Jemalloc using the `--with-lg-quantum` option, setting it to the value of 3 instead of 4. This provides us with more size classes that better suit the KV data structures, in order to gain memory efficiency.
 
 If you want to upgrade Jemalloc while also providing support for
 active defragmentation, in addition to the above steps you need to perform
@@ -39,7 +39,7 @@ the following additional steps:
    to add `#define JEMALLOC_FRAG_HINT`.
 6. Implement the function `je_get_defrag_hint()` inside `src/jemalloc.c`. You
    can see how it is implemented in the current Jemalloc source tree shipped
-   with Valkey, and rewrite it according to the new Jemalloc internals, if they
+   with KV, and rewrite it according to the new Jemalloc internals, if they
    changed, otherwise you could just copy the old implementation if you are
    upgrading just to a similar version of Jemalloc.
 
@@ -59,13 +59,13 @@ cd deps/jemalloc
 4. Update jemalloc's version in `deps/Makefile`: search for "`--with-version=<old-version-tag>-0-g0`" and update it accordingly.
 5. Commit the changes (VERSION,configure,Makefile).
 
-Libvalkey
+Libkv
 ---
 
-Libvalkey is used by Sentinel, `valkey-cli` and `valkey-benchmark`.
-The library is built without its own version of the sds and dict type and uses the Valkey provided variant instead.
+Libkv is used by Sentinel, `kv-cli` and `kv-benchmark`.
+The library is built without its own version of the sds and dict type and uses the KV provided variant instead.
 
-1. `git subtree pull --prefix deps/libvalkey https://github.com/valkey-io/libvalkey.git <version-tag> --squash`<br>
+1. `git subtree pull --prefix deps/libkv https://github.com/hanzoai/kv.git <version-tag> --squash`<br>
 This should hopefully merge the local changes into the new version.
 2. Commit the changes.
 
@@ -73,7 +73,7 @@ Linenoise
 ---
 
 Linenoise is rarely upgraded as needed. The upgrade process is trivial since
-Valkey uses a non modified version of linenoise, so to upgrade just do the
+KV uses a non modified version of linenoise, so to upgrade just do the
 following:
 
 1. Remove the linenoise directory.
@@ -83,11 +83,11 @@ Lua
 ---
 
 We use Lua 5.1 and no upgrade is planned currently, since we don't want to break
-Lua scripts for new Lua features: in the context of Valkey Lua scripts the
+Lua scripts for new Lua features: in the context of KV Lua scripts the
 capabilities of 5.1 are usually more than enough, the release is rock solid,
 and we definitely don't want to break old scripts.
 
-So upgrading of Lua is up to the Valkey project maintainers and should be a
+So upgrading of Lua is up to the KV project maintainers and should be a
 manual procedure performed by taking a diff between the different versions.
 
 Currently we have at least the following differences between official Lua 5.1

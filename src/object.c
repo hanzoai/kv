@@ -1566,14 +1566,14 @@ sds getMemoryDoctorReport(void) {
                    "The new Sam and I will be back to our programming as soon as I "
                    "finished rebooting.\n");
     } else {
-        s = sdsnew("Sam, I detected a few issues in this Valkey instance memory implants:\n\n");
+        s = sdsnew("Sam, I detected a few issues in this KV instance memory implants:\n\n");
         if (big_peak) {
             s = sdscat(s,
                        " * Peak memory: In the past this instance used more than 150% the memory that is currently "
                        "using. The allocator is normally not able to release memory after a peak, so you can expect to "
                        "see a big fragmentation ratio, however this is actually harmless and is only due to the memory "
-                       "peak, and if the Valkey instance Resident Set Size (RSS) is currently bigger than expected, "
-                       "the memory will be used as soon as you fill the Valkey instance with more data. If the memory "
+                       "peak, and if the KV instance Resident Set Size (RSS) is currently bigger than expected, "
+                       "the memory will be used as soon as you fill the KV instance with more data. If the memory "
                        "peak was only occasional and you want to try to reclaim memory, please try the MEMORY PURGE "
                        "command, otherwise the only other option is to shutdown and restart the instance.\n\n");
         }
@@ -1581,8 +1581,8 @@ sds getMemoryDoctorReport(void) {
             s = sdscatprintf(
                 s,
                 " * High total RSS: This instance has a memory fragmentation and RSS overhead greater than 1.4 (this "
-                "means that the Resident Set Size of the Valkey process is much larger than the sum of the logical "
-                "allocations Valkey performed). This problem is usually due either to a large peak memory (check if "
+                "means that the Resident Set Size of the KV process is much larger than the sum of the logical "
+                "allocations KV performed). This problem is usually due either to a large peak memory (check if "
                 "there is a peak memory entry above in the report) or may result from a workload that causes the "
                 "allocator to fragment memory a lot. If the problem is a large peak memory, then there is no issue. "
                 "Otherwise, make sure you are using the Jemalloc allocator and not the default libc malloc. Note: The "
@@ -1606,7 +1606,7 @@ sds getMemoryDoctorReport(void) {
         if (high_proc_rss) {
             s = sdscatprintf(
                 s, " * High process RSS overhead: This instance has non-allocator RSS memory overhead is greater than "
-                   "1.1 (this means that the Resident Set Size of the Valkey process is much larger than the RSS the "
+                   "1.1 (this means that the Resident Set Size of the KV process is much larger than the RSS the "
                    "allocator holds). This problem may be due to Lua scripts or Modules.\n\n");
         }
         if (big_replica_buf) {
@@ -1621,7 +1621,7 @@ sds getMemoryDoctorReport(void) {
         if (big_client_buf) {
             s = sdscat(s, " * Big client buffers: The clients output buffers in this instance are greater than 200K "
                           "per client (on average). This may result from different causes, like Pub/Sub clients "
-                          "subscribed to channels bot not receiving data fast enough, so that data piles on the Valkey "
+                          "subscribed to channels bot not receiving data fast enough, so that data piles on the KV "
                           "instance output buffer, or clients sending commands with large replies or very large "
                           "sequences of commands in the same pipeline. Please use the CLIENT LIST command in order to "
                           "investigate the issue if it causes problems in your instance, or to understand better why "

@@ -2,7 +2,7 @@
 start_server {tags {"tracking network logreqres:skip"}} {
     # Create a deferred client we'll use to redirect invalidation
     # messages to.
-    set rd_redirection [valkey_deferring_client]
+    set rd_redirection [kv_deferring_client]
     $rd_redirection client id
     set redir_id [$rd_redirection read]
     $rd_redirection subscribe __redis__:invalidate
@@ -10,11 +10,11 @@ start_server {tags {"tracking network logreqres:skip"}} {
 
     # Create another client that's not used as a redirection client
     # We should always keep this client's buffer clean
-    set rd [valkey_deferring_client]
+    set rd [kv_deferring_client]
 
     # Client to be used for SET and GET commands
     # We don't read this client's buffer
-    set rd_sg [valkey_client] 
+    set rd_sg [kv_client] 
 
     proc clean_all {} {
         uplevel {
@@ -26,8 +26,8 @@ start_server {tags {"tracking network logreqres:skip"}} {
             $rd close
             $rd_redirection QUIT
             $rd_redirection close
-            set rd [valkey_deferring_client]
-            set rd_redirection [valkey_deferring_client]
+            set rd [kv_deferring_client]
+            set rd_redirection [kv_deferring_client]
             $rd_redirection client id
             set redir_id [$rd_redirection read]
             $rd_redirection subscribe __redis__:invalidate
@@ -278,7 +278,7 @@ start_server {tags {"tracking network logreqres:skip"}} {
         $rd_sg SET key1 2
 
         # Reinstantiating after QUIT
-        set rd_redirection [valkey_deferring_client]
+        set rd_redirection [kv_deferring_client]
         $rd_redirection CLIENT ID
         set redir_id [$rd_redirection read]
         $rd_redirection SUBSCRIBE __redis__:invalidate
@@ -415,7 +415,7 @@ start_server {tags {"tracking network logreqres:skip"}} {
     }
 
     test {BCAST with prefix collisions throw errors} {
-        set r [valkey_client] 
+        set r [kv_client] 
         catch {$r CLIENT TRACKING ON BCAST PREFIX FOOBAR PREFIX FOO} output
         assert_match {ERR Prefix 'FOOBAR'*'FOO'*} $output
 
@@ -833,7 +833,7 @@ start_server {tags {"tracking network logreqres:skip"}} {
     test {RESP3 based basic redirect invalidation with client reply off} {
         clean_all
 
-        set rd_redir [valkey_deferring_client]
+        set rd_redir [kv_deferring_client]
         $rd_redir hello 3
         $rd_redir read
 
@@ -909,7 +909,7 @@ start_server {tags {"tracking network"}} {
     }
 
     test {Coverage: Basic CLIENT CACHING} {
-        set rd_redirection [valkey_deferring_client]
+        set rd_redirection [kv_deferring_client]
         $rd_redirection client id
         set redir_id [$rd_redirection read]
         assert_equal {OK} [r CLIENT TRACKING on OPTIN REDIRECT $redir_id]

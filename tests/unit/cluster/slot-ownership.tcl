@@ -86,7 +86,7 @@ start_cluster 3 1 {tags {external:skip cluster} overrides {shutdown-timeout 100}
 
         # Resume the replica and make sure primary exits normally instead of crashing.
         resume_process [srv -3 pid]
-        wait_for_log_messages 0 {"*Valkey is now ready to exit, bye bye*"} 0 1000 10
+        wait_for_log_messages 0 {"*KV is now ready to exit, bye bye*"} 0 1000 10
 
         # Make sure that the replica will become the new primary and does not own the key.
         wait_for_condition 1000 50 {

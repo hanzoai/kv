@@ -748,7 +748,7 @@ start_server {tags {"geo"}} {
             if {$res != $res2} {
                 set diff [compare_lists $res $res2]
                 puts "*** Possible problem in GEO radius query ***"
-                puts "Valkey: $res"
+                puts "KV: $res"
                 puts "Tcl  : $res2"
                 puts "Diff : $diff"
                 puts [join $debuginfo "\n"]
@@ -756,7 +756,7 @@ start_server {tags {"geo"}} {
                     if {[lsearch -exact $res2 $place] != -1} {
                         set where "(only in Tcl)"
                     } else {
-                        set where "(only in Valkey)"
+                        set where "(only in KV)"
                     }
                     lassign [lindex [r geopos mypoints $place] 0] lon lat
                     set mydist [geo_distance $lon $lat $search_lon $search_lat]

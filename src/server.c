@@ -27,7 +27,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -103,7 +103,7 @@ double R_Zero, R_PosInf, R_NegInf, R_Nan;
 /*================================= Globals ================================= */
 
 /* Global vars */
-struct valkeyServer server; /* Server global state */
+struct kvServer server; /* Server global state */
 
 /*============================ Internal prototypes ========================== */
 
@@ -594,7 +594,7 @@ void hashtableObjectPrefetchValue(const void *entry) {
     const robj *obj = entry;
     if (obj->encoding != OBJ_ENCODING_EMBSTR &&
         obj->encoding != OBJ_ENCODING_INT) {
-        valkey_prefetch(objectGetVal(obj));
+        kv_prefetch(objectGetVal(obj));
     }
 }
 
@@ -744,7 +744,7 @@ hashtableType kvstoreChannelHashtableType = {
 };
 
 /* Modules system dictionary type. Keys are module name,
- * values are pointer to ValkeyModule struct. */
+ * values are pointer to KVModule struct. */
 dictType modulesDictType = {
     dictSdsCaseHash,       /* hash function */
     NULL,                  /* key dup */
@@ -855,7 +855,7 @@ void resetChildState(void) {
     server.stat_current_save_keys_total = 0;
     updateDictResizePolicy();
     closeChildInfoPipe();
-    moduleFireServerEvent(VALKEYMODULE_EVENT_FORK_CHILD, VALKEYMODULE_SUBEVENT_FORK_CHILD_DIED, NULL);
+    moduleFireServerEvent(KVMODULE_EVENT_FORK_CHILD, KVMODULE_SUBEVENT_FORK_CHILD_DIED, NULL);
 }
 
 /* Return if child type is mutually exclusive with other fork children */
@@ -1714,8 +1714,8 @@ long long serverCron(struct aeEventLoop *eventLoop, long long id, void *clientDa
     }
 
     /* Fire the cron loop modules event. */
-    ValkeyModuleCronLoopV1 ei = {VALKEYMODULE_CRON_LOOP_VERSION, server.hz};
-    moduleFireServerEvent(VALKEYMODULE_EVENT_CRON_LOOP, 0, &ei);
+    KVModuleCronLoopV1 ei = {KVMODULE_CRON_LOOP_VERSION, server.hz};
+    moduleFireServerEvent(KVMODULE_EVENT_CRON_LOOP, 0, &ei);
 
     server.cronloops++;
 
@@ -1875,7 +1875,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     }
 
     if (moduleCount()) {
-        moduleFireServerEvent(VALKEYMODULE_EVENT_EVENTLOOP, VALKEYMODULE_SUBEVENT_EVENTLOOP_BEFORE_SLEEP, NULL);
+        moduleFireServerEvent(KVMODULE_EVENT_EVENTLOOP, KVMODULE_SUBEVENT_EVENTLOOP_BEFORE_SLEEP, NULL);
     }
 
     /* Send all the replicas an ACK request if at least one client blocked
@@ -2025,7 +2025,7 @@ void afterSleep(struct aeEventLoop *eventLoop, int numevents) {
             atomic_store_explicit(&server.module_gil_acquiring, 1, memory_order_relaxed);
             moduleAcquireGIL();
             atomic_store_explicit(&server.module_gil_acquiring, 0, memory_order_relaxed);
-            moduleFireServerEvent(VALKEYMODULE_EVENT_EVENTLOOP, VALKEYMODULE_SUBEVENT_EVENTLOOP_AFTER_SLEEP, NULL);
+            moduleFireServerEvent(KVMODULE_EVENT_EVENTLOOP, KVMODULE_SUBEVENT_EVENTLOOP_AFTER_SLEEP, NULL);
             latencyEndMonitor(latency);
             latencyAddSampleIfNeeded("module-acquire-GIL", latency);
             latencyTraceIfNeeded(server, module_acquire_gil, latency);
@@ -2388,7 +2388,7 @@ void initServerConfig(void) {
 
     /* Command table -- we initialize it here as it is part of the
      * initial configuration, since command names may be changed via
-     * valkey.conf using the rename-command directive. */
+     * kv.conf using the rename-command directive. */
     server.commands = hashtableCreate(&commandSetType);
     server.orig_commands = hashtableCreate(&originalCommandSetType);
     for (int i = 0; i < RESP_CACHE_INDEX_MAX; i++) {
@@ -2484,7 +2484,7 @@ int setOOMScoreAdj(int process_class) {
      * when another configuration parameter was invalid and causes a rollback after
      * applying a new oom-score) we can return to the oom-score value from before our
      * adjustments. */
-    static int oom_score_adjusted_by_valkey = 0;
+    static int oom_score_adjusted_by_kv = 0;
     static int oom_score_adj_base = 0;
 
     int fd;
@@ -2492,8 +2492,8 @@ int setOOMScoreAdj(int process_class) {
     char buf[64];
 
     if (server.oom_score_adj != OOM_SCORE_ADJ_NO) {
-        if (!oom_score_adjusted_by_valkey) {
-            oom_score_adjusted_by_valkey = 1;
+        if (!oom_score_adjusted_by_kv) {
+            oom_score_adjusted_by_kv = 1;
             /* Backup base value before enabling the server control over oom score */
             fd = open("/proc/self/oom_score_adj", O_RDONLY);
             if (fd < 0 || read(fd, buf, sizeof(buf)) < 0) {
@@ -2509,8 +2509,8 @@ int setOOMScoreAdj(int process_class) {
         if (server.oom_score_adj == OOM_SCORE_RELATIVE) val += oom_score_adj_base;
         if (val > 1000) val = 1000;
         if (val < -1000) val = -1000;
-    } else if (oom_score_adjusted_by_valkey) {
-        oom_score_adjusted_by_valkey = 0;
+    } else if (oom_score_adjusted_by_kv) {
+        oom_score_adjusted_by_kv = 0;
         val = oom_score_adj_base;
     } else {
         return C_OK;
@@ -3372,7 +3372,7 @@ void populateCommandTable(void) {
 
         retval1 = hashtableAdd(server.commands, c);
         /* Populate an additional dictionary that will be unaffected
-         * by rename-command statements in valkey.conf. */
+         * by rename-command statements in kv.conf. */
         retval2 = hashtableAdd(server.orig_commands, c);
         serverAssert(retval1 && retval2);
     }
@@ -3525,7 +3525,7 @@ struct serverCommand *lookupCommandByCString(const char *s) {
 
 /* Lookup the command in the current table, if not found also check in
  * the original table containing the original command names unaffected by
- * valkey.conf rename-command statement.
+ * kv.conf rename-command statement.
  *
  * This is used by functions rewriting the argument vector such as
  * rewriteClientCommandVector() in order to set client->cmd pointer
@@ -3896,7 +3896,7 @@ void call(client *c, int flags) {
     else
         duration = ustime() - call_timer;
 
-    valkey_commands_trace(valkey_commands, command_call, connGetType(c->conn), getClientPeerId(c), getClientSockname(c), real_cmd->declared_name, duration);
+    kv_commands_trace(kv_commands, command_call, connGetType(c->conn), getClientPeerId(c), getClientSockname(c), real_cmd->declared_name, duration);
     c->duration += duration;
     dirty = server.dirty - dirty;
     if (dirty < 0) dirty = 0;
@@ -4811,7 +4811,7 @@ int finishShutdown(void) {
         /* Append only file: flush buffers and fsync() the AOF at exit */
         serverLog(LL_NOTICE, "Calling fsync() on the AOF file.");
         flushAppendOnlyFile(1);
-        if (valkey_fsync(server.aof_fd) == -1) {
+        if (kv_fsync(server.aof_fd) == -1) {
             serverLog(LL_WARNING, "Fail to fsync the AOF file: %s.", strerror(errno));
         }
     }
@@ -4851,7 +4851,7 @@ int finishShutdown(void) {
     if (server.aof_manifest) aofManifestFree(server.aof_manifest);
 
     /* Fire the shutdown modules event. */
-    moduleFireServerEvent(VALKEYMODULE_EVENT_SHUTDOWN, 0, NULL);
+    moduleFireServerEvent(KVMODULE_EVENT_SHUTDOWN, 0, NULL);
 
     /* Remove the pid file if possible and needed. */
     if (server.daemonize || server.pidfile) {
@@ -4871,7 +4871,7 @@ int finishShutdown(void) {
 
     moduleUnloadAllModules();
 
-    serverLog(LL_WARNING, "%s is now ready to exit, bye bye...", server.sentinel_mode ? "Sentinel" : "Valkey");
+    serverLog(LL_WARNING, "%s is now ready to exit, bye bye...", server.sentinel_mode ? "Sentinel" : "KV");
     return C_OK;
 
 error:
@@ -5789,7 +5789,7 @@ const char *getSafeInfoString(const char *s, size_t len, char **tmp) {
     return memmapchars(new, len, unsafe_info_chars, unsafe_info_chars_substs, sizeof(unsafe_info_chars) - 1);
 }
 
-sds genValkeyInfoStringCommandStats(sds info, hashtable *commands) {
+sds genKVInfoStringCommandStats(sds info, hashtable *commands) {
     hashtableIterator iter;
     void *next;
     hashtableInitIterator(&iter, commands, HASHTABLE_ITER_SAFE);
@@ -5806,7 +5806,7 @@ sds genValkeyInfoStringCommandStats(sds info, hashtable *commands) {
             if (tmpsafe != NULL) zfree(tmpsafe);
         }
         if (c->subcommands_ht) {
-            info = genValkeyInfoStringCommandStats(info, c->subcommands_ht);
+            info = genKVInfoStringCommandStats(info, c->subcommands_ht);
         }
     }
     hashtableCleanupIterator(&iter);
@@ -5815,7 +5815,7 @@ sds genValkeyInfoStringCommandStats(sds info, hashtable *commands) {
 }
 
 /* Writes the ACL metrics to the info */
-sds genValkeyInfoStringACLStats(sds info) {
+sds genKVInfoStringACLStats(sds info) {
     info = sdscatprintf(info,
                         "acl_access_denied_auth:%lld\r\n"
                         "acl_access_denied_cmd:%lld\r\n"
@@ -5829,7 +5829,7 @@ sds genValkeyInfoStringACLStats(sds info) {
     return info;
 }
 
-sds genValkeyInfoStringLatencyStats(sds info, hashtable *commands) {
+sds genKVInfoStringLatencyStats(sds info, hashtable *commands) {
     hashtableIterator iter;
     void *next;
     hashtableInitIterator(&iter, commands, HASHTABLE_ITER_SAFE);
@@ -5842,7 +5842,7 @@ sds genValkeyInfoStringLatencyStats(sds info, hashtable *commands) {
             if (tmpsafe != NULL) zfree(tmpsafe);
         }
         if (c->subcommands_ht) {
-            info = genValkeyInfoStringLatencyStats(info, c->subcommands_ht);
+            info = genKVInfoStringLatencyStats(info, c->subcommands_ht);
         }
     }
     hashtableCleanupIterator(&iter);
@@ -5877,7 +5877,7 @@ static void collectScriptingEngineInfo(scriptingEngine *engine, void *context) {
     scriptingEngineInfoCollector *collector = (scriptingEngineInfoCollector *)context;
 
     sds engine_name = scriptingEngineGetName(engine);
-    ValkeyModule *module = scriptingEngineGetModule(engine);
+    KVModule *module = scriptingEngineGetModule(engine);
     uint64_t abi_version = scriptingEngineGetAbiVersion(engine);
 
     /* Get memory information for the engine */
@@ -5897,7 +5897,7 @@ static void collectScriptingEngineInfo(scriptingEngine *engine, void *context) {
     collector->total_overhead += mem_info.engine_memory_overhead;
 }
 
-sds genValkeyInfoStringScriptingEngines(sds info) {
+sds genKVInfoStringScriptingEngines(sds info) {
     scriptingEngineInfoCollector collector = {
         .info = sdsempty(),
         .total_engines = 0,
@@ -5922,7 +5922,7 @@ sds genValkeyInfoStringScriptingEngines(sds info) {
     return info;
 }
 
-/* Create a dictionary with unique section names to be used by genValkeyInfoString.
+/* Create a dictionary with unique section names to be used by genKVInfoString.
  * 'argv' and 'argc' are list of arguments for INFO.
  * 'defaults' is an optional null terminated list of default sections.
  * 'out_all' and 'out_everything' are optional.
@@ -5994,7 +5994,7 @@ void totalNumberOfStatefulKeys(unsigned long *blocking_keys,
 /* Create the string returned by the INFO command. This is decoupled
  * by the INFO command itself as we need to report the same information
  * on memory corruption problems. */
-sds genValkeyInfoString(dict *section_dict, int all_sections, int everything) {
+sds genKVInfoString(dict *section_dict, int all_sections, int everything) {
     sds info = sdsempty();
     time_t uptime = server.unixtime - server.stat_starttime;
     int j;
@@ -6039,8 +6039,8 @@ sds genValkeyInfoString(dict *section_dict, int all_sections, int everything) {
             "# Server\r\n" FMTARGS(
                 "redis_version:%s\r\n", REDIS_VERSION,
                 "server_name:%s\r\n", SERVER_NAME,
-                "valkey_version:%s\r\n", VALKEY_VERSION,
-                "valkey_release_stage:%s\r\n", VALKEY_RELEASE_STAGE,
+                "kv_version:%s\r\n", KV_VERSION,
+                "kv_release_stage:%s\r\n", KV_RELEASE_STAGE,
                 "redis_git_sha1:%s\r\n", serverGitSHA1(),
                 "redis_git_dirty:%i\r\n", strtol(serverGitDirty(), NULL, 10) > 0,
                 "redis_build_id:%s\r\n", serverBuildIdString(),
@@ -6421,7 +6421,7 @@ sds genValkeyInfoString(dict *section_dict, int all_sections, int everything) {
                 "eventloop_duration_cmd_sum:%llu\r\n", server.duration_stats[EL_DURATION_TYPE_CMD].sum,
                 "instantaneous_eventloop_cycles_per_sec:%llu\r\n", getInstantaneousMetric(STATS_METRIC_EL_CYCLE),
                 "instantaneous_eventloop_duration_usec:%llu\r\n", getInstantaneousMetric(STATS_METRIC_EL_DURATION)));
-        info = genValkeyInfoStringACLStats(info);
+        info = genKVInfoStringACLStats(info);
     }
 
     /* Replication */
@@ -6598,7 +6598,7 @@ sds genValkeyInfoString(dict *section_dict, int all_sections, int everything) {
     if (all_sections || (dictFind(section_dict, "commandstats") != NULL)) {
         if (sections++) info = sdscat(info, "\r\n");
         info = sdscatprintf(info, "# Commandstats\r\n");
-        info = genValkeyInfoStringCommandStats(info, server.commands);
+        info = genKVInfoStringCommandStats(info, server.commands);
     }
 
     /* Error statistics */
@@ -6624,7 +6624,7 @@ sds genValkeyInfoString(dict *section_dict, int all_sections, int everything) {
         if (sections++) info = sdscat(info, "\r\n");
         info = sdscatprintf(info, "# Latencystats\r\n");
         if (server.latency_tracking_enabled) {
-            info = genValkeyInfoStringLatencyStats(info, server.commands);
+            info = genKVInfoStringLatencyStats(info, server.commands);
         }
     }
 
@@ -6647,7 +6647,7 @@ sds genValkeyInfoString(dict *section_dict, int all_sections, int everything) {
     /* Scripting engines */
     if (all_sections || (dictFind(section_dict, "scriptingengines") != NULL)) {
         if (sections++) info = sdscat(info, "\r\n");
-        info = genValkeyInfoStringScriptingEngines(info);
+        info = genKVInfoStringScriptingEngines(info);
     }
 
     /* Key space */
@@ -6705,7 +6705,7 @@ void infoCommand(client *c) {
     int all_sections = 0;
     int everything = 0;
     dict *sections_dict = genInfoSectionDict(c->argv + 1, c->argc - 1, NULL, &all_sections, &everything);
-    sds info = genValkeyInfoString(sections_dict, all_sections, everything);
+    sds info = genKVInfoString(sections_dict, all_sections, everything);
     addReplyVerbatim(c, info, sdslen(info), "txt");
     sdsfree(info);
     releaseInfoSectionDict(sections_dict);
@@ -6799,7 +6799,7 @@ void createPidFile(void) {
 void daemonize(void) {
     int fd;
 
-    if (valkey_fork() != 0) exit(0); /* parent exits */
+    if (kv_fork() != 0) exit(0); /* parent exits */
     setsid();                        /* create a new session */
 
     /* Every output goes to /dev/null. If the server is daemonized but
@@ -6814,30 +6814,30 @@ void daemonize(void) {
 }
 
 sds getVersion(void) {
-    sds version = sdscatprintf(sdsempty(), "v=%s sha=%s:%d malloc=%s bits=%d build=%llx", VALKEY_VERSION,
+    sds version = sdscatprintf(sdsempty(), "v=%s sha=%s:%d malloc=%s bits=%d build=%llx", KV_VERSION,
                                serverGitSHA1(), atoi(serverGitDirty()) > 0, ZMALLOC_LIB, sizeof(long) == 4 ? 32 : 64,
                                (unsigned long long)serverBuildId());
     return version;
 }
 
 void usage(void) {
-    fprintf(stdout, "Usage: ./valkey-server [/path/to/valkey.conf] [options] [-]\n");
-    fprintf(stdout, "       ./valkey-server - (read config from stdin)\n");
-    fprintf(stdout, "       ./valkey-server -v or --version\n");
-    fprintf(stdout, "       ./valkey-server -h or --help\n");
-    fprintf(stdout, "       ./valkey-server --test-memory <megabytes>\n");
-    fprintf(stdout, "       ./valkey-server --check-system\n");
+    fprintf(stdout, "Usage: ./kv-server [/path/to/kv.conf] [options] [-]\n");
+    fprintf(stdout, "       ./kv-server - (read config from stdin)\n");
+    fprintf(stdout, "       ./kv-server -v or --version\n");
+    fprintf(stdout, "       ./kv-server -h or --help\n");
+    fprintf(stdout, "       ./kv-server --test-memory <megabytes>\n");
+    fprintf(stdout, "       ./kv-server --check-system\n");
     fprintf(stdout, "\n");
     fprintf(stdout, "Examples:\n");
-    fprintf(stdout, "       ./valkey-server (run the server with default conf)\n");
-    fprintf(stdout, "       echo 'maxmemory 128mb' | ./valkey-server -\n");
-    fprintf(stdout, "       ./valkey-server /etc/valkey/6379.conf\n");
-    fprintf(stdout, "       ./valkey-server --port 7777\n");
-    fprintf(stdout, "       ./valkey-server --port 7777 --replicaof 127.0.0.1 8888\n");
-    fprintf(stdout, "       ./valkey-server /etc/myvalkey.conf --loglevel verbose -\n");
-    fprintf(stdout, "       ./valkey-server /etc/myvalkey.conf --loglevel verbose\n\n");
+    fprintf(stdout, "       ./kv-server (run the server with default conf)\n");
+    fprintf(stdout, "       echo 'maxmemory 128mb' | ./kv-server -\n");
+    fprintf(stdout, "       ./kv-server /etc/kv/6379.conf\n");
+    fprintf(stdout, "       ./kv-server --port 7777\n");
+    fprintf(stdout, "       ./kv-server --port 7777 --replicaof 127.0.0.1 8888\n");
+    fprintf(stdout, "       ./kv-server /etc/mykv.conf --loglevel verbose -\n");
+    fprintf(stdout, "       ./kv-server /etc/mykv.conf --loglevel verbose\n\n");
     fprintf(stdout, "Sentinel mode:\n");
-    fprintf(stdout, "       ./valkey-server /etc/sentinel.conf --sentinel\n");
+    fprintf(stdout, "       ./kv-server /etc/sentinel.conf --sentinel\n");
     exit(0);
 }
 
@@ -6855,14 +6855,14 @@ void serverAsciiArt(void) {
 
     /* Show the ASCII logo if: log file is stdout AND stdout is a
      * tty AND syslog logging is disabled. Also show logo if the user
-     * forced us to do so via valkey.conf. */
+     * forced us to do so via kv.conf. */
     int show_logo =
         ((!server.syslog_enabled && server.logfile[0] == '\0' && isatty(fileno(stdout))) || server.always_show_logo);
 
     if (!show_logo) {
         serverLog(LL_NOTICE, "Running mode=%s, port=%d.", mode, server.port ? server.port : server.tls_port);
     } else {
-        snprintf(buf, 1024 * 16, ascii_logo, VALKEY_VERSION, serverGitSHA1(), strtol(serverGitDirty(), NULL, 10) > 0,
+        snprintf(buf, 1024 * 16, ascii_logo, KV_VERSION, serverGitSHA1(), strtol(serverGitDirty(), NULL, 10) > 0,
                  (sizeof(long) == 8) ? "64" : "32", mode, server.port ? server.port : server.tls_port, (long)getpid());
         serverLogRaw(LL_NOTICE | LL_RAW, buf);
     }
@@ -6998,7 +6998,7 @@ int serverFork(int purpose) {
 
     int childpid;
     long long start = ustime();
-    if ((childpid = valkey_fork()) == 0) {
+    if ((childpid = kv_fork()) == 0) {
         /* Child.
          *
          * The order of setting things up follows some reasoning:
@@ -7056,7 +7056,7 @@ int serverFork(int purpose) {
         }
 
         updateDictResizePolicy();
-        moduleFireServerEvent(VALKEYMODULE_EVENT_FORK_CHILD, VALKEYMODULE_SUBEVENT_FORK_CHILD_BORN, NULL);
+        moduleFireServerEvent(KVMODULE_EVENT_FORK_CHILD, KVMODULE_SUBEVENT_FORK_CHILD_BORN, NULL);
     }
     return childpid;
 }
@@ -7132,11 +7132,11 @@ void dismissMemoryInChild(void) {
 void memtest(size_t megabytes, int passes);
 
 /* Returns 1 if there is --sentinel among the arguments or if
- * executable name contains "valkey-sentinel". */
+ * executable name contains "kv-sentinel". */
 int checkForSentinelMode(int argc, char **argv, char *exec_name) {
-    if (strstr(exec_name, "valkey-sentinel") != NULL) return 1;
+    if (strstr(exec_name, "kv-sentinel") != NULL) return 1;
 
-    /* valkey may install symlinks like redis-sentinel -> valkey-sentinel. */
+    /* kv may install symlinks like redis-sentinel -> kv-sentinel. */
     if (strstr(exec_name, "redis-sentinel") != NULL) return 1;
 
     for (int j = 1; j < argc; j++)
@@ -7212,10 +7212,10 @@ void loadDataFromDisk(void) {
 
 void serverOutOfMemoryHandler(size_t allocation_size) {
     serverLog(LL_WARNING, "Out Of Memory allocating %zu bytes!", allocation_size);
-    serverPanic("Valkey aborting for OUT OF MEMORY. Allocating %zu bytes!", allocation_size);
+    serverPanic("KV aborting for OUT OF MEMORY. Allocating %zu bytes!", allocation_size);
 }
 
-/* Callback for sdstemplate on proc-title-template. See valkey.conf for
+/* Callback for sdstemplate on proc-title-template. See kv.conf for
  * supported variables.
  */
 static sds serverProcTitleGetVariable(const_sds varname, void *arg) {
@@ -7322,10 +7322,10 @@ static int serverSupervisedUpstart(void) {
 static int serverSupervisedSystemd(void) {
 #ifndef HAVE_LIBSYSTEMD
     serverLog(LL_WARNING,
-              "systemd supervision requested or auto-detected, but Valkey is compiled without libsystemd support!");
+              "systemd supervision requested or auto-detected, but KV is compiled without libsystemd support!");
     return 0;
 #else
-    if (serverCommunicateSystemd("STATUS=Valkey is loading...\n") <= 0) return 0;
+    if (serverCommunicateSystemd("STATUS=KV is loading...\n") <= 0) return 0;
     serverLog(LL_NOTICE, "Supervised by systemd. Please make sure you set appropriate values for TimeoutStartSec and "
                          "TimeoutStopSec in your service unit.");
     return 1;
@@ -7421,17 +7421,17 @@ __attribute__((weak)) int main(int argc, char **argv) {
         initSentinel();
     }
 
-    /* Check if we need to start in valkey-check-rdb/aof mode. We just execute
+    /* Check if we need to start in kv-check-rdb/aof mode. We just execute
      * the program main. However the program is part of the server executable
      * so that we can easily execute an RDB check on loading errors. */
-    if (strstr(exec_name, "valkey-check-rdb") != NULL)
+    if (strstr(exec_name, "kv-check-rdb") != NULL)
         redis_check_rdb_main(argc, argv, NULL);
-    else if (strstr(exec_name, "valkey-check-aof") != NULL)
+    else if (strstr(exec_name, "kv-check-aof") != NULL)
         redis_check_aof_main(argc, argv);
 
-    /* valkey may install symlinks like
-     * redis-server -> valkey-server, redis-check-rdb -> valkey-check-rdb,
-     * redis-check-aof -> valkey-check-aof, etc. */
+    /* kv may install symlinks like
+     * redis-server -> kv-server, redis-check-rdb -> kv-check-rdb,
+     * redis-check-aof -> kv-check-aof, etc. */
     if (strstr(exec_name, "redis-check-rdb") != NULL)
         redis_check_rdb_main(argc, argv, NULL);
     else if (strstr(exec_name, "redis-check-aof") != NULL)
@@ -7444,7 +7444,7 @@ __attribute__((weak)) int main(int argc, char **argv) {
         /* Handle special options --help and --version */
         if (strcmp(argv[1], "-v") == 0 || strcmp(argv[1], "--version") == 0) {
             sds version = getVersion();
-            printf("Valkey server %s\n", version);
+            printf("KV server %s\n", version);
             sdsfree(version);
             exit(0);
         }
@@ -7455,7 +7455,7 @@ __attribute__((weak)) int main(int argc, char **argv) {
                 exit(0);
             } else {
                 fprintf(stderr, "Please specify the amount of memory to test in megabytes.\n");
-                fprintf(stderr, "Example: ./valkey-server --test-memory 4096\n\n");
+                fprintf(stderr, "Example: ./kv-server --test-memory 4096\n\n");
                 exit(1);
             }
         }
@@ -7575,7 +7575,7 @@ __attribute__((weak)) int main(int argc, char **argv) {
                       "Failed to test the kernel for a bug that could lead to data corruption during background save. "
                       "Your system could be affected, please report this error.");
         if (!checkIgnoreWarning("ARM64-COW-BUG")) {
-            serverLog(LL_WARNING, "Valkey will now exit to prevent data corruption. "
+            serverLog(LL_WARNING, "KV will now exit to prevent data corruption. "
                                   "Note that it is possible to suppress this warning by setting the following config: "
                                   "ignore-warnings ARM64-COW-BUG");
             exit(1);
@@ -7594,14 +7594,14 @@ __attribute__((weak)) int main(int argc, char **argv) {
         server.pid = getpid();
     }
 
-    serverLog(LL_NOTICE, "oO0OoO0OoO0Oo Valkey is starting oO0OoO0OoO0Oo");
-    serverLog(LL_NOTICE, "Valkey version=%s, bits=%d, commit=%s, modified=%d, pid=%d, just started", VALKEY_VERSION,
+    serverLog(LL_NOTICE, "oO0OoO0OoO0Oo KV is starting oO0OoO0OoO0Oo");
+    serverLog(LL_NOTICE, "KV version=%s, bits=%d, commit=%s, modified=%d, pid=%d, just started", KV_VERSION,
               (sizeof(long) == 8) ? 64 : 32, serverGitSHA1(), strtol(serverGitDirty(), NULL, 10) > 0, (int)getpid());
 
     if (argc == 1) {
         serverLog(LL_WARNING,
                   "Warning: No config file specified, using the default config. In order to specify a config file use "
-                  "%s /path/to/valkey.conf",
+                  "%s /path/to/kv.conf",
                   argv[0]);
     } else {
         serverLog(LL_NOTICE, "Configuration loaded");

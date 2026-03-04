@@ -128,7 +128,7 @@ int checkXenClocksource(sds *error_msg) {
     } else if (strcmp(curr, "xen") == 0) {
         *error_msg = sdsnew(
             "Your system is configured to use the 'xen' clocksource which might lead to degraded performance. "
-            "Check the result of the [slow-clocksource] system check: run 'valkey-server --check-system' to check if "
+            "Check the result of the [slow-clocksource] system check: run 'kv-server --check-system' to check if "
             "the system's clocksource isn't degrading performance.");
         res = -1;
     }
@@ -183,10 +183,10 @@ int checkTHPEnabled(sds *error_msg) {
     if (strstr(buf, "[always]") != NULL) {
         *error_msg = sdsnew(
             "You have Transparent Huge Pages (THP) support enabled in your kernel. "
-            "This will create latency and memory usage issues with Valkey. "
+            "This will create latency and memory usage issues with KV. "
             "To fix this issue run the command 'echo madvise > /sys/kernel/mm/transparent_hugepage/enabled' as root, "
             "and add it to your /etc/rc.local in order to retain the setting after a reboot. "
-            "Valkey must be restarted after THP is disabled (set to 'madvise' or 'never').");
+            "KV must be restarted after THP is disabled (set to 'madvise' or 'never').");
         return -1;
     } else {
         return 1;

@@ -32,7 +32,7 @@ start_server {tags {"obuf-limits external:skip logreqres:skip"}} {
 
     test {Client output buffer hard limit is enforced} {
         r config set client-output-buffer-limit {pubsub 100000 0 0}
-        set rd1 [valkey_deferring_client]
+        set rd1 [kv_deferring_client]
 
         $rd1 subscribe foo
         set reply [$rd1 read]
@@ -63,7 +63,7 @@ start_server {tags {"obuf-limits external:skip logreqres:skip"}} {
         test $test_name {
             r config set client-output-buffer-limit "pubsub 0 100000 $soft_limit_time"
             set soft_limit_time [expr $soft_limit_time*1000]
-            set rd1 [valkey_deferring_client]
+            set rd1 [kv_deferring_client]
 
             $rd1 client setname test_client
             set reply [$rd1 read]
@@ -129,7 +129,7 @@ start_server {tags {"obuf-limits external:skip logreqres:skip"}} {
         }
         set orig_mem [s used_memory]
         # Set client name and get all items
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd client setname mybiglist
         assert {[$rd read] eq "OK"}
         $rd lrange mylist 0 -1
@@ -154,8 +154,8 @@ start_server {tags {"obuf-limits external:skip logreqres:skip"}} {
         r config set client-output-buffer-limit {normal 100000 0 0}
         set value [string repeat "x" 10000]
         r set bigkey $value
-        set rd1 [valkey_deferring_client]
-        set rd2 [valkey_deferring_client]
+        set rd1 [kv_deferring_client]
+        set rd2 [kv_deferring_client]
         $rd2 client setname multicommands
         assert_equal "OK" [$rd2 read]
 

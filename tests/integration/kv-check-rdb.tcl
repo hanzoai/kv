@@ -5,14 +5,14 @@ proc get_function_code {args} {
 tags {"check-rdb external:skip logreqres:skip"} {
     test {Check old valid RDB} {
         catch {
-            exec $::VALKEY_CHECK_RDB_BIN tests/assets/encodings.rdb
+            exec $::KV_CHECK_RDB_BIN tests/assets/encodings.rdb
         } result
         assert_match {*\[offset ???\] \\o/ RDB looks OK! \\o/*} $result
     }
 
     test {Check foreign RDB without unknown data} {
         catch {
-            exec $::VALKEY_CHECK_RDB_BIN tests/assets/encodings-rdb12.rdb
+            exec $::KV_CHECK_RDB_BIN tests/assets/encodings-rdb12.rdb
         } result
         assert_match {*\[offset ?\] Foreign RDB version 12 detected*} $result
         assert_match {*\[offset ???\] \\o/ RDB looks OK, but loading requires config 'rdb-version-check relaxed'*} $result
@@ -20,7 +20,7 @@ tags {"check-rdb external:skip logreqres:skip"} {
 
     test {Check foreign RDB with unknown data} {
         catch {
-            exec $::VALKEY_CHECK_RDB_BIN tests/assets/encodings-rdb75-unknown-types.rdb
+            exec $::KV_CHECK_RDB_BIN tests/assets/encodings-rdb75-unknown-types.rdb
         } result
         assert_match {*\[offset ?\] Foreign RDB version 75 detected*} $result
         assert_match {*--- RDB ERROR DETECTED ---*} $result
@@ -30,7 +30,7 @@ tags {"check-rdb external:skip logreqres:skip"} {
 
     test {Check future RDB without unknown data} {
         catch {
-            exec $::VALKEY_CHECK_RDB_BIN tests/assets/encodings-rdb987.rdb
+            exec $::KV_CHECK_RDB_BIN tests/assets/encodings-rdb987.rdb
         } result
         assert_match {*\[offset ?\] Future RDB version 987 detected*} $result
         assert_match {*\[offset ???\] \\o/ RDB looks OK, but loading requires config 'rdb-version-check relaxed'*} $result
@@ -38,7 +38,7 @@ tags {"check-rdb external:skip logreqres:skip"} {
 
     test {Check future RDB with unknown data} {
         catch {
-            exec $::VALKEY_CHECK_RDB_BIN tests/assets/encodings-rdb987-unknown-types.rdb
+            exec $::KV_CHECK_RDB_BIN tests/assets/encodings-rdb987-unknown-types.rdb
         } result
         assert_match {*\[offset ?\] Future RDB version 987 detected*} $result
         assert_match {*--- RDB ERROR DETECTED ---*} $result
@@ -49,12 +49,12 @@ tags {"check-rdb external:skip logreqres:skip"} {
 
 tags {"check-rdb network external:skip logreqres:skip"} {
     start_server {} {
-        test "test valkey-check-rdb stats with empty RDB" {
+        test "test kv-check-rdb stats with empty RDB" {
             r flushall
             r save
             set dump_rdb [file join [lindex [r config get dir] 1] dump.rdb]
             catch {
-                exec $::VALKEY_CHECK_RDB_BIN $dump_rdb --stats --format info
+                exec $::KV_CHECK_RDB_BIN $dump_rdb --stats --format info
             } result
             assert_match "*db.0.type.string.keys.total:0*" $result
             assert_match "*db.0.type.list.keys.total:0*" $result
@@ -64,7 +64,7 @@ tags {"check-rdb network external:skip logreqres:skip"} {
             assert_match "*db.0.type.stream.keys.total:0*" $result
         }
 
-        test "test valkey-check-rdb stats function" {
+        test "test kv-check-rdb stats function" {
             set function_num 11
             for {set i 0} {$i < $function_num} {incr i} {
                 r function load [get_function_code LUA "test_$i" "test_$i" {return '$i'}]
@@ -73,12 +73,12 @@ tags {"check-rdb network external:skip logreqres:skip"} {
             
             set dump_rdb [file join [lindex [r config get dir] 1] dump.rdb]
             catch {
-                exec $::VALKEY_CHECK_RDB_BIN $dump_rdb
+                exec $::KV_CHECK_RDB_BIN $dump_rdb
             } result
             assert_match "*$function_num functions*" $result
         }
 
-        test "test valkey-check-rdb stats key space" {
+        test "test kv-check-rdb stats key space" {
             r select 0
             for {set i 10} {$i < 20} {incr i} {
                 set key [string repeat "$i" 10]
@@ -130,7 +130,7 @@ tags {"check-rdb network external:skip logreqres:skip"} {
             
             set dump_rdb [file join [lindex [r config get dir] 1] dump.rdb]
             catch {
-                exec $::VALKEY_CHECK_RDB_BIN $dump_rdb --stats --format info
+                exec $::KV_CHECK_RDB_BIN $dump_rdb --stats --format info
             } result
 
             assert_match "*db.0.type.string.keys.total:10*" $result

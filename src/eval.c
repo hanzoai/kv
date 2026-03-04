@@ -27,16 +27,16 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
 /*
- * This file initializes the global LUA object and registers functions to call Valkey API from within the LUA language.
+ * This file initializes the global LUA object and registers functions to call KV API from within the LUA language.
  * It heavily invokes LUA's C API documented at https://www.lua.org/pil/24.html. There are 2 entrypoint functions in
  * this file:
- * 1. evalCommand() - Gets invoked every time a user runs LUA script via eval command on Valkey.
+ * 1. evalCommand() - Gets invoked every time a user runs LUA script via eval command on KV.
  * 2. scriptingInit() - initServer() function from server.c invokes this to initialize LUA at startup.
  *                      It is also invoked between 2 eval invocations to reset Lua.
  */
@@ -240,7 +240,7 @@ int evalExtractShebangFlags(sds body,
         if (out_engine) {
             size_t engine_name_len = sdslen(parts[0]) - 2;
             *out_engine = zcalloc(engine_name_len + 1);
-            valkey_strlcpy(*out_engine, parts[0] + 2, engine_name_len + 1);
+            kv_strlcpy(*out_engine, parts[0] + 2, engine_name_len + 1);
         }
 
         script_flags &= ~SCRIPT_FLAG_EVAL_COMPAT_MODE;

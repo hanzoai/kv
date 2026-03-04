@@ -1,4 +1,4 @@
-source tests/support/valkey.tcl
+source tests/support/kv.tcl
 
 set ::tlsdir "tests/tls"
 
@@ -6,7 +6,7 @@ set ::tlsdir "tests/tls"
 # used for every SET command. The value is always random.
 proc gen_write_load {host port seconds tls db {key ""}} {
     set start_time [clock seconds]
-    set r [valkey $host $port 1 $tls]
+    set r [kv $host $port 1 $tls]
     $r client setname LOAD_HANDLER
     if {$db != 0} {
         $r select $db

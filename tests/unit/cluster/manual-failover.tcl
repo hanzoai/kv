@@ -25,7 +25,7 @@ set current_epoch [CI 1 cluster_current_epoch]
 
 set numkeys 50000
 set numops 10000
-set cluster [valkey_cluster 127.0.0.1:[srv 0 port]]
+set cluster [kv_cluster 127.0.0.1:[srv 0 port]]
 catch {unset content}
 array set content {}
 

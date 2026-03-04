@@ -75,7 +75,7 @@ start_cluster 2 2 {tags {external:skip cluster ipv6} overrides {cluster-replica-
     set clients {}
     for {set j 0} {$j < [llength $::servers]} {incr j} {
         set level [expr -1 * $j]
-        lappend clients [valkey ::1 [srv $level port] 0 $::tls]
+        lappend clients [kv ::1 [srv $level port] 0 $::tls]
     }
 
     test "Set cluster announced IPv6 to invalid IP" {

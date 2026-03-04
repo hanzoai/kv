@@ -30,7 +30,7 @@
 #ifndef __SCRIPT_H_
 #define __SCRIPT_H_
 
-#include "valkeymodule.h"
+#include "kvmodule.h"
 
 /*
  * Script.c unit provides an API for functions and eval
@@ -94,7 +94,7 @@ struct scriptRunCtx {
 
 /* Defines a script flags */
 typedef struct scriptFlag {
-    ValkeyModuleScriptingEngineScriptFlag flag;
+    KVModuleScriptingEngineScriptFlag flag;
     const char *str;
 } scriptFlag;
 

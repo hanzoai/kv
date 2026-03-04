@@ -29,71 +29,71 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef VALKEY_READ_H
-#define VALKEY_READ_H
+#ifndef KV_READ_H
+#define KV_READ_H
 #include "visibility.h"
 
 #include <stdio.h> /* for size_t */
 
-#define VALKEY_ERR -1
-#define VALKEY_OK 0
+#define KV_ERR -1
+#define KV_OK 0
 
 /* When an error occurs, the err flag in a context is set to hold the type of
- * error that occurred. VALKEY_ERR_IO means there was an I/O error and you
+ * error that occurred. KV_ERR_IO means there was an I/O error and you
  * should use the "errno" variable to find out what is wrong.
  * For other values, the "errstr" field will hold a description. */
-#define VALKEY_ERR_IO 1       /* Error in read or write */
-#define VALKEY_ERR_EOF 3      /* End of file */
-#define VALKEY_ERR_PROTOCOL 4 /* Protocol error */
-#define VALKEY_ERR_OOM 5      /* Out of memory */
-#define VALKEY_ERR_TIMEOUT 6  /* Timed out */
-#define VALKEY_ERR_OTHER 2    /* Everything else... */
+#define KV_ERR_IO 1       /* Error in read or write */
+#define KV_ERR_EOF 3      /* End of file */
+#define KV_ERR_PROTOCOL 4 /* Protocol error */
+#define KV_ERR_OOM 5      /* Out of memory */
+#define KV_ERR_TIMEOUT 6  /* Timed out */
+#define KV_ERR_OTHER 2    /* Everything else... */
 
-#define VALKEY_REPLY_STRING 1
-#define VALKEY_REPLY_ARRAY 2
-#define VALKEY_REPLY_INTEGER 3
-#define VALKEY_REPLY_NIL 4
-#define VALKEY_REPLY_STATUS 5
-#define VALKEY_REPLY_ERROR 6
-#define VALKEY_REPLY_DOUBLE 7
-#define VALKEY_REPLY_BOOL 8
-#define VALKEY_REPLY_MAP 9
-#define VALKEY_REPLY_SET 10
-#define VALKEY_REPLY_ATTR 11
-#define VALKEY_REPLY_PUSH 12
-#define VALKEY_REPLY_BIGNUM 13
-#define VALKEY_REPLY_VERB 14
+#define KV_REPLY_STRING 1
+#define KV_REPLY_ARRAY 2
+#define KV_REPLY_INTEGER 3
+#define KV_REPLY_NIL 4
+#define KV_REPLY_STATUS 5
+#define KV_REPLY_ERROR 6
+#define KV_REPLY_DOUBLE 7
+#define KV_REPLY_BOOL 8
+#define KV_REPLY_MAP 9
+#define KV_REPLY_SET 10
+#define KV_REPLY_ATTR 11
+#define KV_REPLY_PUSH 12
+#define KV_REPLY_BIGNUM 13
+#define KV_REPLY_VERB 14
 
 /* Default max unused reader buffer. */
-#define VALKEY_READER_MAX_BUF (1024 * 16)
+#define KV_READER_MAX_BUF (1024 * 16)
 
 /* Default multi-bulk element limit */
-#define VALKEY_READER_MAX_ARRAY_ELEMENTS ((1LL << 32) - 1)
+#define KV_READER_MAX_ARRAY_ELEMENTS ((1LL << 32) - 1)
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef struct valkeyReadTask {
+typedef struct kvReadTask {
     int type;
     long long elements;            /* number of elements in multibulk container */
     int idx;                       /* index in parent (array) object */
     void *obj;                     /* holds user-generated value for a read task */
-    struct valkeyReadTask *parent; /* parent task */
+    struct kvReadTask *parent; /* parent task */
     void *privdata;                /* user-settable arbitrary field */
-} valkeyReadTask;
+} kvReadTask;
 
-typedef struct valkeyReplyObjectFunctions {
-    void *(*createString)(const valkeyReadTask *, char *, size_t);
-    void *(*createArray)(const valkeyReadTask *, size_t);
-    void *(*createInteger)(const valkeyReadTask *, long long);
-    void *(*createDouble)(const valkeyReadTask *, double, char *, size_t);
-    void *(*createNil)(const valkeyReadTask *);
-    void *(*createBool)(const valkeyReadTask *, int);
+typedef struct kvReplyObjectFunctions {
+    void *(*createString)(const kvReadTask *, char *, size_t);
+    void *(*createArray)(const kvReadTask *, size_t);
+    void *(*createInteger)(const kvReadTask *, long long);
+    void *(*createDouble)(const kvReadTask *, double, char *, size_t);
+    void *(*createNil)(const kvReadTask *);
+    void *(*createBool)(const kvReadTask *, int);
     void (*freeObject)(void *);
-} valkeyReplyObjectFunctions;
+} kvReplyObjectFunctions;
 
-typedef struct valkeyReader {
+typedef struct kvReader {
     int err;          /* Error flags, 0 when there is no error */
     char errstr[128]; /* String representation of error when applicable */
 
@@ -103,28 +103,28 @@ typedef struct valkeyReader {
     size_t maxbuf;         /* Max length of unused buffer */
     long long maxelements; /* Max multi-bulk elements */
 
-    valkeyReadTask **task;
+    kvReadTask **task;
     int tasks;
 
     int ridx;    /* Index of current read task */
     void *reply; /* Temporary reply pointer */
 
-    valkeyReplyObjectFunctions *fn;
+    kvReplyObjectFunctions *fn;
     void *privdata;
-} valkeyReader;
+} kvReader;
 
 /* Public API for the protocol parser. */
-LIBVALKEY_API valkeyReader *valkeyReaderCreateWithFunctions(valkeyReplyObjectFunctions *fn);
-LIBVALKEY_API void valkeyReaderFree(valkeyReader *r);
-LIBVALKEY_API int valkeyReaderFeed(valkeyReader *r, const char *buf, size_t len);
-LIBVALKEY_API int valkeyReaderGetReply(valkeyReader *r, void **reply);
+LIBKV_API kvReader *kvReaderCreateWithFunctions(kvReplyObjectFunctions *fn);
+LIBKV_API void kvReaderFree(kvReader *r);
+LIBKV_API int kvReaderFeed(kvReader *r, const char *buf, size_t len);
+LIBKV_API int kvReaderGetReply(kvReader *r, void **reply);
 
-#define valkeyReaderSetPrivdata(_r, _p) (int)(((valkeyReader *)(_r))->privdata = (_p))
-#define valkeyReaderGetObject(_r) (((valkeyReader *)(_r))->reply)
-#define valkeyReaderGetError(_r) (((valkeyReader *)(_r))->errstr)
+#define kvReaderSetPrivdata(_r, _p) (int)(((kvReader *)(_r))->privdata = (_p))
+#define kvReaderGetObject(_r) (((kvReader *)(_r))->reply)
+#define kvReaderGetError(_r) (((kvReader *)(_r))->errstr)
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* VALKEY_READ_H */
+#endif /* KV_READ_H */

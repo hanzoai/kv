@@ -442,7 +442,7 @@ int performEvictions(void) {
         int bestdbid;
         int bestslot;
         serverDb *db;
-        robj *valkey;
+        robj *kv;
 
         if (server.maxmemory_policy & (MAXMEMORY_FLAG_LRU | MAXMEMORY_FLAG_LFU) ||
             server.maxmemory_policy == MAXMEMORY_VOLATILE_TTL) {
@@ -504,8 +504,8 @@ int performEvictions(void) {
                     /* If the key exists, is our pick. Otherwise it is
                      * a ghost and we need to try the next element. */
                     if (found) {
-                        valkey = entry;
-                        bestkey = objectGetKey(valkey);
+                        kv = entry;
+                        bestkey = objectGetKey(kv);
                         bestslot = pool[k].slot;
                         break;
                     } else {

@@ -24,7 +24,7 @@
  */
 double fast_float_strtod(const char *str, char **endptr);
 
-static inline double valkey_strtod(const char *str, char **endptr) {
+static inline double kv_strtod(const char *str, char **endptr) {
     errno = 0;
     return fast_float_strtod(str, endptr);
 }
@@ -33,7 +33,7 @@ static inline double valkey_strtod(const char *str, char **endptr) {
 
 #include <stdlib.h>
 
-static inline double valkey_strtod(const char *str, char **endptr) {
+static inline double kv_strtod(const char *str, char **endptr) {
     return strtod(str, endptr);
 }
 

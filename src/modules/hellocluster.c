@@ -30,7 +30,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "../valkeymodule.h"
+#include "../kvmodule.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -40,75 +40,75 @@
 #define MSGTYPE_PONG 2
 
 /* HELLOCLUSTER.PINGALL */
-int PingallCommand_ValkeyCommand(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
-    VALKEYMODULE_NOT_USED(argv);
-    VALKEYMODULE_NOT_USED(argc);
+int PingallCommand_KVCommand(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+    KVMODULE_NOT_USED(argv);
+    KVMODULE_NOT_USED(argc);
 
-    ValkeyModule_SendClusterMessage(ctx, NULL, MSGTYPE_PING, "Hey", 3);
-    return ValkeyModule_ReplyWithSimpleString(ctx, "OK");
+    KVModule_SendClusterMessage(ctx, NULL, MSGTYPE_PING, "Hey", 3);
+    return KVModule_ReplyWithSimpleString(ctx, "OK");
 }
 
 /* HELLOCLUSTER.LIST */
-int ListCommand_ValkeyCommand(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
-    VALKEYMODULE_NOT_USED(argv);
-    VALKEYMODULE_NOT_USED(argc);
+int ListCommand_KVCommand(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+    KVMODULE_NOT_USED(argv);
+    KVMODULE_NOT_USED(argc);
 
     size_t numnodes;
-    char **ids = ValkeyModule_GetClusterNodesList(ctx, &numnodes);
+    char **ids = KVModule_GetClusterNodesList(ctx, &numnodes);
     if (ids == NULL) {
-        return ValkeyModule_ReplyWithError(ctx, "Cluster not enabled");
+        return KVModule_ReplyWithError(ctx, "Cluster not enabled");
     }
 
-    ValkeyModule_ReplyWithArray(ctx, numnodes);
+    KVModule_ReplyWithArray(ctx, numnodes);
     for (size_t j = 0; j < numnodes; j++) {
         int port;
-        ValkeyModule_GetClusterNodeInfo(ctx, ids[j], NULL, NULL, &port, NULL);
-        ValkeyModule_ReplyWithArray(ctx, 2);
-        ValkeyModule_ReplyWithStringBuffer(ctx, ids[j], VALKEYMODULE_NODE_ID_LEN);
-        ValkeyModule_ReplyWithLongLong(ctx, port);
+        KVModule_GetClusterNodeInfo(ctx, ids[j], NULL, NULL, &port, NULL);
+        KVModule_ReplyWithArray(ctx, 2);
+        KVModule_ReplyWithStringBuffer(ctx, ids[j], KVMODULE_NODE_ID_LEN);
+        KVModule_ReplyWithLongLong(ctx, port);
     }
-    ValkeyModule_FreeClusterNodesList(ids);
-    return VALKEYMODULE_OK;
+    KVModule_FreeClusterNodesList(ids);
+    return KVMODULE_OK;
 }
 
 /* Callback for message MSGTYPE_PING */
-void PingReceiver(ValkeyModuleCtx *ctx,
+void PingReceiver(KVModuleCtx *ctx,
                   const char *sender_id,
                   uint8_t type,
                   const unsigned char *payload,
                   uint32_t len) {
-    ValkeyModule_Log(ctx, "notice", "PING (type %d) RECEIVED from %.*s: '%.*s'", type, VALKEYMODULE_NODE_ID_LEN,
+    KVModule_Log(ctx, "notice", "PING (type %d) RECEIVED from %.*s: '%.*s'", type, KVMODULE_NODE_ID_LEN,
                      sender_id, (int)len, payload);
-    ValkeyModule_SendClusterMessage(ctx, NULL, MSGTYPE_PONG, "Ohi!", 4);
-    ValkeyModuleCallReply *reply = ValkeyModule_Call(ctx, "INCR", "c", "pings_received");
-    ValkeyModule_FreeCallReply(reply);
+    KVModule_SendClusterMessage(ctx, NULL, MSGTYPE_PONG, "Ohi!", 4);
+    KVModuleCallReply *reply = KVModule_Call(ctx, "INCR", "c", "pings_received");
+    KVModule_FreeCallReply(reply);
 }
 
 /* Callback for message MSGTYPE_PONG. */
-void PongReceiver(ValkeyModuleCtx *ctx,
+void PongReceiver(KVModuleCtx *ctx,
                   const char *sender_id,
                   uint8_t type,
                   const unsigned char *payload,
                   uint32_t len) {
-    ValkeyModule_Log(ctx, "notice", "PONG (type %d) RECEIVED from %.*s: '%.*s'", type, VALKEYMODULE_NODE_ID_LEN,
+    KVModule_Log(ctx, "notice", "PONG (type %d) RECEIVED from %.*s: '%.*s'", type, KVMODULE_NODE_ID_LEN,
                      sender_id, (int)len, payload);
 }
 
 /* This function must be present on each module. It is used in order to
  * register the commands into the server. */
-int ValkeyModule_OnLoad(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
-    VALKEYMODULE_NOT_USED(argv);
-    VALKEYMODULE_NOT_USED(argc);
+int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+    KVMODULE_NOT_USED(argv);
+    KVMODULE_NOT_USED(argc);
 
-    if (ValkeyModule_Init(ctx, "hellocluster", 1, VALKEYMODULE_APIVER_1) == VALKEYMODULE_ERR) return VALKEYMODULE_ERR;
+    if (KVModule_Init(ctx, "hellocluster", 1, KVMODULE_APIVER_1) == KVMODULE_ERR) return KVMODULE_ERR;
 
-    if (ValkeyModule_CreateCommand(ctx, "hellocluster.pingall", PingallCommand_ValkeyCommand, "readonly", 0, 0, 0) ==
-        VALKEYMODULE_ERR)
-        return VALKEYMODULE_ERR;
+    if (KVModule_CreateCommand(ctx, "hellocluster.pingall", PingallCommand_KVCommand, "readonly", 0, 0, 0) ==
+        KVMODULE_ERR)
+        return KVMODULE_ERR;
 
-    if (ValkeyModule_CreateCommand(ctx, "hellocluster.list", ListCommand_ValkeyCommand, "readonly", 0, 0, 0) ==
-        VALKEYMODULE_ERR)
-        return VALKEYMODULE_ERR;
+    if (KVModule_CreateCommand(ctx, "hellocluster.list", ListCommand_KVCommand, "readonly", 0, 0, 0) ==
+        KVMODULE_ERR)
+        return KVMODULE_ERR;
 
     /* Disable Cluster sharding and redirections. This way every node
      * will be able to access every possible key, regardless of the hash slot.
@@ -116,10 +116,10 @@ int ValkeyModule_OnLoad(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int arg
      * variable. Normally you do that in order for the distributed system
      * you create as a module to have total freedom in the keyspace
      * manipulation. */
-    ValkeyModule_SetClusterFlags(ctx, VALKEYMODULE_CLUSTER_FLAG_NO_REDIRECTION);
+    KVModule_SetClusterFlags(ctx, KVMODULE_CLUSTER_FLAG_NO_REDIRECTION);
 
     /* Register our handlers for different message types. */
-    ValkeyModule_RegisterClusterMessageReceiver(ctx, MSGTYPE_PING, PingReceiver);
-    ValkeyModule_RegisterClusterMessageReceiver(ctx, MSGTYPE_PONG, PongReceiver);
-    return VALKEYMODULE_OK;
+    KVModule_RegisterClusterMessageReceiver(ctx, MSGTYPE_PING, PingReceiver);
+    KVModule_RegisterClusterMessageReceiver(ctx, MSGTYPE_PONG, PongReceiver);
+    return KVMODULE_OK;
 }

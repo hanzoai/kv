@@ -1,5 +1,5 @@
 /*
- * Copyright Valkey Contributors.
+ * Copyright KV Contributors.
  * All rights reserved.
  * SPDX-License-Identifier: BSD 3-Clause
  */

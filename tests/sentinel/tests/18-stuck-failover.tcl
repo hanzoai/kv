@@ -9,10 +9,10 @@ foreach_sentinel_id id {
 
 test "Sentinel is able to reconfigure a node that is stuck in failover state" {
     # Pick a replica
-    foreach_valkey_id id {
+    foreach_kv_id id {
         if {$id != $master_id} {
             set failover_to_port [RPort $id]
-            set failover_to_pid [get_instance_attrib valkey $id pid]
+            set failover_to_pid [get_instance_attrib kv $id pid]
         }
     }
 
@@ -37,16 +37,16 @@ test "Sentinel is able to reconfigure a node that is stuck in failover state" {
 test "All the replicas now point to the new primary" {
     set old_master_id $master_id
     set addr [S 0 SENTINEL GET-PRIMARY-ADDR-BY-NAME mymaster]
-    set master_id [get_instance_id_by_port valkey [lindex $addr 1]]
+    set master_id [get_instance_id_by_port kv [lindex $addr 1]]
 
     assert {$old_master_id ne $master_id}
 
-    foreach_valkey_id id {
+    foreach_kv_id id {
         if {$id != $master_id} {
             wait_for_condition 1000 50 {
                 [RI $id master_port] == [lindex $addr 1]
             } else {
-                fail "Valkey ID $id not configured to replicate with new master"
+                fail "KV ID $id not configured to replicate with new master"
             }
         }
     }
