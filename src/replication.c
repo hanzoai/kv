@@ -28,7 +28,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -950,7 +950,7 @@ int primaryTryPartialResynchronization(client *c, long long psync_offset) {
     refreshGoodReplicasCount();
 
     /* Fire the replica change modules event. */
-    moduleFireServerEvent(VALKEYMODULE_EVENT_REPLICA_CHANGE, VALKEYMODULE_SUBEVENT_REPLICA_CHANGE_ONLINE, NULL);
+    moduleFireServerEvent(KVMODULE_EVENT_REPLICA_CHANGE, KVMODULE_SUBEVENT_REPLICA_CHANGE_ONLINE, NULL);
 
     return C_OK; /* The caller can return, no full resync needed. */
 
@@ -1180,7 +1180,7 @@ void syncCommand(client *c) {
         }
     } else {
         /* If a replica uses SYNC, we are dealing with an old implementation
-         * of the replication protocol (like valkey-cli --replica). Flag the client
+         * of the replication protocol (like kv-cli --replica). Flag the client
          * so that we don't expect to receive REPLCONF ACK feedbacks. */
         c->flag.pre_psync = 1;
     }
@@ -1332,7 +1332,7 @@ void freeClientReplicationData(client *c) {
         refreshGoodReplicasCount();
         /* Fire the replica change modules event. */
         if (c->repl_data->repl_state == REPLICA_STATE_ONLINE)
-            moduleFireServerEvent(VALKEYMODULE_EVENT_REPLICA_CHANGE, VALKEYMODULE_SUBEVENT_REPLICA_CHANGE_OFFLINE,
+            moduleFireServerEvent(KVMODULE_EVENT_REPLICA_CHANGE, KVMODULE_SUBEVENT_REPLICA_CHANGE_OFFLINE,
                                   NULL);
     }
     if (c->flag.primary) replicationHandlePrimaryDisconnection();
@@ -1594,7 +1594,7 @@ int replicaPutOnline(client *replica) {
 
     refreshGoodReplicasCount();
     /* Fire the replica change modules event. */
-    moduleFireServerEvent(VALKEYMODULE_EVENT_REPLICA_CHANGE, VALKEYMODULE_SUBEVENT_REPLICA_CHANGE_ONLINE, NULL);
+    moduleFireServerEvent(KVMODULE_EVENT_REPLICA_CHANGE, KVMODULE_SUBEVENT_REPLICA_CHANGE_ONLINE, NULL);
     serverLog(LL_NOTICE, "Synchronization with replica %s succeeded", replicationGetReplicaName(replica));
 
     return 1;
@@ -1973,7 +1973,7 @@ void updateReplicasWaitingBgsave(int bgsaveerr, int type) {
 
         if (replica->repl_data->repl_state == REPLICA_STATE_WAIT_BGSAVE_END) {
             int repldbfd;
-            struct valkey_stat buf;
+            struct kv_stat buf;
 
             if (bgsaveerr != C_OK) {
                 /* If bgsaveerr is error, there is no need to protect the rdb channel. */
@@ -2030,7 +2030,7 @@ void updateReplicasWaitingBgsave(int bgsaveerr, int type) {
                     serverLog(LL_WARNING, "SYNC failed. Can't open DB after BGSAVE: %s", strerror(errno));
                     continue;
                 }
-                if (valkey_fstat(repldbfd, &buf) == -1) {
+                if (kv_fstat(repldbfd, &buf) == -1) {
                     freeClientAsync(replica);
                     serverLog(LL_WARNING, "SYNC failed. Can't stat DB after BGSAVE: %s", strerror(errno));
                     close(repldbfd);
@@ -2353,7 +2353,7 @@ void replicaAfterLoadPrimaryRDB(connection *conn, rdbSaveInfo *rsi) {
     }
 
     /* Fire the primary link modules event. */
-    moduleFireServerEvent(VALKEYMODULE_EVENT_PRIMARY_LINK_CHANGE, VALKEYMODULE_SUBEVENT_PRIMARY_LINK_UP, NULL);
+    moduleFireServerEvent(KVMODULE_EVENT_PRIMARY_LINK_CHANGE, KVMODULE_SUBEVENT_PRIMARY_LINK_UP, NULL);
     if (server.repl_state == REPL_STATE_CONNECTED) {
         /* After a full resynchronization we use the replication ID and
          * offset of the primary. The secondary ID / offset are cleared since
@@ -2402,7 +2402,7 @@ int replicaLoadPrimaryRDBFromSocket(connection *conn, char *buf, char *eofmark, 
         diskless_load_tempDb = disklessLoadInitTempDb();
         temp_functions_lib_ctx = disklessLoadFunctionsLibCtxCreate();
 
-        moduleFireServerEvent(VALKEYMODULE_EVENT_REPL_ASYNC_LOAD, VALKEYMODULE_SUBEVENT_REPL_ASYNC_LOAD_STARTED, NULL);
+        moduleFireServerEvent(KVMODULE_EVENT_REPL_ASYNC_LOAD, KVMODULE_SUBEVENT_REPL_ASYNC_LOAD_STARTED, NULL);
         /* Async loading means we continue serving read commands during full resync, and
          * "swap" the new db with the old db only when loading is done.
          * It is enabled only on SWAPDB diskless replication when primary replication ID hasn't changed,
@@ -2456,7 +2456,7 @@ int replicaLoadPrimaryRDBFromSocket(connection *conn, char *buf, char *eofmark, 
 
         if (server.repl_diskless_load == REPL_DISKLESS_LOAD_SWAPDB) {
             /* Discard potentially partially loaded tempDb. */
-            moduleFireServerEvent(VALKEYMODULE_EVENT_REPL_ASYNC_LOAD, VALKEYMODULE_SUBEVENT_REPL_ASYNC_LOAD_ABORTED,
+            moduleFireServerEvent(KVMODULE_EVENT_REPL_ASYNC_LOAD, KVMODULE_SUBEVENT_REPL_ASYNC_LOAD_ABORTED,
                                   NULL);
 
             disklessLoadDiscardTempDb(diskless_load_tempDb);
@@ -2492,7 +2492,7 @@ int replicaLoadPrimaryRDBFromSocket(connection *conn, char *buf, char *eofmark, 
         /* swap existing functions ctx with the temporary one */
         functionsLibCtxSwapWithCurrent(temp_functions_lib_ctx, 1);
 
-        moduleFireServerEvent(VALKEYMODULE_EVENT_REPL_ASYNC_LOAD, VALKEYMODULE_SUBEVENT_REPL_ASYNC_LOAD_COMPLETED,
+        moduleFireServerEvent(KVMODULE_EVENT_REPL_ASYNC_LOAD, KVMODULE_SUBEVENT_REPL_ASYNC_LOAD_COMPLETED,
                               NULL);
 
         /* Delete the old db as it's useless now. */
@@ -3821,7 +3821,7 @@ int syncWithPrimaryHandleSendHandshakeState(connection *conn) {
     if (err) goto err;
 
     /* Inform the primary of our (replica) version. */
-    err = sendCommand(conn, "REPLCONF", "version", VALKEY_VERSION, NULL);
+    err = sendCommand(conn, "REPLCONF", "version", KV_VERSION, NULL);
     if (err) goto err;
 
     /* Inform the primary of our (replica) node name. */
@@ -3904,7 +3904,7 @@ int syncWithPrimaryHandleReceiveCapaReplyState(connection *conn) {
 int syncWithPrimaryHandleReceiveVersionReplyState(connection *conn) {
     sds err = receiveSynchronousResponse(conn);
     if (err == NULL) return C_ERR;
-    /* Ignore the error if any. Valkey >= 8 supports REPLCONF VERSION. */
+    /* Ignore the error if any. KV >= 8 supports REPLCONF VERSION. */
     if (err[0] == '-') {
         serverLog(LL_NOTICE,
                   "(Non critical) Primary does not understand "
@@ -4424,12 +4424,12 @@ void replicationSetPrimary(char *ip, int port, int full_sync_required, bool disc
     }
 
     /* Fire the role change modules event. */
-    moduleFireServerEvent(VALKEYMODULE_EVENT_REPLICATION_ROLE_CHANGED, VALKEYMODULE_EVENT_REPLROLECHANGED_NOW_REPLICA,
+    moduleFireServerEvent(KVMODULE_EVENT_REPLICATION_ROLE_CHANGED, KVMODULE_EVENT_REPLROLECHANGED_NOW_REPLICA,
                           NULL);
 
     /* Fire the primary link modules event. */
     if (server.repl_state == REPL_STATE_CONNECTED)
-        moduleFireServerEvent(VALKEYMODULE_EVENT_PRIMARY_LINK_CHANGE, VALKEYMODULE_SUBEVENT_PRIMARY_LINK_DOWN, NULL);
+        moduleFireServerEvent(KVMODULE_EVENT_PRIMARY_LINK_CHANGE, KVMODULE_SUBEVENT_PRIMARY_LINK_DOWN, NULL);
 
     server.repl_state = REPL_STATE_CONNECT;
     /* Allow trying dual-channel-replication with the new primary. If new primary doesn't
@@ -4444,7 +4444,7 @@ void replicationUnsetPrimary(void) {
 
     /* Fire the primary link modules event. */
     if (server.repl_state == REPL_STATE_CONNECTED)
-        moduleFireServerEvent(VALKEYMODULE_EVENT_PRIMARY_LINK_CHANGE, VALKEYMODULE_SUBEVENT_PRIMARY_LINK_DOWN, NULL);
+        moduleFireServerEvent(KVMODULE_EVENT_PRIMARY_LINK_CHANGE, KVMODULE_SUBEVENT_PRIMARY_LINK_DOWN, NULL);
 
     /* Clear primary_host first, since the freeClient calls
      * replicationHandlePrimaryDisconnection which can attempt to re-connect. */
@@ -4484,7 +4484,7 @@ void replicationUnsetPrimary(void) {
     server.repl_down_since = 0;
 
     /* Fire the role change modules event. */
-    moduleFireServerEvent(VALKEYMODULE_EVENT_REPLICATION_ROLE_CHANGED, VALKEYMODULE_EVENT_REPLROLECHANGED_NOW_PRIMARY,
+    moduleFireServerEvent(KVMODULE_EVENT_REPLICATION_ROLE_CHANGED, KVMODULE_EVENT_REPLROLECHANGED_NOW_PRIMARY,
                           NULL);
 
     /* Restart the AOF subsystem in case we shut it down during a sync when
@@ -4500,7 +4500,7 @@ void replicationUnsetPrimary(void) {
 void replicationHandlePrimaryDisconnection(void) {
     /* Fire the primary link modules event. */
     if (server.repl_state == REPL_STATE_CONNECTED)
-        moduleFireServerEvent(VALKEYMODULE_EVENT_PRIMARY_LINK_CHANGE, VALKEYMODULE_SUBEVENT_PRIMARY_LINK_DOWN, NULL);
+        moduleFireServerEvent(KVMODULE_EVENT_PRIMARY_LINK_CHANGE, KVMODULE_SUBEVENT_PRIMARY_LINK_DOWN, NULL);
 
     server.primary = NULL;
     server.repl_state = REPL_STATE_CONNECT;
@@ -4783,7 +4783,7 @@ void establishPrimaryConnection(void) {
     server.repl_down_since = 0;
 
     /* Fire the primary link modules event. */
-    moduleFireServerEvent(VALKEYMODULE_EVENT_PRIMARY_LINK_CHANGE, VALKEYMODULE_SUBEVENT_PRIMARY_LINK_UP, NULL);
+    moduleFireServerEvent(KVMODULE_EVENT_PRIMARY_LINK_CHANGE, KVMODULE_SUBEVENT_PRIMARY_LINK_UP, NULL);
 }
 
 /* Replication: Replica side.
@@ -5198,7 +5198,7 @@ void replicationCron(void) {
     if (server.primary_host && server.repl_state == REPL_STATE_TRANSFER &&
         (time(NULL) - server.repl_transfer_lastio) > server.repl_timeout) {
         serverLog(LL_WARNING, "Timeout receiving bulk data from PRIMARY... If the problem persists try to set the "
-                              "'repl-timeout' parameter in valkey.conf to a larger value.");
+                              "'repl-timeout' parameter in kv.conf to a larger value.");
         cancelReplicationHandshake(1);
     }
 

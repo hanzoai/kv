@@ -631,7 +631,7 @@ void loadServerConfigFromString(sds config) {
 
 loaderr:
     if (argv) sdsfreesplitres(argv, argc);
-    fprintf(stderr, "\n*** FATAL CONFIG FILE ERROR (Version %s) ***\n", VALKEY_VERSION);
+    fprintf(stderr, "\n*** FATAL CONFIG FILE ERROR (Version %s) ***\n", KV_VERSION);
     if (i < totlines) {
         fprintf(stderr, "Reading the configuration file, at line %d\n", linenum);
         fprintf(stderr, ">>> '%s'\n", lines[i]);
@@ -924,8 +924,8 @@ void configSetCommand(client *c) {
         goto err;
     }
 
-    ValkeyModuleConfigChangeV1 cc = {.num_changes = config_count, .config_names = config_names};
-    moduleFireServerEvent(VALKEYMODULE_EVENT_CONFIG, VALKEYMODULE_SUBEVENT_CONFIG_CHANGE, &cc);
+    KVModuleConfigChangeV1 cc = {.num_changes = config_count, .config_names = config_names};
+    moduleFireServerEvent(KVMODULE_EVENT_CONFIG, KVMODULE_SUBEVENT_CONFIG_CHANGE, &cc);
     addReply(c, shared.ok);
     goto end;
 
@@ -1127,8 +1127,8 @@ struct rewriteConfigState *rewriteConfigReadOldFile(char *path) {
     FILE *fp = fopen(path, "r");
     if (fp == NULL && errno != ENOENT) return NULL;
 
-    struct valkey_stat sb;
-    if (fp && valkey_fstat(fileno(fp), &sb) == -1) {
+    struct kv_stat sb;
+    if (fp && kv_fstat(fileno(fp), &sb) == -1) {
         fclose(fp);
         return NULL;
     }
@@ -1277,7 +1277,7 @@ int rewriteConfigRewriteLine(struct rewriteConfigState *state, const char *optio
 }
 
 /* Write the long long 'bytes' value as a string in a way that is parsable
- * inside valkey.conf. If possible uses the GB, MB, KB notation. */
+ * inside kv.conf. If possible uses the GB, MB, KB notation. */
 int rewriteConfigFormatMemory(char *buf, size_t len, long long bytes) {
     int gb = 1024 * 1024 * 1024;
     int mb = 1024 * 1024;
@@ -1486,7 +1486,7 @@ void rewriteConfigReplicaOfOption(standardConfig *config, const char *name, stru
 
     /* If this is a primary, we want all the replicaof config options
      * in the file to be removed. Note that if this is a cluster instance
-     * we don't want a replicaof directive inside valkey.conf. */
+     * we don't want a replicaof directive inside kv.conf. */
     if (server.cluster_enabled || server.primary_host == NULL) {
         rewriteConfigMarkAsProcessed(state, name);
         return;
@@ -1605,7 +1605,7 @@ void rewriteConfigLoadmoduleOption(struct rewriteConfigState *state) {
     dictIterator *di = dictGetIterator(modules);
     dictEntry *de;
     while ((de = dictNext(di)) != NULL) {
-        struct ValkeyModule *module = dictGetVal(de);
+        struct KVModule *module = dictGetVal(de);
         line = moduleLoadQueueEntryToLoadmoduleOptionStr(module, "loadmodule");
         rewriteConfigRewriteLine(state, "loadmodule", line, 1);
     }
@@ -2005,7 +2005,7 @@ static int enumConfigSet(standardConfig *config, sds *argv, int argc, const char
         }
         sdsrange(enumerr, 0, -3); /* Remove final ", ". */
 
-        valkey_strlcpy(loadbuf, enumerr, LOADBUF_SIZE);
+        kv_strlcpy(loadbuf, enumerr, LOADBUF_SIZE);
 
         sdsfree(enumerr);
         *err = loadbuf;

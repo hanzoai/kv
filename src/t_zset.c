@@ -28,7 +28,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -64,7 +64,7 @@
 #include "intset.h" /* Compact integer set structure */
 #include <math.h>
 
-#include "valkey_strtod.h"
+#include "kv_strtod.h"
 
 /*-----------------------------------------------------------------------------
  * Skiplist implementation of the low level API
@@ -631,11 +631,11 @@ static int zslParseRange(robj *min, robj *max, zrangespec *spec) {
         spec->min = (long)objectGetVal(min);
     } else {
         if (((char *)objectGetVal(min))[0] == '(') {
-            spec->min = valkey_strtod((char *)objectGetVal(min) + 1, &eptr);
+            spec->min = kv_strtod((char *)objectGetVal(min) + 1, &eptr);
             if (eptr[0] != '\0' || isnan(spec->min)) return C_ERR;
             spec->minex = 1;
         } else {
-            spec->min = valkey_strtod((char *)objectGetVal(min), &eptr);
+            spec->min = kv_strtod((char *)objectGetVal(min), &eptr);
             if (eptr[0] != '\0' || isnan(spec->min)) return C_ERR;
         }
     }
@@ -643,11 +643,11 @@ static int zslParseRange(robj *min, robj *max, zrangespec *spec) {
         spec->max = (long)objectGetVal(max);
     } else {
         if (((char *)objectGetVal(max))[0] == '(') {
-            spec->max = valkey_strtod((char *)objectGetVal(max) + 1, &eptr);
+            spec->max = kv_strtod((char *)objectGetVal(max) + 1, &eptr);
             if (eptr[0] != '\0' || isnan(spec->max)) return C_ERR;
             spec->maxex = 1;
         } else {
-            spec->max = valkey_strtod((char *)objectGetVal(max), &eptr);
+            spec->max = kv_strtod((char *)objectGetVal(max), &eptr);
             if (eptr[0] != '\0' || isnan(spec->max)) return C_ERR;
         }
     }
@@ -845,7 +845,7 @@ static double zzlStrtod(unsigned char *vstr, unsigned int vlen) {
     if (vlen > sizeof(buf) - 1) vlen = sizeof(buf) - 1;
     memcpy(buf, vstr, vlen);
     buf[vlen] = '\0';
-    return valkey_strtod(buf, NULL);
+    return kv_strtod(buf, NULL);
 }
 
 double zzlGetScore(unsigned char *sptr) {

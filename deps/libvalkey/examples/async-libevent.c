@@ -1,15 +1,15 @@
-#include <valkey/async.h>
-#include <valkey/valkey.h>
+#include <kv/async.h>
+#include <kv/kv.h>
 
-#include <valkey/adapters/libevent.h>
+#include <kv/adapters/libevent.h>
 
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-void getCallback(valkeyAsyncContext *c, void *r, void *privdata) {
-    valkeyReply *reply = r;
+void getCallback(kvAsyncContext *c, void *r, void *privdata) {
+    kvReply *reply = r;
     if (reply == NULL) {
         if (c->errstr) {
             printf("errstr: %s\n", c->errstr);
@@ -19,19 +19,19 @@ void getCallback(valkeyAsyncContext *c, void *r, void *privdata) {
     printf("argv[%s]: %s\n", (char *)privdata, reply->str);
 
     /* Disconnect after receiving the reply to GET */
-    valkeyAsyncDisconnect(c);
+    kvAsyncDisconnect(c);
 }
 
-void connectCallback(valkeyAsyncContext *c, int status) {
-    if (status != VALKEY_OK) {
+void connectCallback(kvAsyncContext *c, int status) {
+    if (status != KV_OK) {
         printf("Error: %s\n", c->errstr);
         return;
     }
     printf("Connected...\n");
 }
 
-void disconnectCallback(const valkeyAsyncContext *c, int status) {
-    if (status != VALKEY_OK) {
+void disconnectCallback(const kvAsyncContext *c, int status) {
+    if (status != KV_OK) {
         printf("Error: %s\n", c->errstr);
         return;
     }
@@ -44,25 +44,25 @@ int main(int argc, char **argv) {
 #endif
 
     struct event_base *base = event_base_new();
-    valkeyOptions options = {0};
-    VALKEY_OPTIONS_SET_TCP(&options, "127.0.0.1", 6379);
+    kvOptions options = {0};
+    KV_OPTIONS_SET_TCP(&options, "127.0.0.1", 6379);
     struct timeval tv = {0};
     tv.tv_sec = 1;
     options.connect_timeout = &tv;
 
-    valkeyAsyncContext *c = valkeyAsyncConnectWithOptions(&options);
+    kvAsyncContext *c = kvAsyncConnectWithOptions(&options);
     if (c->err) {
         /* Let *c leak for now... */
         printf("Error: %s\n", c->errstr);
         return 1;
     }
 
-    valkeyLibeventAttach(c, base);
-    valkeyAsyncSetConnectCallback(c, connectCallback);
-    valkeyAsyncSetDisconnectCallback(c, disconnectCallback);
-    valkeyAsyncCommand(
+    kvLibeventAttach(c, base);
+    kvAsyncSetConnectCallback(c, connectCallback);
+    kvAsyncSetDisconnectCallback(c, disconnectCallback);
+    kvAsyncCommand(
         c, NULL, NULL, "SET key %b", argv[argc - 1], strlen(argv[argc - 1]));
-    valkeyAsyncCommand(c, getCallback, (char *)"end-1", "GET key");
+    kvAsyncCommand(c, getCallback, (char *)"end-1", "GET key");
     event_base_dispatch(base);
     return 0;
 }

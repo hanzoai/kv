@@ -252,7 +252,7 @@ proc create_empty_shard {p r} {
 }
 
 # Temporarily disable empty shard migration tests while we
-# work to reduce their flakiness. See https://github.com/valkey-io/valkey/issues/858.
+# work to reduce their flakiness. See https://github.com/kv-io/kv/issues/858.
 if {0} {
 start_cluster 3 5 {tags {external:skip cluster} overrides {cluster-allow-replica-migration no cluster-node-timeout 1000} } {
 
@@ -452,7 +452,7 @@ start_cluster 2 0 {tags {tls:skip external:skip cluster regression} overrides {c
 
         # Start a deferring client to simulate a blocked client on XREADGROUP
         R 0 XGROUP CREATE $stream_name mygroup $ MKSTREAM
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd xreadgroup GROUP mygroup consumer BLOCK 0 streams $stream_name >
         wait_for_blocked_client
 

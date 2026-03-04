@@ -35,16 +35,16 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef VALKEY_ASSERT_H
-#define VALKEY_ASSERT_H
+#ifndef KV_ASSERT_H
+#define KV_ASSERT_H
 
-/* This file shouldn't have any dependencies to any other Valkey code. */
+/* This file shouldn't have any dependencies to any other KV code. */
 
 #if __GNUC__ >= 5 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 5)
-#define valkey_unreachable __builtin_unreachable
+#define kv_unreachable __builtin_unreachable
 #else
 #include <stdlib.h>
-#define valkey_unreachable abort
+#define kv_unreachable abort
 #endif
 
 #if __GNUC__ >= 3
@@ -57,8 +57,8 @@
 #undef assert
 #endif
 
-#define assert(_e) (likely((_e)) ? (void)0 : (_serverAssert(#_e, __FILE__, __LINE__), valkey_unreachable()))
-#define panic(...) _serverPanic(__FILE__, __LINE__, __VA_ARGS__), valkey_unreachable()
+#define assert(_e) (likely((_e)) ? (void)0 : (_serverAssert(#_e, __FILE__, __LINE__), kv_unreachable()))
+#define panic(...) _serverPanic(__FILE__, __LINE__, __VA_ARGS__), kv_unreachable()
 
 void _serverAssert(const char *estr, const char *file, int line);
 void _serverPanic(const char *file, int line, const char *msg, ...);

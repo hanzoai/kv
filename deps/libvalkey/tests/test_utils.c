@@ -9,23 +9,23 @@ static int server_version_major;
 static int server_version_minor;
 
 /* Helper to extract version information. */
-#define VALKEY_VERSION_FIELD "valkey_version:"
+#define KV_VERSION_FIELD "kv_version:"
 #define REDIS_VERSION_FIELD "redis_version:"
-void load_valkey_version(valkeyClusterContext *cc) {
-    valkeyClusterNodeIterator ni;
-    valkeyClusterNode *node;
+void load_kv_version(kvClusterContext *cc) {
+    kvClusterNodeIterator ni;
+    kvClusterNode *node;
     char *eptr, *s, *e;
-    valkeyReply *reply = NULL;
+    kvReply *reply = NULL;
 
-    valkeyClusterInitNodeIterator(&ni, cc);
-    if ((node = valkeyClusterNodeNext(&ni)) == NULL)
+    kvClusterInitNodeIterator(&ni, cc);
+    if ((node = kvClusterNodeNext(&ni)) == NULL)
         goto abort;
 
-    reply = valkeyClusterCommandToNode(cc, node, "INFO");
-    if (reply == NULL || cc->err || reply->type != VALKEY_REPLY_STRING)
+    reply = kvClusterCommandToNode(cc, node, "INFO");
+    if (reply == NULL || cc->err || reply->type != KV_REPLY_STRING)
         goto abort;
-    if ((s = strstr(reply->str, VALKEY_VERSION_FIELD)) != NULL)
-        s += strlen(VALKEY_VERSION_FIELD);
+    if ((s = strstr(reply->str, KV_VERSION_FIELD)) != NULL)
+        s += strlen(KV_VERSION_FIELD);
     else if ((s = strstr(reply->str, REDIS_VERSION_FIELD)) != NULL)
         s += strlen(REDIS_VERSION_FIELD);
     else
@@ -46,14 +46,14 @@ void load_valkey_version(valkeyClusterContext *cc) {
 
 abort:
     freeReplyObject(reply);
-    fprintf(stderr, "Error: Cannot get Valkey version, aborting..\n");
+    fprintf(stderr, "Error: Cannot get KV version, aborting..\n");
     exit(1);
 }
 
-/* Helper to verify Valkey version information. */
-int valkey_version_less_than(int major, int minor) {
+/* Helper to verify KV version information. */
+int kv_version_less_than(int major, int minor) {
     if (server_version_major == 0) {
-        fprintf(stderr, "Error: Valkey version not loaded, aborting..\n");
+        fprintf(stderr, "Error: KV version not loaded, aborting..\n");
         exit(1);
     }
 

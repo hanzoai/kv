@@ -104,7 +104,7 @@ start_server {tags {"modules"}} {
             } 0
         }
 
-        assert_error {ERR This Valkey command is not allowed from script*} {
+        assert_error {ERR This KV command is not allowed from script*} {
             r eval {#!lua
                 return server.call('ACL', 'CAT')
             } 0
@@ -361,7 +361,7 @@ start_server {tags {"modules"}} {
     }
 
     test {Test function kill} {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         r config set busy-reply-threshold 10
         r function load REPLACE "#!hello name=mylib\nFUNCTION wait\nARGS 0\nSLEEP\nARGS 0\nRETURN"
         $rd fcall wait 0 100

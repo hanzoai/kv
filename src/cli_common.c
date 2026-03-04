@@ -44,10 +44,10 @@
 #ifdef USE_OPENSSL
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#include <valkey/tls.h>
+#include <kv/tls.h>
 #endif
 #ifdef USE_RDMA
-#include <valkey/rdma.h>
+#include <kv/rdma.h>
 #endif
 
 #define UNUSED(V) ((void)V)
@@ -55,10 +55,10 @@
 char *serverGitSHA1(void);
 char *serverGitDirty(void);
 
-/* Wrapper around valkeyInitiateTLS to avoid libvalkey_tls dependencies if
+/* Wrapper around kvInitiateTLS to avoid libkv_tls dependencies if
  * not building with TLS support.
  */
-int cliSecureConnection(valkeyContext *c, cliSSLconfig config, const char **err) {
+int cliSecureConnection(kvContext *c, cliSSLconfig config, const char **err) {
 #ifdef USE_OPENSSL
     static SSL_CTX *ssl_ctx = NULL;
 
@@ -107,32 +107,32 @@ int cliSecureConnection(valkeyContext *c, cliSSLconfig config, const char **err)
     SSL *ssl = SSL_new(ssl_ctx);
     if (!ssl) {
         *err = "Failed to create SSL object";
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     if (config.sni && !SSL_set_tlsext_host_name(ssl, config.sni)) {
         *err = "Failed to configure SNI";
         SSL_free(ssl);
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    return valkeyInitiateTLS(c, ssl);
+    return kvInitiateTLS(c, ssl);
 
 error:
     SSL_CTX_free(ssl_ctx);
     ssl_ctx = NULL;
-    return VALKEY_ERR;
+    return KV_ERR;
 #else
     (void)config;
     (void)c;
     (void)err;
-    return VALKEY_OK;
+    return KV_OK;
 #endif
 }
 
-/* Wrapper around libvalkey to allow arbitrary reads and writes.
+/* Wrapper around libkv to allow arbitrary reads and writes.
  *
- * We piggybacks on top of libvalkey to achieve transparent TLS support,
+ * We piggybacks on top of libkv to achieve transparent TLS support,
  * and use its internal buffers so it can co-exist with commands
  * previously/later issued on the connection.
  *
@@ -140,19 +140,19 @@ error:
  * work transparently.
  */
 
-/* Write a raw buffer through a valkeyContext. If we already have something
- * in the buffer (leftovers from libvalkey operations) it will be written
+/* Write a raw buffer through a kvContext. If we already have something
+ * in the buffer (leftovers from libkv operations) it will be written
  * as well.
  */
-ssize_t cliWriteConn(valkeyContext *c, const char *buf, size_t buf_len) {
+ssize_t cliWriteConn(kvContext *c, const char *buf, size_t buf_len) {
     int done = 0;
 
     /* Append data to buffer which is *usually* expected to be empty
      * but we don't assume that, and write.
      */
     c->obuf = sdscatlen(c->obuf, buf, buf_len);
-    if (valkeyBufferWrite(c, &done) == VALKEY_ERR) {
-        if (!(c->flags & VALKEY_BLOCK)) errno = EAGAIN;
+    if (kvBufferWrite(c, &done) == KV_ERR) {
+        if (!(c->flags & KV_BLOCK)) errno = EAGAIN;
 
         /* On error, we assume nothing was written and we roll back the
          * buffer to its original state.
@@ -202,7 +202,7 @@ int cliSecureInit(void) {
     SSL_load_error_strings();
     SSL_library_init();
 #endif
-    return VALKEY_OK;
+    return KV_OK;
 }
 
 /* Create an sds from stdin */
@@ -305,7 +305,7 @@ static sds percentDecode(const char *pe, size_t len) {
 /* Parse a URI and extract the server connection information.
  * URI scheme is based on the provisional specification[1] excluding support
  * for query parameters. Valid URIs are:
- *   scheme:    "valkey://" or "valkeys://" or "redis://" or "rediss://"
+ *   scheme:    "kv://" or "kvs://" or "redis://" or "rediss://"
  *   authority: [[<username> ":"] <password> "@"] [<hostname> [":" <port>]]
  *   path:      ["/" [<db>]]
  *
@@ -317,8 +317,8 @@ void parseUri(const char *uri, const char *tool_name, cliConnInfo *connInfo, int
     UNUSED(tls_flag);
 #endif
 
-    const char *scheme = "valkey://";
-    const char *tlsscheme = "valkeys://";
+    const char *scheme = "kv://";
+    const char *tlsscheme = "kvs://";
     /* We need to support redis:// and rediss:// too for compatibility. */
     const char *redisScheme = "redis://";
     const char *redisTlsscheme = "rediss://";
@@ -396,7 +396,7 @@ void freeCliConnInfo(cliConnInfo connInfo) {
 }
 
 sds cliVersion(void) {
-    sds version = sdscatprintf(sdsempty(), "%s", VALKEY_VERSION);
+    sds version = sdscatprintf(sdsempty(), "%s", KV_VERSION);
 
     /* Add git commit and working tree status when available. */
     if (strtoll(serverGitSHA1(), NULL, 16)) {
@@ -407,22 +407,22 @@ sds cliVersion(void) {
     return version;
 }
 
-/* This is a wrapper to call valkeyConnect or valkeyConnectWithTimeout. */
-valkeyContext *valkeyConnectWrapper(enum valkeyConnectionType ct, const char *ip_or_path, int port, const struct timeval tv, int nonblock, int multipath) {
-    valkeyOptions options = {0};
+/* This is a wrapper to call kvConnect or kvConnectWithTimeout. */
+kvContext *kvConnectWrapper(enum kvConnectionType ct, const char *ip_or_path, int port, const struct timeval tv, int nonblock, int multipath) {
+    kvOptions options = {0};
 
     switch (ct) {
-    case VALKEY_CONN_TCP:
-        VALKEY_OPTIONS_SET_TCP(&options, ip_or_path, port);
+    case KV_CONN_TCP:
+        KV_OPTIONS_SET_TCP(&options, ip_or_path, port);
         break;
 
-    case VALKEY_CONN_UNIX:
-        VALKEY_OPTIONS_SET_UNIX(&options, ip_or_path);
+    case KV_CONN_UNIX:
+        KV_OPTIONS_SET_UNIX(&options, ip_or_path);
         break;
 
-    case VALKEY_CONN_RDMA:
+    case KV_CONN_RDMA:
 #ifdef USE_RDMA
-        VALKEY_OPTIONS_SET_RDMA(&options, ip_or_path, port);
+        KV_OPTIONS_SET_RDMA(&options, ip_or_path, port);
         break;
 #else
         assert(0); /* requesting RDMA connection without RDMA support??? */
@@ -437,13 +437,13 @@ valkeyContext *valkeyConnectWrapper(enum valkeyConnectionType ct, const char *ip
     }
 
     if (nonblock) {
-        options.options |= VALKEY_OPT_NONBLOCK;
+        options.options |= KV_OPT_NONBLOCK;
     }
 
     if (multipath) {
-        assert(ct == VALKEY_CONN_TCP); /* caller should make sure multipath is available for TCP only */
-        options.options |= VALKEY_OPT_MPTCP;
+        assert(ct == KV_CONN_TCP); /* caller should make sure multipath is available for TCP only */
+        options.options |= KV_OPT_MPTCP;
     }
 
-    return valkeyConnectWithOptions(&options);
+    return kvConnectWithOptions(&options);
 }

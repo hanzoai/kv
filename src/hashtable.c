@@ -1,5 +1,5 @@
 /*
- * Copyright Valkey Contributors.
+ * Copyright KV Contributors.
  * All rights reserved.
  * SPDX-License-Identifier: BSD 3-Clause
  */
@@ -1114,7 +1114,7 @@ static void prefetchBucketEntries(bucket *b) {
     if (!b->presence) return;
     for (int pos = 0; pos < numBucketPositions(b); pos++) {
         if (isPositionFilled(b, pos)) {
-            valkey_prefetch(b->entries[pos]);
+            kv_prefetch(b->entries[pos]);
         }
     }
 }
@@ -1152,7 +1152,7 @@ static void prefetchNextBucketEntries(iter *iter, bucket *current_bucket) {
         if (!current_bucket->chained) next_index++;
         bucket *next_next_bucket = getNextBucket(next_bucket, next_index, iter->hashtable, iter->table);
         if (next_next_bucket) {
-            valkey_prefetch(next_next_bucket);
+            kv_prefetch(next_next_bucket);
         }
     }
 }
@@ -1831,7 +1831,7 @@ bool hashtableIncrementalFindStep(hashtableIncrementalFindState *state) {
             for (int pos = data->pos; pos < numBucketPositions(b); pos++) {
                 if (isPositionFilled(b, pos) && b->hashes[pos] == h2) {
                     /* It's a candidate. */
-                    valkey_prefetch(b->entries[pos]);
+                    kv_prefetch(b->entries[pos]);
                     data->pos = pos;
                     data->state = HASHTABLE_CHECK_ENTRY;
                     return true;
@@ -1867,7 +1867,7 @@ bool hashtableIncrementalFindStep(hashtableIncrementalFindState *state) {
                 data->state = HASHTABLE_NOT_FOUND;
                 return false;
             }
-            valkey_prefetch(data->bucket);
+            kv_prefetch(data->bucket);
             data->state = HASHTABLE_NEXT_ENTRY;
             data->pos = 0;
         }

@@ -1,5 +1,5 @@
-#ifndef VALKEY_FMACRO_H
-#define VALKEY_FMACRO_H
+#ifndef KV_FMACRO_H
+#define KV_FMACRO_H
 
 #ifndef _AIX
 #define _XOPEN_SOURCE 600

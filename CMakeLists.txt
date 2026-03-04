@@ -13,20 +13,20 @@ if (APPLE)
 endif ()
 
 # Options
-option(BUILD_LUA "Build Valkey Lua scripting engine" ON)
-option(BUILD_UNIT_TESTS "Build valkey-unit-tests" OFF)
+option(BUILD_LUA "Build KV Lua scripting engine" ON)
+option(BUILD_UNIT_TESTS "Build kv-unit-tests" OFF)
 option(BUILD_TEST_MODULES "Build all test modules" OFF)
 option(BUILD_EXAMPLE_MODULES "Build example modules" OFF)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
-project("valkey")
+project("kv")
 add_compile_options(-Wundef)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 
-include(ValkeySetup)
+include(KVSetup)
 add_subdirectory(src)
 add_subdirectory(tests)
 
@@ -63,7 +63,7 @@ function(copy_runtest_script script_name)
     set(insert_content
 "# Most tests assume running from the project root
 cd ${CMAKE_SOURCE_DIR}
-export VALKEY_BIN_DIR=\"${CMAKE_BINARY_DIR}/bin\"
+export KV_BIN_DIR=\"${CMAKE_BINARY_DIR}/bin\"
 ")
     # Reconstruct the full script
     set(new_contents "${shebang_line}${insert_content}${script_body}")

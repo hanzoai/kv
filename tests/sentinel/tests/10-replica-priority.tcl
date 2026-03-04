@@ -1,7 +1,7 @@
 source "../tests/includes/init-tests.tcl"
 
 test "Check acceptable replica-priority values" {
-    foreach_valkey_id id {
+    foreach_kv_id id {
         if {$id == $master_id} continue
 
         # ensure replica-announced accepts yes and no
@@ -49,9 +49,9 @@ proc 10_test_number_of_replicas {n_replicas_expected} {
 proc 10_set_replica_announced {master_id announced n_replicas} {
     test "Set replica-announced=$announced on $n_replicas replicas" {
         set i 0
-        foreach_valkey_id id {
+        foreach_kv_id id {
             if {$id == $master_id} continue
-            #puts "set replica-announce=$announced on valkey #$id"
+            #puts "set replica-announce=$announced on kv #$id"
             R $id CONFIG SET replica-announced "$announced"
             incr i
             if { $n_replicas!="all" && $i >= $n_replicas } { break }

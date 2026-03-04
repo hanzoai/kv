@@ -652,7 +652,7 @@ int anetUnixServer(char *err, char *path, mode_t perm, int backlog, char *group)
 
     memset(&sa, 0, sizeof(sa));
     sa.sun_family = AF_LOCAL;
-    valkey_strlcpy(sa.sun_path, path, sizeof(sa.sun_path));
+    kv_strlcpy(sa.sun_path, path, sizeof(sa.sun_path));
     if (anetListen(err, s, (struct sockaddr *)&sa, sizeof(sa), backlog, perm, group) == ANET_ERR) return ANET_ERR;
     return s;
 }

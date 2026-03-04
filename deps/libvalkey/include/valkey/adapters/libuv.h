@@ -29,37 +29,37 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef VALKEY_ADAPTERS_LIBUV_H
-#define VALKEY_ADAPTERS_LIBUV_H
+#ifndef KV_ADAPTERS_LIBUV_H
+#define KV_ADAPTERS_LIBUV_H
 #include "../async.h"
 #include "../cluster.h"
-#include "../valkey.h"
+#include "../kv.h"
 
 #include <stdlib.h>
 #include <string.h>
 #include <uv.h>
 
-typedef struct valkeyLibuvEvents {
-    valkeyAsyncContext *context;
+typedef struct kvLibuvEvents {
+    kvAsyncContext *context;
     uv_poll_t handle;
     uv_timer_t timer;
     int events;
-} valkeyLibuvEvents;
+} kvLibuvEvents;
 
-static void valkeyLibuvPoll(uv_poll_t *handle, int status, int events) {
-    valkeyLibuvEvents *p = (valkeyLibuvEvents *)handle->data;
+static void kvLibuvPoll(uv_poll_t *handle, int status, int events) {
+    kvLibuvEvents *p = (kvLibuvEvents *)handle->data;
     int ev = (status ? p->events : events);
 
     if (p->context != NULL && (ev & UV_READABLE)) {
-        valkeyAsyncHandleRead(p->context);
+        kvAsyncHandleRead(p->context);
     }
     if (p->context != NULL && (ev & UV_WRITABLE)) {
-        valkeyAsyncHandleWrite(p->context);
+        kvAsyncHandleWrite(p->context);
     }
 }
 
-static void valkeyLibuvAddRead(void *privdata) {
-    valkeyLibuvEvents *p = (valkeyLibuvEvents *)privdata;
+static void kvLibuvAddRead(void *privdata) {
+    kvLibuvEvents *p = (kvLibuvEvents *)privdata;
 
     if (p->events & UV_READABLE) {
         return;
@@ -67,23 +67,23 @@ static void valkeyLibuvAddRead(void *privdata) {
 
     p->events |= UV_READABLE;
 
-    uv_poll_start(&p->handle, p->events, valkeyLibuvPoll);
+    uv_poll_start(&p->handle, p->events, kvLibuvPoll);
 }
 
-static void valkeyLibuvDelRead(void *privdata) {
-    valkeyLibuvEvents *p = (valkeyLibuvEvents *)privdata;
+static void kvLibuvDelRead(void *privdata) {
+    kvLibuvEvents *p = (kvLibuvEvents *)privdata;
 
     p->events &= ~UV_READABLE;
 
     if (p->events) {
-        uv_poll_start(&p->handle, p->events, valkeyLibuvPoll);
+        uv_poll_start(&p->handle, p->events, kvLibuvPoll);
     } else {
         uv_poll_stop(&p->handle);
     }
 }
 
-static void valkeyLibuvAddWrite(void *privdata) {
-    valkeyLibuvEvents *p = (valkeyLibuvEvents *)privdata;
+static void kvLibuvAddWrite(void *privdata) {
+    kvLibuvEvents *p = (kvLibuvEvents *)privdata;
 
     if (p->events & UV_WRITABLE) {
         return;
@@ -91,23 +91,23 @@ static void valkeyLibuvAddWrite(void *privdata) {
 
     p->events |= UV_WRITABLE;
 
-    uv_poll_start(&p->handle, p->events, valkeyLibuvPoll);
+    uv_poll_start(&p->handle, p->events, kvLibuvPoll);
 }
 
-static void valkeyLibuvDelWrite(void *privdata) {
-    valkeyLibuvEvents *p = (valkeyLibuvEvents *)privdata;
+static void kvLibuvDelWrite(void *privdata) {
+    kvLibuvEvents *p = (kvLibuvEvents *)privdata;
 
     p->events &= ~UV_WRITABLE;
 
     if (p->events) {
-        uv_poll_start(&p->handle, p->events, valkeyLibuvPoll);
+        uv_poll_start(&p->handle, p->events, kvLibuvPoll);
     } else {
         uv_poll_stop(&p->handle);
     }
 }
 
 static void on_timer_close(uv_handle_t *handle) {
-    valkeyLibuvEvents *p = (valkeyLibuvEvents *)handle->data;
+    kvLibuvEvents *p = (kvLibuvEvents *)handle->data;
     p->timer.data = NULL;
     if (!p->handle.data) {
         // both timer and handle are closed
@@ -117,7 +117,7 @@ static void on_timer_close(uv_handle_t *handle) {
 }
 
 static void on_handle_close(uv_handle_t *handle) {
-    valkeyLibuvEvents *p = (valkeyLibuvEvents *)handle->data;
+    kvLibuvEvents *p = (kvLibuvEvents *)handle->data;
     p->handle.data = NULL;
     if (!p->timer.data) {
         // timer never started, or timer already destroyed
@@ -130,17 +130,17 @@ static void on_handle_close(uv_handle_t *handle) {
 // see: https://github.com/libuv/libuv/blob/v0.11.23/include/uv.h
 #if (UV_VERSION_MAJOR == 0 && UV_VERSION_MINOR < 11) || \
     (UV_VERSION_MAJOR == 0 && UV_VERSION_MINOR == 11 && UV_VERSION_PATCH < 23)
-static void valkeyLibuvTimeout(uv_timer_t *timer, int status) {
+static void kvLibuvTimeout(uv_timer_t *timer, int status) {
     (void)status; // unused
 #else
-static void valkeyLibuvTimeout(uv_timer_t *timer) {
+static void kvLibuvTimeout(uv_timer_t *timer) {
 #endif
-    valkeyLibuvEvents *e = (valkeyLibuvEvents *)timer->data;
-    valkeyAsyncHandleTimeout(e->context);
+    kvLibuvEvents *e = (kvLibuvEvents *)timer->data;
+    kvAsyncHandleTimeout(e->context);
 }
 
-static void valkeyLibuvSetTimeout(void *privdata, struct timeval tv) {
-    valkeyLibuvEvents *p = (valkeyLibuvEvents *)privdata;
+static void kvLibuvSetTimeout(void *privdata, struct timeval tv) {
+    kvLibuvEvents *p = (kvLibuvEvents *)privdata;
 
     uint64_t millisec = tv.tv_sec * 1000 + tv.tv_usec / 1000.0;
     if (!p->timer.data) {
@@ -152,11 +152,11 @@ static void valkeyLibuvSetTimeout(void *privdata, struct timeval tv) {
     }
     // updates the timeout if the timer has already started
     // or start the timer
-    uv_timer_start(&p->timer, valkeyLibuvTimeout, millisec, 0);
+    uv_timer_start(&p->timer, kvLibuvTimeout, millisec, 0);
 }
 
-static void valkeyLibuvCleanup(void *privdata) {
-    valkeyLibuvEvents *p = (valkeyLibuvEvents *)privdata;
+static void kvLibuvCleanup(void *privdata) {
+    kvLibuvEvents *p = (kvLibuvEvents *)privdata;
 
     p->context = NULL; // indicate that context might no longer exist
     if (p->timer.data) {
@@ -165,53 +165,53 @@ static void valkeyLibuvCleanup(void *privdata) {
     uv_close((uv_handle_t *)&p->handle, on_handle_close);
 }
 
-static int valkeyLibuvAttach(valkeyAsyncContext *ac, uv_loop_t *loop) {
-    valkeyContext *c = &(ac->c);
+static int kvLibuvAttach(kvAsyncContext *ac, uv_loop_t *loop) {
+    kvContext *c = &(ac->c);
 
     if (ac->ev.data != NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    ac->ev.addRead = valkeyLibuvAddRead;
-    ac->ev.delRead = valkeyLibuvDelRead;
-    ac->ev.addWrite = valkeyLibuvAddWrite;
-    ac->ev.delWrite = valkeyLibuvDelWrite;
-    ac->ev.cleanup = valkeyLibuvCleanup;
-    ac->ev.scheduleTimer = valkeyLibuvSetTimeout;
+    ac->ev.addRead = kvLibuvAddRead;
+    ac->ev.delRead = kvLibuvDelRead;
+    ac->ev.addWrite = kvLibuvAddWrite;
+    ac->ev.delWrite = kvLibuvDelWrite;
+    ac->ev.cleanup = kvLibuvCleanup;
+    ac->ev.scheduleTimer = kvLibuvSetTimeout;
 
-    valkeyLibuvEvents *p = (valkeyLibuvEvents *)vk_malloc(sizeof(*p));
+    kvLibuvEvents *p = (kvLibuvEvents *)vk_malloc(sizeof(*p));
     if (p == NULL)
-        return VALKEY_ERR;
+        return KV_ERR;
 
     memset(p, 0, sizeof(*p));
 
     if (uv_poll_init_socket(loop, &p->handle, c->fd) != 0) {
         vk_free(p);
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     ac->ev.data = p;
     p->handle.data = p;
     p->context = ac;
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
 /* Internal adapter function with correct function signature. */
-static int valkeyLibuvAttachAdapter(valkeyAsyncContext *ac, void *loop) {
-    return valkeyLibuvAttach(ac, (uv_loop_t *)loop);
+static int kvLibuvAttachAdapter(kvAsyncContext *ac, void *loop) {
+    return kvLibuvAttach(ac, (uv_loop_t *)loop);
 }
 
-VALKEY_UNUSED
-static int valkeyClusterOptionsUseLibuv(valkeyClusterOptions *options,
+KV_UNUSED
+static int kvClusterOptionsUseLibuv(kvClusterOptions *options,
                                         uv_loop_t *loop) {
     if (options == NULL || loop == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    options->attach_fn = valkeyLibuvAttachAdapter;
+    options->attach_fn = kvLibuvAttachAdapter;
     options->attach_data = loop;
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-#endif /* VALKEY_ADAPTERS_LIBUV_H */
+#endif /* KV_ADAPTERS_LIBUV_H */

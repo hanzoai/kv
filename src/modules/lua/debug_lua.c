@@ -64,16 +64,16 @@ void ldbDisable(void) {
 }
 
 static char **split_text_by_lines(const char *text, size_t len, int *lines) {
-    ValkeyModule_Assert(text != NULL && len > 0);
+    KVModule_Assert(text != NULL && len > 0);
 
     int count = 1;
     for (size_t i = 0; i < len; i++) {
         if (text[i] == '\n') count++;
     }
 
-    char **result = ValkeyModule_Calloc(count, sizeof(char *));
+    char **result = KVModule_Calloc(count, sizeof(char *));
     if (!result) {
-        ValkeyModule_Log(NULL, "error", "Failed to allocate memory for Lua source code lines.");
+        KVModule_Log(NULL, "error", "Failed to allocate memory for Lua source code lines.");
         *lines = 0;
         return NULL;
     }
@@ -82,7 +82,7 @@ static char **split_text_by_lines(const char *text, size_t len, int *lines) {
     for (size_t i = 0; i <= len; i++) {
         if (i == len || text[i] == '\n') {
             size_t linelen = i - start;
-            char *line = ValkeyModule_Calloc(linelen + 1, 1);
+            char *line = KVModule_Calloc(linelen + 1, 1);
             if (line) {
                 memcpy(line, text + start, linelen);
                 line[linelen] = '\0';
@@ -95,13 +95,13 @@ static char **split_text_by_lines(const char *text, size_t len, int *lines) {
     return result;
 }
 
-void ldbStart(ValkeyModuleString *source) {
+void ldbStart(KVModuleString *source) {
     ldb.active = 1;
 
     /* First argument of EVAL is the script itself. We split it into different
      * lines since this is the way the debugger accesses the source code. */
     size_t srclen;
-    const char *src_raw = ValkeyModule_StringPtrLen(source, &srclen);
+    const char *src_raw = KVModule_StringPtrLen(source, &srclen);
     while (srclen && (src_raw[srclen - 1] == '\n' || src_raw[srclen - 1] == '\r')) {
         --srclen;
     }
@@ -110,24 +110,24 @@ void ldbStart(ValkeyModuleString *source) {
 
 void ldbEnd(void) {
     for (int i = 0; i < ldb.lines; i++) {
-        ValkeyModule_Free(ldb.src[i]);
+        KVModule_Free(ldb.src[i]);
     }
-    ValkeyModule_Free(ldb.src);
+    KVModule_Free(ldb.src);
     ldb.lines = 0;
     ldb.active = 0;
 }
 
-void ldbLog(ValkeyModuleString *entry) {
-    ValkeyModule_ScriptingEngineDebuggerLog(entry, 0);
+void ldbLog(KVModuleString *entry) {
+    KVModule_ScriptingEngineDebuggerLog(entry, 0);
 }
 
 void ldbLogCString(const char *c_str) {
-    ValkeyModuleString *entry = ValkeyModule_CreateString(NULL, c_str, strlen(c_str));
+    KVModuleString *entry = KVModule_CreateString(NULL, c_str, strlen(c_str));
     ldbLog(entry);
 }
 
 void ldbSendLogs(void) {
-    ValkeyModule_ScriptingEngineDebuggerFlushLogs();
+    KVModule_ScriptingEngineDebuggerFlushLogs();
 }
 
 /* Return a pointer to ldb.src source code line, considering line to be
@@ -189,7 +189,7 @@ void ldbLogSourceLine(int lnum) {
         prefix = "  #";
     else
         prefix = "   ";
-    ValkeyModuleString *thisline = ValkeyModule_CreateStringPrintf(NULL, "%s%-3d %s", prefix, lnum, line);
+    KVModuleString *thisline = KVModule_CreateStringPrintf(NULL, "%s%-3d %s", prefix, lnum, line);
     ldbLog(thisline);
 }
 
@@ -215,12 +215,12 @@ static void ldbList(int around, int context) {
  * The element is neither automatically removed from the stack, nor
  * converted to a different type. */
 #define LDB_MAX_VALUES_DEPTH (LUA_MINSTACK / 2)
-static ValkeyModuleString *ldbCatStackValueRec(ValkeyModuleString *s, lua_State *lua, int idx, int level) {
+static KVModuleString *ldbCatStackValueRec(KVModuleString *s, lua_State *lua, int idx, int level) {
     int t = lua_type(lua, idx);
 
     if (level++ == LDB_MAX_VALUES_DEPTH) {
         const char *msg = "<max recursion level reached! Nested table?>";
-        ValkeyModule_StringAppendBuffer(NULL, s, msg, strlen(msg));
+        KVModule_StringAppendBuffer(NULL, s, msg, strlen(msg));
         return s;
     }
 
@@ -228,29 +228,29 @@ static ValkeyModuleString *ldbCatStackValueRec(ValkeyModuleString *s, lua_State 
     case LUA_TSTRING: {
         size_t strl;
         char *strp = (char *)lua_tolstring(lua, idx, &strl);
-        ValkeyModule_StringAppendBuffer(NULL, s, strp, strl);
+        KVModule_StringAppendBuffer(NULL, s, strp, strl);
     } break;
     case LUA_TBOOLEAN: {
         const char *bool_str = lua_toboolean(lua, idx) ? "true" : "false";
-        ValkeyModule_StringAppendBuffer(NULL, s, bool_str, strlen(bool_str));
+        KVModule_StringAppendBuffer(NULL, s, bool_str, strlen(bool_str));
         break;
     }
     case LUA_TNUMBER: {
-        ValkeyModuleString *old_s = s;
-        const char *prefix = ValkeyModule_StringPtrLen(s, NULL);
-        s = ValkeyModule_CreateStringPrintf(NULL, "%s%g", prefix, (double)lua_tonumber(lua, idx));
-        ValkeyModule_FreeString(NULL, old_s);
+        KVModuleString *old_s = s;
+        const char *prefix = KVModule_StringPtrLen(s, NULL);
+        s = KVModule_CreateStringPrintf(NULL, "%s%g", prefix, (double)lua_tonumber(lua, idx));
+        KVModule_FreeString(NULL, old_s);
         break;
     }
-    case LUA_TNIL: ValkeyModule_StringAppendBuffer(NULL, s, "nil", 3); break;
+    case LUA_TNIL: KVModule_StringAppendBuffer(NULL, s, "nil", 3); break;
     case LUA_TTABLE: {
         int expected_index = 1; /* First index we expect in an array. */
         int is_array = 1;       /* Will be set to null if check fails. */
         /* Note: we create two representations at the same time, one
          * assuming the table is an array, one assuming it is not. At the
          * end we know what is true and select the right one. */
-        ValkeyModuleString *repr1 = ValkeyModule_CreateString(NULL, "", 0);
-        ValkeyModuleString *repr2 = ValkeyModule_CreateString(NULL, "", 0);
+        KVModuleString *repr1 = KVModule_CreateString(NULL, "", 0);
+        KVModuleString *repr2 = KVModule_CreateString(NULL, "", 0);
         lua_pushnil(lua); /* The first key to start the iteration is nil. */
         while (lua_next(lua, idx - 1)) {
             /* Test if so far the table looks like an array. */
@@ -258,27 +258,27 @@ static ValkeyModuleString *ldbCatStackValueRec(ValkeyModuleString *s, lua_State 
             /* Stack now: table, key, value */
             /* Array repr. */
             repr1 = ldbCatStackValueRec(repr1, lua, -1, level);
-            ValkeyModule_StringAppendBuffer(NULL, repr1, "; ", 2);
+            KVModule_StringAppendBuffer(NULL, repr1, "; ", 2);
             /* Full repr. */
-            ValkeyModule_StringAppendBuffer(NULL, repr2, "[", 1);
+            KVModule_StringAppendBuffer(NULL, repr2, "[", 1);
             repr2 = ldbCatStackValueRec(repr2, lua, -2, level);
-            ValkeyModule_StringAppendBuffer(NULL, repr2, "]=", 2);
+            KVModule_StringAppendBuffer(NULL, repr2, "]=", 2);
             repr2 = ldbCatStackValueRec(repr2, lua, -1, level);
-            ValkeyModule_StringAppendBuffer(NULL, repr2, "; ", 2);
+            KVModule_StringAppendBuffer(NULL, repr2, "; ", 2);
             lua_pop(lua, 1); /* Stack: table, key. Ready for next iteration. */
             expected_index++;
         }
 
         /* Select the right one and discard the other. */
-        ValkeyModule_StringAppendBuffer(NULL, s, "{", 1);
+        KVModule_StringAppendBuffer(NULL, s, "{", 1);
         size_t repr1_len;
-        const char *repr1_str = ValkeyModule_StringPtrLen(repr1, &repr1_len);
+        const char *repr1_str = KVModule_StringPtrLen(repr1, &repr1_len);
         size_t repr2_len;
-        const char *repr2_str = ValkeyModule_StringPtrLen(repr2, &repr2_len);
-        ValkeyModule_StringAppendBuffer(NULL, s, is_array ? repr1_str : repr2_str, is_array ? repr1_len : repr2_len);
-        ValkeyModule_StringAppendBuffer(NULL, s, "}", 1);
-        ValkeyModule_FreeString(NULL, repr1);
-        ValkeyModule_FreeString(NULL, repr2);
+        const char *repr2_str = KVModule_StringPtrLen(repr2, &repr2_len);
+        KVModule_StringAppendBuffer(NULL, s, is_array ? repr1_str : repr2_str, is_array ? repr1_len : repr2_len);
+        KVModule_StringAppendBuffer(NULL, s, "}", 1);
+        KVModule_FreeString(NULL, repr1);
+        KVModule_FreeString(NULL, repr2);
     } break;
     case LUA_TFUNCTION:
     case LUA_TUSERDATA:
@@ -294,14 +294,14 @@ static ValkeyModuleString *ldbCatStackValueRec(ValkeyModuleString *s, lua_State 
             typename = "thread";
         else if (t == LUA_TLIGHTUSERDATA)
             typename = "light-userdata";
-        ValkeyModuleString *old_s = s;
-        const char *prefix = ValkeyModule_StringPtrLen(s, NULL);
-        s = ValkeyModule_CreateStringPrintf(NULL, "%s \"%s@%p\"", prefix, typename, p);
-        ValkeyModule_FreeString(NULL, old_s);
+        KVModuleString *old_s = s;
+        const char *prefix = KVModule_StringPtrLen(s, NULL);
+        s = KVModule_CreateStringPrintf(NULL, "%s \"%s@%p\"", prefix, typename, p);
+        KVModule_FreeString(NULL, old_s);
     } break;
     default: {
         const char *unknown_str = "\"<unknown-lua-type>\"";
-        ValkeyModule_StringAppendBuffer(NULL, s, unknown_str, strlen(unknown_str));
+        KVModule_StringAppendBuffer(NULL, s, unknown_str, strlen(unknown_str));
         break;
     }
     }
@@ -311,7 +311,7 @@ static ValkeyModuleString *ldbCatStackValueRec(ValkeyModuleString *s, lua_State 
 
 /* Higher level wrapper for ldbCatStackValueRec() that just uses an initial
  * recursion level of '0'. */
-ValkeyModuleString *ldbCatStackValue(ValkeyModuleString *s, lua_State *lua, int idx) {
+KVModuleString *ldbCatStackValue(KVModuleString *s, lua_State *lua, int idx) {
     return ldbCatStackValueRec(s, lua, idx, 0);
 }
 
@@ -319,17 +319,17 @@ ValkeyModuleString *ldbCatStackValue(ValkeyModuleString *s, lua_State *lua, int 
  * currently on the top of the stack. The element is neither popped nor modified.
  * Check ldbCatStackValue() for the actual implementation. */
 static void ldbLogStackValue(lua_State *lua, const char *prefix) {
-    ValkeyModuleString *p = ValkeyModule_CreateString(NULL, prefix, strlen(prefix));
-    ValkeyModuleString *s = ldbCatStackValue(p, lua, -1);
-    ValkeyModule_ScriptingEngineDebuggerLog(s, 1);
-    ValkeyModule_FreeString(NULL, s);
+    KVModuleString *p = KVModule_CreateString(NULL, prefix, strlen(prefix));
+    KVModuleString *s = ldbCatStackValue(p, lua, -1);
+    KVModule_ScriptingEngineDebuggerLog(s, 1);
+    KVModule_FreeString(NULL, s);
 }
 
 /* Log a RESP reply as debugger output, in a human readable format.
  * If the resulting string is longer than 'len' plus a few more chars
  * used as prefix, it gets truncated. */
 void ldbLogRespReply(char *reply) {
-    ValkeyModule_ScriptingEngineDebuggerLogRespReplyStr(reply);
+    KVModule_ScriptingEngineDebuggerLogRespReplyStr(reply);
 }
 
 /* Implements the "print <var>" command of the Lua debugger. It scans for Lua
@@ -379,7 +379,7 @@ static void ldbPrintAll(lua_State *lua) {
             if (!strstr(name, "(*temporary)")) {
                 char *prefix = lm_asprintf("<value> %s = ", name);
                 ldbLogStackValue(lua, prefix);
-                ValkeyModule_Free(prefix);
+                KVModule_Free(prefix);
                 vars++;
             }
             lua_pop(lua, 1);
@@ -392,7 +392,7 @@ static void ldbPrintAll(lua_State *lua) {
 }
 
 /* Implements the break command to list, add and remove breakpoints. */
-static void ldbBreak(ValkeyModuleString **argv, int argc) {
+static void ldbBreak(KVModuleString **argv, int argc) {
     if (argc == 1) {
         if (ldb.bpcount == 0) {
             ldbLogCString("No breakpoints set. Use 'b <line>' to add one.");
@@ -400,7 +400,7 @@ static void ldbBreak(ValkeyModuleString **argv, int argc) {
         } else {
             char *msg = lm_asprintf("%i breakpoints set:", ldb.bpcount);
             ldbLogCString(msg);
-            ValkeyModule_Free(msg);
+            KVModule_Free(msg);
             int j;
             for (j = 0; j < ldb.bpcount; j++) ldbLogSourceLine(ldb.bp[j]);
         }
@@ -408,12 +408,12 @@ static void ldbBreak(ValkeyModuleString **argv, int argc) {
         int j;
         for (j = 1; j < argc; j++) {
             long long line;
-            int res = ValkeyModule_StringToLongLong(argv[j], &line);
-            if (res != VALKEYMODULE_OK) {
-                const char *arg = ValkeyModule_StringPtrLen(argv[j], NULL);
+            int res = KVModule_StringToLongLong(argv[j], &line);
+            if (res != KVMODULE_OK) {
+                const char *arg = KVModule_StringPtrLen(argv[j], NULL);
                 char *msg = lm_asprintf("Invalid argument:'%s'", arg);
                 ldbLogCString(msg);
-                ValkeyModule_Free(msg);
+                KVModule_Free(msg);
             } else {
                 if (line == 0) {
                     ldb.bpcount = 0;
@@ -440,25 +440,25 @@ static void ldbBreak(ValkeyModuleString **argv, int argc) {
 /* Implements the Lua debugger "eval" command. It just compiles the user
  * passed fragment of code and executes it, showing the result left on
  * the stack. */
-static void ldbEval(lua_State *lua, ValkeyModuleString **argv, int argc) {
+static void ldbEval(lua_State *lua, KVModuleString **argv, int argc) {
     /* Glue the script together if it is composed of multiple arguments. */
-    ValkeyModuleString *code = ValkeyModule_CreateString(NULL, "", 0);
+    KVModuleString *code = KVModule_CreateString(NULL, "", 0);
     for (int j = 1; j < argc; j++) {
         size_t arglen;
-        const char *arg = ValkeyModule_StringPtrLen(argv[j], &arglen);
-        ValkeyModule_StringAppendBuffer(NULL, code, arg, arglen);
+        const char *arg = KVModule_StringPtrLen(argv[j], &arglen);
+        KVModule_StringAppendBuffer(NULL, code, arg, arglen);
         if (j != argc - 1) {
-            ValkeyModule_StringAppendBuffer(NULL, code, " ", 1);
+            KVModule_StringAppendBuffer(NULL, code, " ", 1);
         }
     }
 
-    ValkeyModuleString *expr = ValkeyModule_CreateStringPrintf(NULL, "return %s", ValkeyModule_StringPtrLen(code, NULL));
+    KVModuleString *expr = KVModule_CreateStringPrintf(NULL, "return %s", KVModule_StringPtrLen(code, NULL));
 
     size_t code_len;
-    const char *code_str = ValkeyModule_StringPtrLen(code, &code_len);
+    const char *code_str = KVModule_StringPtrLen(code, &code_len);
 
     size_t expr_len;
-    const char *expr_str = ValkeyModule_StringPtrLen(expr, &expr_len);
+    const char *expr_str = KVModule_StringPtrLen(expr, &expr_len);
 
     /* Try to compile it as an expression, prepending "return ". */
     if (luaL_loadbuffer(lua, expr_str, expr_len, "@ldb_eval")) {
@@ -467,20 +467,20 @@ static void ldbEval(lua_State *lua, ValkeyModuleString **argv, int argc) {
         if (luaL_loadbuffer(lua, code_str, code_len, "@ldb_eval")) {
             char *err_msg = lm_asprintf("Error compiling code: %s", lua_tostring(lua, -1));
             ldbLogCString(err_msg);
-            ValkeyModule_Free(err_msg);
-            ValkeyModule_FreeString(NULL, code);
-            ValkeyModule_FreeString(NULL, expr);
+            KVModule_Free(err_msg);
+            KVModule_FreeString(NULL, code);
+            KVModule_FreeString(NULL, expr);
             return;
         }
     }
 
     /* Call it. */
-    ValkeyModule_FreeString(NULL, code);
-    ValkeyModule_FreeString(NULL, expr);
+    KVModule_FreeString(NULL, code);
+    KVModule_FreeString(NULL, expr);
     if (lua_pcall(lua, 0, 1, 0)) {
         char *err_msg = lm_asprintf("<error> %s", lua_tostring(lua, -1));
         ldbLogCString(err_msg);
-        ValkeyModule_Free(err_msg);
+        KVModule_Free(err_msg);
         lua_pop(lua, 1);
         return;
     }
@@ -492,7 +492,7 @@ static void ldbEval(lua_State *lua, ValkeyModuleString **argv, int argc) {
  * the implementation very simple: we just call the Lua server.call() command
  * implementation, with ldb.step enabled, so as a side effect the command
  * and its reply are logged. */
-static void ldbServer(lua_State *lua, ValkeyModuleString **argv, int argc) {
+static void ldbServer(lua_State *lua, KVModuleString **argv, int argc) {
     int j;
 
     if (!lua_checkstack(lua, argc + 1)) {
@@ -511,7 +511,7 @@ static void ldbServer(lua_State *lua, ValkeyModuleString **argv, int argc) {
     lua_gettable(lua, -2); /* Stack: server, server.call */
     for (j = 1; j < argc; j++) {
         size_t arg_len;
-        const char *arg = ValkeyModule_StringPtrLen(argv[j], &arg_len);
+        const char *arg = KVModule_StringPtrLen(argv[j], &arg_len);
         lua_pushlstring(lua, arg, arg_len);
     }
     ldb.step = 1;                   /* Force server.call() to log. */
@@ -531,7 +531,7 @@ static void ldbTrace(lua_State *lua) {
         if (strstr(ar.short_src, "user_script") != NULL) {
             char *msg = lm_asprintf("%s %s:", (level == 0) ? "In" : "From", ar.name ? ar.name : "top level");
             ldbLogCString(msg);
-            ValkeyModule_Free(msg);
+            KVModule_Free(msg);
             ldbLogSourceLine(ar.currentline);
         }
         level++;
@@ -544,146 +544,146 @@ static void ldbTrace(lua_State *lua) {
 #define CONTINUE_SCRIPT_EXECUTION 0
 #define CONTINUE_READ_NEXT_COMMAND 1
 
-static int stepCommandHandler(ValkeyModuleString **argv, size_t argc, void *context) {
-    VALKEYMODULE_NOT_USED(argv);
-    VALKEYMODULE_NOT_USED(argc);
-    VALKEYMODULE_NOT_USED(context);
+static int stepCommandHandler(KVModuleString **argv, size_t argc, void *context) {
+    KVMODULE_NOT_USED(argv);
+    KVMODULE_NOT_USED(argc);
+    KVMODULE_NOT_USED(context);
     ldb.step = 1;
     return CONTINUE_SCRIPT_EXECUTION;
 }
 
-static int continueCommandHandler(ValkeyModuleString **argv, size_t argc, void *context) {
-    VALKEYMODULE_NOT_USED(argv);
-    VALKEYMODULE_NOT_USED(argc);
-    VALKEYMODULE_NOT_USED(context);
+static int continueCommandHandler(KVModuleString **argv, size_t argc, void *context) {
+    KVMODULE_NOT_USED(argv);
+    KVMODULE_NOT_USED(argc);
+    KVMODULE_NOT_USED(context);
     return CONTINUE_SCRIPT_EXECUTION;
 }
 
-static int listCommandHandler(ValkeyModuleString **argv, size_t argc, void *context) {
-    VALKEYMODULE_NOT_USED(context);
+static int listCommandHandler(KVModuleString **argv, size_t argc, void *context) {
+    KVMODULE_NOT_USED(context);
     int around = ldb.currentline, ctx = 5;
     if (argc > 1) {
-        int num = atoi(ValkeyModule_StringPtrLen(argv[1], NULL));
+        int num = atoi(KVModule_StringPtrLen(argv[1], NULL));
         if (num > 0) around = num;
     }
-    if (argc > 2) ctx = atoi(ValkeyModule_StringPtrLen(argv[2], NULL));
+    if (argc > 2) ctx = atoi(KVModule_StringPtrLen(argv[2], NULL));
     ldbList(around, ctx);
-    ValkeyModule_ScriptingEngineDebuggerFlushLogs();
+    KVModule_ScriptingEngineDebuggerFlushLogs();
     return CONTINUE_READ_NEXT_COMMAND;
 }
 
-static int wholeCommandHandler(ValkeyModuleString **argv, size_t argc, void *context) {
-    VALKEYMODULE_NOT_USED(argv);
-    VALKEYMODULE_NOT_USED(argc);
-    VALKEYMODULE_NOT_USED(context);
+static int wholeCommandHandler(KVModuleString **argv, size_t argc, void *context) {
+    KVMODULE_NOT_USED(argv);
+    KVMODULE_NOT_USED(argc);
+    KVMODULE_NOT_USED(context);
     ldbList(1, 1000000);
-    ValkeyModule_ScriptingEngineDebuggerFlushLogs();
+    KVModule_ScriptingEngineDebuggerFlushLogs();
     return CONTINUE_READ_NEXT_COMMAND;
 }
 
-static int printCommandHandler(ValkeyModuleString **argv, size_t argc, void *context) {
-    ValkeyModule_Assert(context != NULL);
+static int printCommandHandler(KVModuleString **argv, size_t argc, void *context) {
+    KVModule_Assert(context != NULL);
     lua_State *lua = context;
     if (argc == 2) {
-        ldbPrint(lua, ValkeyModule_StringPtrLen(argv[1], NULL));
+        ldbPrint(lua, KVModule_StringPtrLen(argv[1], NULL));
     } else {
         ldbPrintAll(lua);
     }
-    ValkeyModule_ScriptingEngineDebuggerFlushLogs();
+    KVModule_ScriptingEngineDebuggerFlushLogs();
     return CONTINUE_READ_NEXT_COMMAND;
 }
 
-static int breakCommandHandler(ValkeyModuleString **argv, size_t argc, void *context) {
-    VALKEYMODULE_NOT_USED(context);
+static int breakCommandHandler(KVModuleString **argv, size_t argc, void *context) {
+    KVMODULE_NOT_USED(context);
     ldbBreak(argv, argc);
-    ValkeyModule_ScriptingEngineDebuggerFlushLogs();
+    KVModule_ScriptingEngineDebuggerFlushLogs();
     return CONTINUE_READ_NEXT_COMMAND;
 }
 
-static int traceCommandHandler(ValkeyModuleString **argv, size_t argc, void *context) {
-    VALKEYMODULE_NOT_USED(argv);
-    VALKEYMODULE_NOT_USED(argc);
-    VALKEYMODULE_NOT_USED(context);
+static int traceCommandHandler(KVModuleString **argv, size_t argc, void *context) {
+    KVMODULE_NOT_USED(argv);
+    KVMODULE_NOT_USED(argc);
+    KVMODULE_NOT_USED(context);
     lua_State *lua = context;
     ldbTrace(lua);
-    ValkeyModule_ScriptingEngineDebuggerFlushLogs();
+    KVModule_ScriptingEngineDebuggerFlushLogs();
     return CONTINUE_READ_NEXT_COMMAND;
 }
 
-static int evalCommandHandler(ValkeyModuleString **argv, size_t argc, void *context) {
-    ValkeyModule_Assert(context != NULL);
+static int evalCommandHandler(KVModuleString **argv, size_t argc, void *context) {
+    KVModule_Assert(context != NULL);
     lua_State *lua = context;
     ldbEval(lua, argv, argc);
-    ValkeyModule_ScriptingEngineDebuggerFlushLogs();
+    KVModule_ScriptingEngineDebuggerFlushLogs();
     return CONTINUE_READ_NEXT_COMMAND;
 }
 
-static int valkeyCommandHandler(ValkeyModuleString **argv, size_t argc, void *context) {
-    ValkeyModule_Assert(context != NULL);
+static int kvCommandHandler(KVModuleString **argv, size_t argc, void *context) {
+    KVModule_Assert(context != NULL);
     lua_State *lua = context;
     ldbServer(lua, argv, argc);
-    ValkeyModule_ScriptingEngineDebuggerFlushLogs();
+    KVModule_ScriptingEngineDebuggerFlushLogs();
     return CONTINUE_READ_NEXT_COMMAND;
 }
 
-static int abortCommandHandler(ValkeyModuleString **argv, size_t argc, void *context) {
-    VALKEYMODULE_NOT_USED(argv);
-    VALKEYMODULE_NOT_USED(argc);
-    VALKEYMODULE_NOT_USED(context);
-    ValkeyModule_Assert(context != NULL);
+static int abortCommandHandler(KVModuleString **argv, size_t argc, void *context) {
+    KVMODULE_NOT_USED(argv);
+    KVMODULE_NOT_USED(argc);
+    KVMODULE_NOT_USED(context);
+    KVModule_Assert(context != NULL);
     lua_State *lua = context;
     luaPushError(lua, "script aborted for user request");
     luaError(lua);
     return CONTINUE_READ_NEXT_COMMAND;
 }
 
-static ValkeyModuleScriptingEngineDebuggerCommand *commands_array_cache = NULL;
+static KVModuleScriptingEngineDebuggerCommand *commands_array_cache = NULL;
 static size_t commands_array_len = 0;
 
 void ldbGenerateDebuggerCommandsArray(lua_State *lua,
-                                      const ValkeyModuleScriptingEngineDebuggerCommand **commands,
+                                      const KVModuleScriptingEngineDebuggerCommand **commands,
                                       size_t *commands_len) {
-    static ValkeyModuleScriptingEngineDebuggerCommandParam list_params[] = {
+    static KVModuleScriptingEngineDebuggerCommandParam list_params[] = {
         {.name = "line", .optional = 1},
         {.name = "ctx", .optional = 1},
     };
 
-    static ValkeyModuleScriptingEngineDebuggerCommandParam print_params[] = {
+    static KVModuleScriptingEngineDebuggerCommandParam print_params[] = {
         {.name = "var", .optional = 1},
     };
 
-    static ValkeyModuleScriptingEngineDebuggerCommandParam break_params[] = {
+    static KVModuleScriptingEngineDebuggerCommandParam break_params[] = {
         {.name = "line|-line", .optional = 1},
     };
 
-    static ValkeyModuleScriptingEngineDebuggerCommandParam eval_params[] = {
+    static KVModuleScriptingEngineDebuggerCommandParam eval_params[] = {
         {.name = "code", .optional = 0, .variadic = 1},
     };
 
-    static ValkeyModuleScriptingEngineDebuggerCommandParam valkey_params[] = {
+    static KVModuleScriptingEngineDebuggerCommandParam kv_params[] = {
         {.name = "cmd", .optional = 0, .variadic = 1},
     };
 
     if (commands_array_cache == NULL) {
-        ValkeyModuleScriptingEngineDebuggerCommand commands_array[] = {
-            VALKEYMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("step", 1, NULL, 0, "Run current line and stop again.", 0, stepCommandHandler),
-            VALKEYMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("next", 1, NULL, 0, "Alias for step.", 0, stepCommandHandler),
-            VALKEYMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("continue", 1, NULL, 0, "Run till next breakpoint.", 0, continueCommandHandler),
-            VALKEYMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("list", 1, list_params, 2, "List source code around a specific line. If no line is specified the list is printed around the current line. [ctx] specifies how many lines to show before/after [line].", 0, listCommandHandler),
-            VALKEYMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("whole", 1, NULL, 0, "List all source code. Alias for 'list 1 1000000'.", 0, wholeCommandHandler),
-            VALKEYMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND_WITH_CTX("print", 1, print_params, 1, "Show the value of the specified variable [var]. Can also show global vars KEYS and ARGV. If no [var] is specidied, shows the value of all local variables.", 0, printCommandHandler, lua),
-            VALKEYMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("break", 1, break_params, 1, "Add/Remove a breakpoint to the specified line. If no [line] is specified, it shows all breakpoints. When line = 0, it removes all breakpoints.", 0, breakCommandHandler),
-            VALKEYMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND_WITH_CTX("trace", 1, NULL, 0, "Show a backtrace.", 0, traceCommandHandler, lua),
-            VALKEYMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND_WITH_CTX("eval", 1, eval_params, 1, "Execute some Lua code (in a different callframe).", 0, evalCommandHandler, lua),
-            VALKEYMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND_WITH_CTX("valkey", 1, valkey_params, 1, "Execute a command.", 0, valkeyCommandHandler, lua),
-            VALKEYMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND_WITH_CTX("redis", 1, valkey_params, 1, NULL, 1, valkeyCommandHandler, lua),
-            VALKEYMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND_WITH_CTX(SERVER_API_NAME, 0, valkey_params, 1, NULL, 1, valkeyCommandHandler, lua),
-            VALKEYMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND_WITH_CTX("abort", 1, NULL, 0, "Stop the execution of the script. In sync mode dataset changes will be retained.", 0, abortCommandHandler, lua),
+        KVModuleScriptingEngineDebuggerCommand commands_array[] = {
+            KVMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("step", 1, NULL, 0, "Run current line and stop again.", 0, stepCommandHandler),
+            KVMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("next", 1, NULL, 0, "Alias for step.", 0, stepCommandHandler),
+            KVMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("continue", 1, NULL, 0, "Run till next breakpoint.", 0, continueCommandHandler),
+            KVMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("list", 1, list_params, 2, "List source code around a specific line. If no line is specified the list is printed around the current line. [ctx] specifies how many lines to show before/after [line].", 0, listCommandHandler),
+            KVMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("whole", 1, NULL, 0, "List all source code. Alias for 'list 1 1000000'.", 0, wholeCommandHandler),
+            KVMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND_WITH_CTX("print", 1, print_params, 1, "Show the value of the specified variable [var]. Can also show global vars KEYS and ARGV. If no [var] is specidied, shows the value of all local variables.", 0, printCommandHandler, lua),
+            KVMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("break", 1, break_params, 1, "Add/Remove a breakpoint to the specified line. If no [line] is specified, it shows all breakpoints. When line = 0, it removes all breakpoints.", 0, breakCommandHandler),
+            KVMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND_WITH_CTX("trace", 1, NULL, 0, "Show a backtrace.", 0, traceCommandHandler, lua),
+            KVMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND_WITH_CTX("eval", 1, eval_params, 1, "Execute some Lua code (in a different callframe).", 0, evalCommandHandler, lua),
+            KVMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND_WITH_CTX("kv", 1, kv_params, 1, "Execute a command.", 0, kvCommandHandler, lua),
+            KVMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND_WITH_CTX("redis", 1, kv_params, 1, NULL, 1, kvCommandHandler, lua),
+            KVMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND_WITH_CTX(SERVER_API_NAME, 0, kv_params, 1, NULL, 1, kvCommandHandler, lua),
+            KVMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND_WITH_CTX("abort", 1, NULL, 0, "Stop the execution of the script. In sync mode dataset changes will be retained.", 0, abortCommandHandler, lua),
         };
 
-        commands_array_len = sizeof(commands_array) / sizeof(ValkeyModuleScriptingEngineDebuggerCommand);
+        commands_array_len = sizeof(commands_array) / sizeof(KVModuleScriptingEngineDebuggerCommand);
 
-        commands_array_cache = ValkeyModule_Calloc(commands_array_len, sizeof(ValkeyModuleScriptingEngineDebuggerCommand));
+        commands_array_cache = KVModule_Calloc(commands_array_len, sizeof(KVModuleScriptingEngineDebuggerCommand));
         memcpy(commands_array_cache, &commands_array, sizeof(commands_array));
     }
 
@@ -696,14 +696,14 @@ void ldbGenerateDebuggerCommandsArray(lua_State *lua,
  * C_ERR if the client closed the connection or is timing out. */
 int ldbRepl(lua_State *lua) {
     int client_disconnected = 0;
-    ValkeyModuleString *err = NULL;
+    KVModuleString *err = NULL;
 
-    ValkeyModule_ScriptingEngineDebuggerProcessCommands(&client_disconnected, &err);
+    KVModule_ScriptingEngineDebuggerProcessCommands(&client_disconnected, &err);
 
     if (err) {
-        const char *err_msg = ValkeyModule_StringPtrLen(err, NULL);
+        const char *err_msg = KVModule_StringPtrLen(err, NULL);
         luaPushError(lua, err_msg);
-        ValkeyModule_Free(err);
+        KVModule_Free(err);
         luaError(lua);
     } else if (client_disconnected) {
         /* Make sure the script runs without user input since the

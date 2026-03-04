@@ -56,7 +56,7 @@ foreach how {sigterm shutdown} {
                         exec kill -SIGTERM $master_pid
                     }
                     shutdown {
-                        set rd [valkey_deferring_client -1]
+                        set rd [kv_deferring_client -1]
                         $rd shutdown
                     }
                 }
@@ -152,8 +152,8 @@ test "Shutting down master waits for replica then fails" {
             $master incr k
 
             # Two clients call blocking SHUTDOWN in parallel.
-            set rd1 [valkey_deferring_client -1]
-            set rd2 [valkey_deferring_client -1]
+            set rd1 [kv_deferring_client -1]
+            set rd2 [kv_deferring_client -1]
             $rd1 shutdown
             $rd2 shutdown
             wait_for_condition 50 100 {
@@ -211,8 +211,8 @@ test "Shutting down master waits for replica then aborted" {
             $master incr k
 
             # Two clients call blocking SHUTDOWN in parallel.
-            set rd1 [valkey_deferring_client -1]
-            set rd2 [valkey_deferring_client -1]
+            set rd1 [kv_deferring_client -1]
+            set rd2 [kv_deferring_client -1]
             $rd1 shutdown
             $rd2 shutdown
             wait_for_condition 50 100 {
@@ -249,7 +249,7 @@ test "Shutting down primary wait for replica after previous block" {
     start_server {overrides {save "" repl-backlog-size 1MB}} {
         start_server {overrides {save "" repl-backlog-size 1MB}} {
             set primary [srv -1 client]
-            set primary_deferring [valkey_deferring_client -1]
+            set primary_deferring [kv_deferring_client -1]
             set primary_host [srv -1 host]
             set primary_port [srv -1 port]
             set primary_pid [srv -1 pid]

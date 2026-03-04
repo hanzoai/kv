@@ -1,8 +1,8 @@
 start_server {tags {"introspection"}} {
     test "PING" {
         assert_equal {PONG} [r ping]
-        assert_equal {valkey} [r ping valkey]
-        assert_error {*wrong number of arguments for 'ping' command} {r ping hello valkey}
+        assert_equal {kv} [r ping kv]
+        assert_error {*wrong number of arguments for 'ping' command} {r ping hello kv}
     }
 
     test {CLIENT LIST} {
@@ -83,9 +83,9 @@ start_server {tags {"introspection"}} {
 
     test {CLIENT LIST with multiple IDs and TYPE filter} {
         # Create multiple clients
-        set c1 [valkey_client]
-        set c2 [valkey_client]
-        set c3 [valkey_client]
+        set c1 [kv_client]
+        set c2 [kv_client]
+        set c3 [kv_client]
 
         # Fetch their IDs
         set id1 [$c1 client id]
@@ -110,8 +110,8 @@ start_server {tags {"introspection"}} {
 
     test {CLIENT LIST with filters matching no clients} {
         # Create multiple clients
-        set c1 [valkey_client]
-        set c2 [valkey_client]
+        set c1 [kv_client]
+        set c2 [kv_client]
 
         # Use a filter that doesn't match any client (e.g., invalid user)
         assert_error "ERR No such user 'invalid_user'" {r client list user invalid_user}
@@ -183,9 +183,9 @@ start_server {tags {"introspection"}} {
 
     test {CLIENT LIST with multiple filters} {
         # Create multiple clients with different names and flags
-        set c1 [valkey_client]
-        set c2 [valkey_client]
-        set c3 [valkey_client]
+        set c1 [kv_client]
+        set c2 [kv_client]
+        set c3 [kv_client]
         $c1 client setname client1
         $c2 client setname client1
         $c3 client setname client2
@@ -227,7 +227,7 @@ start_server {tags {"introspection"}} {
 
     start_server {tags {"ipv6"} overrides {bind {127.0.0.1 ::1}}} {
         test {CLIENT LIST with IPv6 filter} {
-            set c [valkey ::1 [srv 0 port] 0 $::tls]
+            set c [kv ::1 [srv 0 port] 0 $::tls]
             $c client setname "client-ipv6"
 
             set client_info [$c client info]
@@ -241,7 +241,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT LIST with CAPA filter} {
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 client setname "client-with-r"
         $c1 client capa redirect
 
@@ -251,7 +251,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT KILL with IP filter} {
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 client setname "killme-ip"
         r client setname "client-normal"
 
@@ -266,7 +266,7 @@ start_server {tags {"introspection"}} {
 
     start_server {tags {"ipv6"} overrides {bind {127.0.0.1 ::1}}} {
         test {CLIENT KILL with IPv6 filter} {
-            set c [valkey ::1 [srv 0 port] 0 $::tls]
+            set c [kv ::1 [srv 0 port] 0 $::tls]
             $c client setname "client-ipv6"
 
             set client_info [$c client info]
@@ -281,7 +281,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT KILL with CAPA filter} {
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 client setname "killme-capa"
         $c1 client capa redirect
 
@@ -293,7 +293,7 @@ start_server {tags {"introspection"}} {
 
     test {CLIENT KILL with NAME filter} {
         # Create a client and set its name
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 client setname mytestclient
 
         # Kill the client by name - last filter value takes precedence
@@ -308,7 +308,7 @@ start_server {tags {"introspection"}} {
 
     test {CLIENT KILL with FLAGS filter} {
         # Create a client and set its name
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 client setname mytestclient
 
         # Kill the client by flag - last filter value takes precedence
@@ -323,7 +323,7 @@ start_server {tags {"introspection"}} {
 
     test {CLIENT KILL with TYPE filter} {
         # Create a client
-        set c1 [valkey_client]
+        set c1 [kv_client]
 
         # Kill the client by type
         r client kill type replica type normal
@@ -337,8 +337,8 @@ start_server {tags {"introspection"}} {
 
     test {CLIENT KILL with multiple filters} {
         # Create two clients
-        set c1 [valkey_client]
-        set c2 [valkey_client]
+        set c1 [kv_client]
+        set c2 [kv_client]
         $c1 client setname client1
         $c2 client setname client2
 
@@ -359,8 +359,8 @@ start_server {tags {"introspection"}} {
 
     test {CLIENT KILL with multiple filters including idle time} {
         # Create two clients
-        set c1 [valkey_client]
-        set c2 [valkey_client]
+        set c1 [kv_client]
+        set c2 [kv_client]
         $c1 client setname client1
         $c2 client setname client2
 
@@ -385,7 +385,7 @@ start_server {tags {"introspection"}} {
     # Test CLIENT LIST with NOT-NAME filter
     test {CLIENT LIST with NOT-NAME filter} {
         r client setname mytestclient
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 client setname client1
         set cl [r client list not-name mytestclient not-name mytestclient]
         assert_match "*name=client1*" $cl
@@ -395,7 +395,7 @@ start_server {tags {"introspection"}} {
 
     # Test CLIENT LIST with NOT-FLAGS filter
     test {CLIENT LIST with NOT-FLAGS filter} {
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 readonly
         set cl [r client list not-flags r not-flags N]
         assert_match "*flags=r*" $cl
@@ -406,7 +406,7 @@ start_server {tags {"introspection"}} {
     # Test CLIENT LIST with NOT-TYPE filter
     test {CLIENT LIST with NOT-TYPE filter} {
         r client setname mytestclient
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 client setname client1
         $c1 subscribe x
         set cl [r client list not-type pubsub not-type normal]
@@ -426,7 +426,7 @@ start_server {tags {"introspection"}} {
             if {$key eq "name"} { set myname $val }
         }
 
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 client setname client1
 
         set cl [r client list not-id $myid not-name $myname]
@@ -438,9 +438,9 @@ start_server {tags {"introspection"}} {
 
     test {CLIENT LIST with multiple id filters} {
         # Create multiple clients
-        set c1 [valkey_client]
-        set c2 [valkey_client]
-        set c3 [valkey_client]
+        set c1 [kv_client]
+        set c2 [kv_client]
+        set c3 [kv_client]
 
         # Fetch their IDs
         set id1 [$c1 client id]
@@ -459,9 +459,9 @@ start_server {tags {"introspection"}} {
 
     test {CLIENT KILL with multiple id filters} {
         # Create multiple clients
-        set c1 [valkey_client]
-        set c2 [valkey_client]
-        set c3 [valkey_client]
+        set c1 [kv_client]
+        set c2 [kv_client]
+        set c3 [kv_client]
 
         # Fetch their IDs
         set id1 [$c1 client id]
@@ -473,9 +473,9 @@ start_server {tags {"introspection"}} {
 
     test {CLIENT LIST with multiple negative filters} {
         # Create multiple clients with different names and flags
-        set c1 [valkey_client]
-        set c2 [valkey_client]
-        set c3 [valkey_client]
+        set c1 [kv_client]
+        set c2 [kv_client]
+        set c3 [kv_client]
         $c1 client setname client1
         $c2 client setname client1
         $c3 client setname client2
@@ -512,7 +512,7 @@ start_server {tags {"introspection"}} {
 
     start_server {tags {"ipv6"} overrides {bind {127.0.0.1 ::1}}} {
         test {CLIENT LIST with IPv6 negative filter} {
-            set c [valkey ::1 [srv 0 port] 0 $::tls]
+            set c [kv ::1 [srv 0 port] 0 $::tls]
             $c client setname "client-ipv6"
 
             set client_info [$c client info]
@@ -527,7 +527,7 @@ start_server {tags {"introspection"}} {
 
     test {CLIENT LIST with NOT-CAPA filter} {
         r client setname mytestclient
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 client setname client-with-r
         $c1 client capa redirect
         set cl [r client list not-capa r not-capa r]
@@ -537,7 +537,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT KILL with NOT-IP filter} {
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 client setname "killme-not-ip"
         r client setname "client-normal"
 
@@ -553,7 +553,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT KILL with NOT-CAPA filter} {
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 client setname "killme-not-capa"
         r client setname "client-normal"
 
@@ -571,7 +571,7 @@ start_server {tags {"introspection"}} {
     test {CLIENT KILL with NOT-NAME filter} {
         r client setname "client-normal"
         # Create a client and set its name
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 client setname "killme-not-name"
 
         # Kill the client by not-name
@@ -589,7 +589,7 @@ start_server {tags {"introspection"}} {
     test {CLIENT KILL with NOT-FLAGS filter} {
         r client setname "client-normal"
         # Create a client and set its name
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 client setname "killme-not-flags"
         $c1 readonly
 
@@ -608,7 +608,7 @@ start_server {tags {"introspection"}} {
     test {CLIENT KILL with NOT-TYPE filter} {
         r client setname "client-normal"
         # Create a client
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 client setname "killme-not-type"
         $c1 subscribe x
 
@@ -626,8 +626,8 @@ start_server {tags {"introspection"}} {
 
     test {CLIENT KILL with multiple negative filters} {
         # Create two clients
-        set c1 [valkey_client]
-        set c2 [valkey_client]
+        set c1 [kv_client]
+        set c2 [kv_client]
         $c1 client setname client1
         $c2 client setname client2
 
@@ -648,8 +648,8 @@ start_server {tags {"introspection"}} {
 
     test {CLIENT KILL with both positive and negative filters including idle time} {
         # Create two clients
-        set c1 [valkey_client]
-        set c2 [valkey_client]
+        set c1 [kv_client]
+        set c2 [kv_client]
         $c1 client setname client1
         $c2 client setname client2
 
@@ -721,7 +721,7 @@ start_server {tags {"introspection"}} {
         assert_equal [expr $cmd1+1] $cmd2
         # test blocking command
         r del mylist
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd client id
         set rd_id [$rd read]
         set info_list [r client list]
@@ -787,9 +787,9 @@ start_server {tags {"introspection"}} {
         # 3 retries of increasing sleep_time, i.e. start with 2s, then go 4s, 8s.
         set sleep_time 2
         for {set i 0} {$i < 3} {incr i} {
-            set rd1 [valkey_deferring_client]
+            set rd1 [kv_deferring_client]
             r debug sleep $sleep_time
-            set rd2 [valkey_deferring_client]
+            set rd2 [kv_deferring_client]
             r acl setuser dummy on nopass +ping
             $rd1 auth dummy ""
             $rd1 read
@@ -823,16 +823,16 @@ start_server {tags {"introspection"}} {
 
     test {CLIENT KILL SKIPME YES/NO will kill all clients} {
         # Kill all clients except `me`
-        set rd1 [valkey_deferring_client]
-        set rd2 [valkey_deferring_client]
+        set rd1 [kv_deferring_client]
+        set rd2 [kv_deferring_client]
         set connected_clients [s connected_clients]
         assert {$connected_clients >= 3}
         set res [r client kill skipme yes]
         assert {$res == $connected_clients - 1}
 
         # Kill all clients, including `me`
-        set rd3 [valkey_deferring_client]
-        set rd4 [valkey_deferring_client]
+        set rd3 [kv_deferring_client]
+        set rd4 [kv_deferring_client]
         set connected_clients [s connected_clients]
         assert {$connected_clients == 3}
         set res [r client kill skipme no]
@@ -905,7 +905,7 @@ start_server {tags {"introspection"}} {
     } {} {needs:save}
 
     test "CLIENT REPLY OFF/ON: disable all commands reply" {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
 
         # These replies were silenced.
         $rd client reply off
@@ -921,7 +921,7 @@ start_server {tags {"introspection"}} {
     }
 
     test "CLIENT REPLY SKIP: skip the next command reply" {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
 
         # The first pong reply was silenced.
         $rd client reply skip
@@ -934,7 +934,7 @@ start_server {tags {"introspection"}} {
     }
 
     test "CLIENT REPLY ON: unset SKIP flag" {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
 
         $rd client reply skip
         $rd client reply on
@@ -947,7 +947,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {MONITOR can log executed commands} {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd monitor
         assert_match {*OK*} [$rd read]
         r set foo bar
@@ -958,7 +958,7 @@ start_server {tags {"introspection"}} {
     } {*"set" "foo"*"get" "foo"*}
 
     test {MONITOR properly escapes special characters through sdscatrepr} {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd monitor
         assert_match {*OK*} [$rd read]
         r echo "backslash\\quotes\"newline\ncarriagereturn\rtab\talert\abackspace\bhexnormal\x7Ahexspecial\x7F"
@@ -967,7 +967,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {MONITOR can log commands issued by the scripting engine} {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd monitor
         $rd read ;# Discard the OK
         r eval {redis.call('set',KEYS[1],ARGV[1])} 1 foo bar
@@ -980,7 +980,7 @@ start_server {tags {"introspection"}} {
         r function load replace {#!lua name=test
             server.register_function('test', function() return redis.call('set', 'foo', 'bar') end)
         }
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd monitor
         $rd read ;# Discard the OK
         r fcall test 0
@@ -990,7 +990,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {MONITOR supports redacting command arguments} {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd monitor
         $rd read ; # Discard the OK
 
@@ -1019,7 +1019,7 @@ start_server {tags {"introspection"}} {
     } {0} {needs:repl}
 
     test {MONITOR correctly handles multi-exec cases} {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd monitor
         $rd read ; # Discard the OK
 
@@ -1049,7 +1049,7 @@ start_server {tags {"introspection"}} {
     # still shows the original command.
     test {MONITOR correctly records SET EX in MULTI-EXEC} {
         # Start monitoring client
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd monitor
         $rd read ; # Discard the OK
     
@@ -1073,8 +1073,8 @@ start_server {tags {"introspection"}} {
         # need to reconnect in order to reset the clients state
         reconnect
 
-        set rd [valkey_deferring_client]
-        set bc [valkey_deferring_client]
+        set rd [kv_deferring_client]
+        set bc [kv_deferring_client]
         r del mylist
 
         $rd monitor
@@ -1146,7 +1146,7 @@ start_server {tags {"introspection"}} {
     } {*name=someothername*}
 
     test {After CLIENT SETNAME, connection can still be closed} {
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd client setname foobar
         assert_equal [$rd read] "OK"
         assert_match {*foobar*} [r client list]
@@ -1167,7 +1167,7 @@ start_server {tags {"introspection"}} {
 
     test {CLIENT SETINFO invalid args} {
         assert_error {*wrong number of arguments*} {r CLIENT SETINFO lib-name}
-        assert_error {*cannot contain spaces*} {r CLIENT SETINFO lib-name "valkey py"}
+        assert_error {*cannot contain spaces*} {r CLIENT SETINFO lib-name "kv py"}
         assert_error {*newlines*} {r CLIENT SETINFO lib-name "redis.py\n"}
         assert_error {*Unrecognized*} {r CLIENT SETINFO badger hamster}
         # test that all of these didn't affect the previously set values
@@ -1468,7 +1468,7 @@ start_server {tags {"introspection"}} {
         }
 
         # Make sure we can still communicate with the server (on the original port)
-        set r1 [valkey_client]
+        set r1 [kv_client]
         assert_equal [$r1 ping] "PONG"
         $r1 close
     }
@@ -1507,46 +1507,46 @@ start_server {tags {"introspection"}} {
         assert {[dict exists $res bind]}
     }
 
-    test {valkey-server command line arguments - error cases} {
+    test {kv-server command line arguments - error cases} {
         # Take '--invalid' as the option.
-        catch {exec $::VALKEY_SERVER_BIN --invalid} err
+        catch {exec $::KV_SERVER_BIN --invalid} err
         assert_match {*Bad directive or wrong number of arguments*} $err
 
-        catch {exec $::VALKEY_SERVER_BIN --port} err
+        catch {exec $::KV_SERVER_BIN --port} err
         assert_match {*'port'*wrong number of arguments*} $err
 
-        catch {exec $::VALKEY_SERVER_BIN --port 6380 --loglevel} err
+        catch {exec $::KV_SERVER_BIN --port 6380 --loglevel} err
         assert_match {*'loglevel'*wrong number of arguments*} $err
 
         # Take `6379` and `6380` as the port option value.
-        catch {exec $::VALKEY_SERVER_BIN --port 6379 6380} err
+        catch {exec $::KV_SERVER_BIN --port 6379 6380} err
         assert_match {*'port "6379" "6380"'*wrong number of arguments*} $err
 
         # Take `--loglevel` and `verbose` as the port option value.
-        catch {exec $::VALKEY_SERVER_BIN --port --loglevel verbose} err
+        catch {exec $::KV_SERVER_BIN --port --loglevel verbose} err
         assert_match {*'port "--loglevel" "verbose"'*wrong number of arguments*} $err
 
         # Take `--bla` as the port option value.
-        catch {exec $::VALKEY_SERVER_BIN --port --bla --loglevel verbose} err
+        catch {exec $::KV_SERVER_BIN --port --bla --loglevel verbose} err
         assert_match {*'port "--bla"'*argument couldn't be parsed into an integer*} $err
 
         # Take `--bla` as the loglevel option value.
-        catch {exec $::VALKEY_SERVER_BIN --logfile --my--log--file --loglevel --bla} err
+        catch {exec $::KV_SERVER_BIN --logfile --my--log--file --loglevel --bla} err
         assert_match {*'loglevel "--bla"'*argument(s) must be one of the following*} $err
 
         # Using MULTI_ARG's own check, empty option value
-        catch {exec $::VALKEY_SERVER_BIN --shutdown-on-sigint} err
+        catch {exec $::KV_SERVER_BIN --shutdown-on-sigint} err
         assert_match {*'shutdown-on-sigint'*argument(s) must be one of the following*} $err
-        catch {exec $::VALKEY_SERVER_BIN --shutdown-on-sigint "now force" --shutdown-on-sigterm} err
+        catch {exec $::KV_SERVER_BIN --shutdown-on-sigint "now force" --shutdown-on-sigterm} err
         assert_match {*'shutdown-on-sigterm'*argument(s) must be one of the following*} $err
 
-        # Something like `valkey-server --some-config --config-value1 --config-value2 --loglevel debug` would break,
+        # Something like `kv-server --some-config --config-value1 --config-value2 --loglevel debug` would break,
         # because if you want to pass a value to a config starting with `--`, it can only be a single value.
-        catch {exec $::VALKEY_SERVER_BIN --replicaof 127.0.0.1 abc} err
+        catch {exec $::KV_SERVER_BIN --replicaof 127.0.0.1 abc} err
         assert_match {*'replicaof "127.0.0.1" "abc"'*Invalid primary port*} $err
-        catch {exec $::VALKEY_SERVER_BIN --replicaof --127.0.0.1 abc} err
+        catch {exec $::KV_SERVER_BIN --replicaof --127.0.0.1 abc} err
         assert_match {*'replicaof "--127.0.0.1" "abc"'*Invalid primary port*} $err
-        catch {exec $::VALKEY_SERVER_BIN --replicaof --127.0.0.1 --abc} err
+        catch {exec $::KV_SERVER_BIN --replicaof --127.0.0.1 --abc} err
         assert_match {*'replicaof "--127.0.0.1"'*wrong number of arguments*} $err
     } {} {external:skip}
 
@@ -1603,7 +1603,7 @@ start_server {tags {"introspection"}} {
 
 
     test {CLIENT LIST can filter by LIB-NAME} {
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 client setinfo lib-name test-lib
         r CLIENT SETINFO lib-name mylib
         set result [r client list lib-name test-lib lib-name mylib]
@@ -1613,7 +1613,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT LIST can filter by LIB-VER} {
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 client setinfo lib-ver 3.2.1
         r CLIENT SETINFO lib-ver 1.2.3
         set result [r client list lib-ver 3.2.1 lib-ver 1.2.3]
@@ -1623,7 +1623,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT LIST can filter by DB number} {
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 select 0
         r select 2
         set result [r client list db 0 db 2]
@@ -1633,7 +1633,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT KILL can filter by DB} {
-        set c1 [valkey_client]
+        set c1 [kv_client]
 
         $c1 select 2
         r select 0
@@ -1649,8 +1649,8 @@ start_server {tags {"introspection"}} {
     test {CLIENT KILL can filter by LIB-NAME} {
         r client setinfo lib-name ""
         r client setinfo lib-ver ""
-        set c1 [valkey_client]
-        set c2 [valkey_client]
+        set c1 [kv_client]
+        set c2 [kv_client]
 
         $c1 client setinfo lib-name mylib
         $c2 client setinfo lib-name test
@@ -1663,8 +1663,8 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT KILL can filter by LIB-VER} {
-        set c1 [valkey_client]
-        set c2 [valkey_client]
+        set c1 [kv_client]
+        set c2 [kv_client]
 
         $c1 client setinfo lib-ver 1.2.3
         $c2 client setinfo lib-ver 3.2.1
@@ -1678,7 +1678,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT LIST can filter by NOT-LIB-NAME} {
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 CLIENT SETINFO lib-name testlib
         r CLIENT SETINFO lib-name mylib
         set result [r client list not-lib-name testlib not-lib-name mylib]
@@ -1688,7 +1688,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT LIST can filter by NOT-LIB-VER} {
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 CLIENT SETINFO lib-ver 3.2.1
         r CLIENT SETINFO lib-ver 1.2.3
         set result [r client list not-lib-ver 3.2.1 not-lib-ver 1.2.3]
@@ -1698,7 +1698,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT LIST can filter by NOT-DB number} {
-        set c1 [valkey_client]
+        set c1 [kv_client]
         $c1 select 0
         r select 2
         set result [r client list not-db 0 not-db 2]
@@ -1708,7 +1708,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT KILL can filter by NOT-DB} {
-        set c1 [valkey_client]
+        set c1 [kv_client]
 
         $c1 select 2
         r select 0
@@ -1721,8 +1721,8 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT KILL can filter by NOT-LIB-NAME} {
-        set c1 [valkey_client]
-        set c2 [valkey_client]
+        set c1 [kv_client]
+        set c2 [kv_client]
 
         $c1 client setinfo lib-name mylib
         $c2 client setinfo lib-name not-mylib
@@ -1737,8 +1737,8 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT KILL can filter by NOT-LIB-VER} {
-        set c1 [valkey_client]
-        set c2 [valkey_client]
+        set c1 [kv_client]
+        set c2 [kv_client]
 
         $c1 client setinfo lib-ver 1.2.3
         $c2 client kill not-lib-ver 1.2.3 not-lib-ver 0.0.0
@@ -1749,14 +1749,14 @@ start_server {tags {"introspection"}} {
         catch {$c2 close}
     }
 
-    test {valkey-server command line arguments - allow passing option name and option value in the same arg} {
+    test {kv-server command line arguments - allow passing option name and option value in the same arg} {
         start_server {config "default.conf" args {"--maxmemory 700mb" "--maxmemory-policy volatile-lru"}} {
             assert_match [r config get maxmemory] {maxmemory 734003200}
             assert_match [r config get maxmemory-policy] {maxmemory-policy volatile-lru}
         }
     } {} {external:skip}
 
-    test {valkey-server command line arguments - wrong usage that we support anyway} {
+    test {kv-server command line arguments - wrong usage that we support anyway} {
         start_server {config "default.conf" args {loglevel verbose "--maxmemory '700mb'" "--maxmemory-policy 'volatile-lru'"}} {
             assert_match [r config get loglevel] {loglevel verbose}
             assert_match [r config get maxmemory] {maxmemory 734003200}
@@ -1764,21 +1764,21 @@ start_server {tags {"introspection"}} {
         }
     } {} {external:skip}
 
-    test {valkey-server command line arguments - allow option value to use the `--` prefix} {
+    test {kv-server command line arguments - allow option value to use the `--` prefix} {
         start_server {config "default.conf" args {--proc-title-template --my--title--template --loglevel verbose}} {
             assert_match [r config get proc-title-template] {proc-title-template --my--title--template}
             assert_match [r config get loglevel] {loglevel verbose}
         }
     } {} {external:skip}
 
-    test {valkey-server command line arguments - option name and option value in the same arg and `--` prefix} {
+    test {kv-server command line arguments - option name and option value in the same arg and `--` prefix} {
         start_server {config "default.conf" args {"--proc-title-template --my--title--template" "--loglevel verbose"}} {
             assert_match [r config get proc-title-template] {proc-title-template --my--title--template}
             assert_match [r config get loglevel] {loglevel verbose}
         }
     } {} {external:skip}
 
-    test {valkey-server command line arguments - save with empty input} {
+    test {kv-server command line arguments - save with empty input} {
         start_server {config "default.conf" args {--save --loglevel verbose}} {
             assert_match [r config get save] {save {}}
             assert_match [r config get loglevel] {loglevel verbose}
@@ -1807,14 +1807,14 @@ start_server {tags {"introspection"}} {
 
     } {} {external:skip}
 
-    test {valkey-server command line arguments - take one bulk string with spaces for MULTI_ARG configs parsing} {
+    test {kv-server command line arguments - take one bulk string with spaces for MULTI_ARG configs parsing} {
         start_server {config "default.conf" args {--shutdown-on-sigint nosave force now --shutdown-on-sigterm "nosave force"}} {
             assert_match [r config get shutdown-on-sigint] {shutdown-on-sigint {nosave now force}}
             assert_match [r config get shutdown-on-sigterm] {shutdown-on-sigterm {nosave force}}
         }
     } {} {external:skip}
 
-    test {valkey-server command line arguments - dir multiple times} {
+    test {kv-server command line arguments - dir multiple times} {
         start_server {config "default.conf" args {--dir "./" --dir "./"}} {
             r config get dir
             assert_equal {PONG} [r ping]
@@ -1900,7 +1900,7 @@ test {MEMORY commands during loading} {
         # of RDB. We're sending all our commands deferred, so they have a
         # chance to be processed all at once between loading two keys.
 
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
 
         # Allowed during loading
         $rd memory help

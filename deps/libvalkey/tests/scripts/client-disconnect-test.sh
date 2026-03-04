@@ -13,8 +13,8 @@ testname=client-disconnect-test
 perl -we 'use sigtrap "handler", sub{exit}, "CONT"; sleep 1; die "timeout"' &
 syncpid1=$!;
 
-# Start simulated valkey node
-timeout 5s ./simulated-valkey.pl -p 7401 -d --sigcont $syncpid1 <<'EOF' &
+# Start simulated kv node
+timeout 5s ./simulated-kv.pl -p 7401 -d --sigcont $syncpid1 <<'EOF' &
 EXPECT CONNECT
 EXPECT ["CLUSTER", "SLOTS"]
 SEND [[0, 16383, ["127.0.0.1", 7401, "nodeid1"]]]

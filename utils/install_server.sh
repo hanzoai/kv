@@ -34,10 +34,10 @@
 # Example:
 #
 # sudo SERVER_PORT=1234 \
-# 		 SERVER_CONFIG_FILE=/etc/valkey/1234.conf \
-# 		 SERVER_LOG_FILE=/var/log/valkey_1234.log \
-# 		 SERVER_DATA_DIR=/var/lib/valkey/1234 \
-# 		 SERVER_EXECUTABLE=`command -v valkey-server` ./utils/install_server.sh
+# 		 SERVER_CONFIG_FILE=/etc/kv/1234.conf \
+# 		 SERVER_LOG_FILE=/var/log/kv_1234.log \
+# 		 SERVER_DATA_DIR=/var/lib/kv/1234 \
+# 		 SERVER_EXECUTABLE=`command -v kv-server` ./utils/install_server.sh
 #
 # This generates a server config file and an /etc/init.d script, and installs them.
 #
@@ -63,8 +63,8 @@ SCRIPTPATH=$(dirname $SCRIPT)
 _SERVER_PORT=6379
 _MANUAL_EXECUTION=false
 
-echo "Welcome to the valkey service installer"
-echo "This script will help you easily set up a running valkey server"
+echo "Welcome to the kv service installer"
+echo "This script will help you easily set up a running kv server"
 echo
 
 #check for root user
@@ -96,8 +96,8 @@ fi
 if [ -z "$SERVER_CONFIG_FILE" ] ; then
 	_MANUAL_EXECUTION=true
 	#read the server config file
-	_SERVER_CONFIG_FILE="/etc/valkey/$SERVER_PORT.conf"
-	read -p "Please select the valkey config file name [$_SERVER_CONFIG_FILE] " SERVER_CONFIG_FILE
+	_SERVER_CONFIG_FILE="/etc/kv/$SERVER_PORT.conf"
+	read -p "Please select the kv config file name [$_SERVER_CONFIG_FILE] " SERVER_CONFIG_FILE
 	if [ -z "$SERVER_CONFIG_FILE" ] ; then
 		SERVER_CONFIG_FILE=$_SERVER_CONFIG_FILE
 		echo "Selected default - $SERVER_CONFIG_FILE"
@@ -107,7 +107,7 @@ fi
 if [ -z "$SERVER_LOG_FILE" ] ; then
 	_MANUAL_EXECUTION=true
 	#read the server log file path
-	_SERVER_LOG_FILE="/var/log/valkey_$SERVER_PORT.log"
+	_SERVER_LOG_FILE="/var/log/kv_$SERVER_PORT.log"
 	read -p "Please select the server log file name [$_SERVER_LOG_FILE] " SERVER_LOG_FILE
 	if [ -z "$SERVER_LOG_FILE" ] ; then
 		SERVER_LOG_FILE=$_SERVER_LOG_FILE
@@ -118,7 +118,7 @@ fi
 if [ -z "$SERVER_DATA_DIR" ] ; then
 	_MANUAL_EXECUTION=true
 	#get the server data directory
-	_SERVER_DATA_DIR="/var/lib/valkey/$SERVER_PORT"
+	_SERVER_DATA_DIR="/var/lib/kv/$SERVER_PORT"
 	read -p "Please select the data directory for this instance [$_SERVER_DATA_DIR] " SERVER_DATA_DIR
 	if [ -z "$SERVER_DATA_DIR" ] ; then
 		SERVER_DATA_DIR=$_SERVER_DATA_DIR
@@ -129,22 +129,22 @@ fi
 if [ ! -x "$SERVER_EXECUTABLE" ] ; then
 	_MANUAL_EXECUTION=true
 	#get the server executable path
-	_SERVER_EXECUTABLE=`command -v valkey-server`
-	read -p "Please select the valkey executable path [$_SERVER_EXECUTABLE] " SERVER_EXECUTABLE
+	_SERVER_EXECUTABLE=`command -v kv-server`
+	read -p "Please select the kv executable path [$_SERVER_EXECUTABLE] " SERVER_EXECUTABLE
 	if [ ! -x "$SERVER_EXECUTABLE" ] ; then
 		SERVER_EXECUTABLE=$_SERVER_EXECUTABLE
 
 		if [ ! -x "$SERVER_EXECUTABLE" ] ; then
-			echo "Mmmmm...  it seems like you don't have a valkey executable. Did you run make install yet?"
+			echo "Mmmmm...  it seems like you don't have a kv executable. Did you run make install yet?"
 			exit 1
 		fi
 	fi
 fi
 
-#check the default for valkey cli
-CLI_EXEC=`command -v valkey-cli`
+#check the default for kv cli
+CLI_EXEC=`command -v kv-cli`
 if [ -z "$CLI_EXEC" ] ; then
-	CLI_EXEC=`dirname $SERVER_EXECUTABLE`"/valkey-cli"
+	CLI_EXEC=`dirname $SERVER_EXECUTABLE`"/kv-cli"
 fi
 
 echo "Selected config:"
@@ -160,16 +160,16 @@ if $_MANUAL_EXECUTION == true ; then
 	read -p "Is this ok? Then press ENTER to go on or Ctrl-C to abort." _UNUSED_
 fi
 
-mkdir -p `dirname "$SERVER_CONFIG_FILE"` || die "Could not create valkey config directory"
-mkdir -p `dirname "$SERVER_LOG_FILE"` || die "Could not create valkey log dir"
-mkdir -p "$SERVER_DATA_DIR" || die "Could not create valkey data directory"
+mkdir -p `dirname "$SERVER_CONFIG_FILE"` || die "Could not create kv config directory"
+mkdir -p `dirname "$SERVER_LOG_FILE"` || die "Could not create kv log dir"
+mkdir -p "$SERVER_DATA_DIR" || die "Could not create kv data directory"
 
 #render the templates
 TMP_FILE="/tmp/${SERVER_PORT}.conf"
-DEFAULT_CONFIG="${SCRIPTPATH}/../valkey.conf"
-INIT_TPL_FILE="${SCRIPTPATH}/valkey_init_script.tpl"
-INIT_SCRIPT_DEST="/etc/init.d/valkey_${SERVER_PORT}"
-PIDFILE="/var/run/valkey_${SERVER_PORT}.pid"
+DEFAULT_CONFIG="${SCRIPTPATH}/../kv.conf"
+INIT_TPL_FILE="${SCRIPTPATH}/kv_init_script.tpl"
+INIT_SCRIPT_DEST="/etc/init.d/kv_${SERVER_PORT}"
+PIDFILE="/var/run/kv_${SERVER_PORT}.pid"
 
 if [ ! -f "$DEFAULT_CONFIG" ]; then
 	echo "Mmmmm... the default config is missing. Did you switch to the utils directory?"
@@ -190,45 +190,45 @@ EOF
 sed "$SED_EXPR" $DEFAULT_CONFIG >> $TMP_FILE
 
 #cat $TPL_FILE | while read line; do eval "echo \"$line\"" >> $TMP_FILE; done
-cp $TMP_FILE $SERVER_CONFIG_FILE || die "Could not write valkey config file $SERVER_CONFIG_FILE"
+cp $TMP_FILE $SERVER_CONFIG_FILE || die "Could not write kv config file $SERVER_CONFIG_FILE"
 
 #Generate sample script from template file
 rm -f $TMP_FILE
 
 #we hard code the configs here to avoid issues with templates containing env vars
 #kinda lame but works!
-VALKEY_INIT_HEADER=\
+KV_INIT_HEADER=\
 "#!/bin/sh\n
 #Configurations injected by install_server below....\n\n
 EXEC=$SERVER_EXECUTABLE\n
 CLIEXEC=$CLI_EXEC\n
 PIDFILE=\"$PIDFILE\"\n
 CONF=\"$SERVER_CONFIG_FILE\"\n\n
-VALKEYPORT=\"$SERVER_PORT\"\n\n
+KVPORT=\"$SERVER_PORT\"\n\n
 ###############\n\n"
 
-VALKEY_CHKCONFIG_INFO=\
+KV_CHKCONFIG_INFO=\
 "# REDHAT chkconfig header\n\n
 # chkconfig: - 58 74\n
-# description: valkey_${SERVER_PORT} is the valkey daemon.\n
+# description: kv_${SERVER_PORT} is the kv daemon.\n
 ### BEGIN INIT INFO\n
-# Provides: valkey_6379\n
+# Provides: kv_6379\n
 # Required-Start: \$network \$local_fs \$remote_fs\n
 # Required-Stop: \$network \$local_fs \$remote_fs\n
 # Default-Start: 2 3 4 5\n
 # Default-Stop: 0 1 6\n
 # Should-Start: \$syslog \$named\n
 # Should-Stop: \$syslog \$named\n
-# Short-Description: start and stop valkey_${SERVER_PORT}\n
-# Description: Valkey daemon\n
+# Short-Description: start and stop kv_${SERVER_PORT}\n
+# Description: KV daemon\n
 ### END INIT INFO\n\n"
 
 if command -v chkconfig >/dev/null; then
 	#if we're a box with chkconfig on it we want to include info for chkconfig
-	echo "$VALKEY_INIT_HEADER" "$VALKEY_CHKCONFIG_INFO" > $TMP_FILE && cat $INIT_TPL_FILE >> $TMP_FILE || die "Could not write init script to $TMP_FILE"
+	echo "$KV_INIT_HEADER" "$KV_CHKCONFIG_INFO" > $TMP_FILE && cat $INIT_TPL_FILE >> $TMP_FILE || die "Could not write init script to $TMP_FILE"
 else
 	#combine the header and the template (which is actually a static footer)
-	echo "$VALKEY_INIT_HEADER" > $TMP_FILE && cat $INIT_TPL_FILE >> $TMP_FILE || die "Could not write init script to $TMP_FILE"
+	echo "$KV_INIT_HEADER" > $TMP_FILE && cat $INIT_TPL_FILE >> $TMP_FILE || die "Could not write init script to $TMP_FILE"
 fi
 
 ###
@@ -246,21 +246,21 @@ EXEC=$SERVER_EXECUTABLE
 CLIEXEC=$CLI_EXEC
 PIDFILE=$PIDFILE
 CONF="$SERVER_CONFIG_FILE"
-VALKEYPORT="$SERVER_PORT"
+KVPORT="$SERVER_PORT"
 ###############
 # SysV Init Information
 # chkconfig: - 58 74
-# description: valkey_${SERVER_PORT} is the valkey daemon.
+# description: kv_${SERVER_PORT} is the kv daemon.
 ### BEGIN INIT INFO
-# Provides: valkey_${SERVER_PORT}
+# Provides: kv_${SERVER_PORT}
 # Required-Start: \$network \$local_fs \$remote_fs
 # Required-Stop: \$network \$local_fs \$remote_fs
 # Default-Start: 2 3 4 5
 # Default-Stop: 0 1 6
 # Should-Start: \$syslog \$named
 # Should-Stop: \$syslog \$named
-# Short-Description: start and stop valkey_${SERVER_PORT}
-# Description: Valkey daemon
+# Short-Description: start and stop kv_${SERVER_PORT}
+# Description: KV daemon
 ### END INIT INFO
 
 EOT
@@ -268,23 +268,23 @@ cat ${INIT_TPL_FILE} >> ${TMP_FILE}
 
 #copy to /etc/init.d
 cp $TMP_FILE $INIT_SCRIPT_DEST && \
-	chmod +x $INIT_SCRIPT_DEST || die "Could not copy valkey init script to  $INIT_SCRIPT_DEST"
+	chmod +x $INIT_SCRIPT_DEST || die "Could not copy kv init script to  $INIT_SCRIPT_DEST"
 echo "Copied $TMP_FILE => $INIT_SCRIPT_DEST"
 
 #Install the service
 echo "Installing service..."
 if command -v chkconfig >/dev/null 2>&1; then
 	# we're chkconfig, so lets add to chkconfig and put in runlevel 345
-	chkconfig --add valkey_${SERVER_PORT} && echo "Successfully added to chkconfig!"
-	chkconfig --level 345 valkey_${SERVER_PORT} on && echo "Successfully added to runlevels 345!"
+	chkconfig --add kv_${SERVER_PORT} && echo "Successfully added to chkconfig!"
+	chkconfig --level 345 kv_${SERVER_PORT} on && echo "Successfully added to runlevels 345!"
 elif command -v update-rc.d >/dev/null 2>&1; then
 	#if we're not a chkconfig box assume we're able to use update-rc.d
-	update-rc.d valkey_${SERVER_PORT} defaults && echo "Success!"
+	update-rc.d kv_${SERVER_PORT} defaults && echo "Success!"
 else
 	echo "No supported init tool found."
 fi
 
-/etc/init.d/valkey_$SERVER_PORT start || die "Failed starting service..."
+/etc/init.d/kv_$SERVER_PORT start || die "Failed starting service..."
 
 #tada
 echo "Installation successful!"

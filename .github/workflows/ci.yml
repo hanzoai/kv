@@ -30,7 +30,7 @@ jobs:
           ref: b9e40069c0b47a722286b94eb5231f7f05c08713
           path: libbacktrace
       - run: cd libbacktrace && ./configure && make && sudo make install
-      - name: Checkout Valkey
+      - name: Checkout KV
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: make
         # Fail build if there are warnings
@@ -50,7 +50,7 @@ jobs:
           if [[ ! -z "$dirty" ]]; then echo "$dirty"; exit 1; fi
       - name: unit tests
         run: |
-          ./src/valkey-unit-tests
+          ./src/kv-unit-tests
 
   test-ubuntu-latest-compatibility:
     runs-on: ubuntu-latest
@@ -58,9 +58,9 @@ jobs:
       fail-fast: false
       matrix:
         server:
-          - {version: "7.2.11", file: "valkey-7.2.11-noble-x86_64.tar.gz"}
-          - {version: "8.0.6", file: "valkey-8.0.6-noble-x86_64.tar.gz"}
-          - {version: "8.1.4", file: "valkey-8.1.4-noble-x86_64.tar.gz"}
+          - {version: "7.2.11", file: "kv-7.2.11-noble-x86_64.tar.gz"}
+          - {version: "8.0.6", file: "kv-8.0.6-noble-x86_64.tar.gz"}
+          - {version: "8.1.4", file: "kv-8.1.4-noble-x86_64.tar.gz"}
     steps:
       - name: Install libbacktrace
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -69,7 +69,7 @@ jobs:
           ref: b9e40069c0b47a722286b94eb5231f7f05c08713
           path: libbacktrace
       - run: cd libbacktrace && ./configure && make && sudo make install
-      - name: Checkout Valkey
+      - name: Checkout KV
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: make
         # Fail build if there are warnings
@@ -80,19 +80,19 @@ jobs:
         run: |
           mkdir -p tests/tmp
           cd tests/tmp
-          wget https://download.valkey.io/releases/${{ matrix.server.file }}
+          wget https://download.kv.io/releases/${{ matrix.server.file }}
           tar -xvf ${{ matrix.server.file }}
 
       - name: Run compatibility tests against ${{ matrix.server.version }}
         run: |
           sudo apt-get install -y tcl8.6 tclx
           ./runtest --verbose --tags "-slow needs:other-server" --dump-logs \
-            --other-server-path tests/tmp/valkey-${{ matrix.server.version }}-noble-x86_64/bin/valkey-server
+            --other-server-path tests/tmp/kv-${{ matrix.server.version }}-noble-x86_64/bin/kv-server
 
       - name: Module API tests against ${{ matrix.server.version }}
         run: |
           CFLAGS='-Werror' ./runtest-moduleapi --tags needs:other-server --verbose --dump-logs \
-            --other-server-path tests/tmp/valkey-${{ matrix.server.version }}-noble-x86_64/bin/valkey-server
+            --other-server-path tests/tmp/kv-${{ matrix.server.version }}-noble-x86_64/bin/kv-server
 
   test-ubuntu-latest-cmake-tls:
     runs-on: ubuntu-latest
@@ -112,7 +112,7 @@ jobs:
           ./build-release/runtest --verbose --tags -slow --dump-logs --tls
       - name: unit tests
         run: |
-          ./build-release/bin/valkey-unit-tests
+          ./build-release/bin/kv-unit-tests
 
   test-sanitizer-address:
     runs-on: ubuntu-latest
@@ -124,7 +124,7 @@ jobs:
           ref: b9e40069c0b47a722286b94eb5231f7f05c08713
           path: libbacktrace
       - run: cd libbacktrace && ./configure && make && sudo make install
-      - name: Checkout Valkey
+      - name: Checkout KV
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: make
         # build with TLS module just for compilation coverage
@@ -136,7 +136,7 @@ jobs:
       - name: module api test
         run: CFLAGS='-Werror' ./runtest-moduleapi --verbose --dump-logs
       - name: unit tests
-        run: ./src/valkey-unit-tests
+        run: ./src/kv-unit-tests
 
   test-rdma:
     runs-on: ubuntu-latest
@@ -148,7 +148,7 @@ jobs:
           ref: b9e40069c0b47a722286b94eb5231f7f05c08713
           path: libbacktrace
       - run: cd libbacktrace && ./configure && make && sudo make install
-      - name: Checkout Valkey
+      - name: Checkout KV
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: prepare-development-libraries
         run: sudo apt-get install librdmacm-dev libibverbs-dev
@@ -203,7 +203,7 @@ jobs:
         run: |
           apt-get update && apt-get install -y build-essential
           cd libbacktrace && ./configure && make && make install
-      - name: Checkout Valkey
+      - name: Checkout KV
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: make
         run: make -j4 SERVER_CFLAGS='-Werror' USE_LIBBACKTRACE=yes
@@ -218,7 +218,7 @@ jobs:
           ref: b9e40069c0b47a722286b94eb5231f7f05c08713
           path: libbacktrace
       - run: cd libbacktrace && ./configure && make && sudo make install
-      - name: Checkout Valkey
+      - name: Checkout KV
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: make
         # Build with additional upcoming features
@@ -238,7 +238,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install libc6-dev-i386 libstdc++-11-dev-i386-cross gcc-multilib g++-multilib
           cd libbacktrace && ./configure CFLAGS="-m32" --prefix=/usr/local/libbacktrace32 && make && sudo make install
-      - name: Checkout Valkey
+      - name: Checkout KV
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: make
         # Fast float requires C++ 32-bit libraries to compile on 64-bit ubuntu
@@ -249,7 +249,7 @@ jobs:
         run: make -j4 SERVER_CFLAGS='-Werror' 32bit USE_FAST_FLOAT=yes USE_LIBBACKTRACE=yes LIBBACKTRACE_PREFIX=/usr/local/libbacktrace32
       - name: unit tests
         run: |
-          ./src/valkey-unit-tests
+          ./src/kv-unit-tests
 
   build-libc-malloc:
     runs-on: ubuntu-latest
@@ -261,7 +261,7 @@ jobs:
           ref: b9e40069c0b47a722286b94eb5231f7f05c08713
           path: libbacktrace
       - run: cd libbacktrace && ./configure && make && sudo make install
-      - name: Checkout Valkey
+      - name: Checkout KV
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: make
         run: make -j4 SERVER_CFLAGS='-Werror' MALLOC=libc USE_FAST_FLOAT=yes USE_LIBBACKTRACE=yes
@@ -280,7 +280,7 @@ jobs:
         run: |
           dnf -y install epel-release gcc gcc-c++ make procps-ng which
           cd libbacktrace && ./configure && make && make install
-      - name: Checkout Valkey
+      - name: Checkout KV
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: make
         run: make -j4 SERVER_CFLAGS='-Werror' USE_FAST_FLOAT=yes USE_LIBBACKTRACE=yes

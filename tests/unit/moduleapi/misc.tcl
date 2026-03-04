@@ -20,8 +20,8 @@ start_server {overrides {save {900 1}} tags {"modules"}} {
         assert { [string match "*cmdstat_module*" $info] }
     }
 
-    test {test valkey version} {
-        assert_equal [s valkey_version] [r test.serverversion]
+    test {test kv version} {
+        assert_equal [s kv_version] [r test.serverversion]
     }
 
     test {test long double conversions} {
@@ -166,7 +166,7 @@ start_server {overrides {save {900 1}} tags {"modules"}} {
     }
 
     test {tracking with rm_call sanity} {
-        set rd_trk [valkey_client]
+        set rd_trk [kv_client]
         $rd_trk HELLO 3
         $rd_trk CLIENT TRACKING on
         r MSET key1{t} 1 key2{t} 1
@@ -181,7 +181,7 @@ start_server {overrides {save {900 1}} tags {"modules"}} {
     }
 
     test {tracking with rm_call with script} {
-        set rd_trk [valkey_client]
+        set rd_trk [kv_client]
         $rd_trk HELLO 3
         $rd_trk CLIENT TRACKING on
         r MSET key1{t} 1 key2{t} 1

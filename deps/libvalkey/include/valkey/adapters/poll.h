@@ -1,6 +1,6 @@
 
-#ifndef VALKEY_ADAPTERS_POLL_H
-#define VALKEY_ADAPTERS_POLL_H
+#ifndef KV_ADAPTERS_POLL_H
+#define KV_ADAPTERS_POLL_H
 
 #include "../async.h"
 #include "../cluster.h"
@@ -9,35 +9,35 @@
 #include <errno.h>
 #include <string.h> // for memset
 
-/* Values to return from valkeyPollTick */
-#define VALKEY_POLL_HANDLED_READ 1
-#define VALKEY_POLL_HANDLED_WRITE 2
-#define VALKEY_POLL_HANDLED_TIMEOUT 4
+/* Values to return from kvPollTick */
+#define KV_POLL_HANDLED_READ 1
+#define KV_POLL_HANDLED_WRITE 2
+#define KV_POLL_HANDLED_TIMEOUT 4
 
 /* An adapter to allow manual polling of the async context by checking the state
  * of the underlying file descriptor.  Useful in cases where there is no formal
  * IO event loop but regular ticking can be used, such as in game engines. */
 
-typedef struct valkeyPollEvents {
-    valkeyAsyncContext *context;
-    valkeyFD fd;
+typedef struct kvPollEvents {
+    kvAsyncContext *context;
+    kvFD fd;
     char reading, writing;
     char in_tick;
     char deleted;
     double deadline;
-} valkeyPollEvents;
+} kvPollEvents;
 
-static double valkeyPollTimevalToDouble(struct timeval *tv) {
+static double kvPollTimevalToDouble(struct timeval *tv) {
     if (tv == NULL)
         return 0.0;
     return tv->tv_sec + tv->tv_usec / 1000000.00;
 }
 
-static double valkeyPollGetNow(void) {
+static double kvPollGetNow(void) {
 #ifndef _MSC_VER
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    return valkeyPollTimevalToDouble(&tv);
+    return kvPollTimevalToDouble(&tv);
 #else
     FILETIME ft;
     ULARGE_INTEGER li;
@@ -51,14 +51,14 @@ static double valkeyPollGetNow(void) {
 /* Poll for io, handling any pending callbacks.  The timeout argument can be
  * positive to wait for a maximum given time for IO, zero to poll, or negative
  * to wait forever */
-static int valkeyPollTick(valkeyAsyncContext *ac, double timeout) {
+static int kvPollTick(kvAsyncContext *ac, double timeout) {
     int reading, writing;
     struct pollfd pfd;
     int handled;
     int ns;
     int itimeout;
 
-    valkeyPollEvents *e = (valkeyPollEvents *)ac->ev.data;
+    kvPollEvents *e = (kvPollEvents *)ac->ev.data;
     if (!e)
         return 0;
 
@@ -93,29 +93,29 @@ static int valkeyPollTick(valkeyAsyncContext *ac, double timeout) {
     e->in_tick = 1;
     if (ns) {
         if (reading && (pfd.revents & POLLIN)) {
-            valkeyAsyncHandleRead(ac);
-            handled |= VALKEY_POLL_HANDLED_READ;
+            kvAsyncHandleRead(ac);
+            handled |= KV_POLL_HANDLED_READ;
         }
         /* on Windows, connection failure is indicated with the Exception fdset.
          * handle it the same as writable. */
         if (writing && (pfd.revents & (POLLOUT | POLLERR))) {
             /* context Read callback may have caused context to be deleted, e.g.
-               by doing a valkeyAsyncDisconnect() */
+               by doing a kvAsyncDisconnect() */
             if (!e->deleted) {
-                valkeyAsyncHandleWrite(ac);
-                handled |= VALKEY_POLL_HANDLED_WRITE;
+                kvAsyncHandleWrite(ac);
+                handled |= KV_POLL_HANDLED_WRITE;
             }
         }
     }
 
     /* perform timeouts */
     if (!e->deleted && e->deadline != 0.0) {
-        double now = valkeyPollGetNow();
+        double now = kvPollGetNow();
         if (now >= e->deadline) {
             /* deadline has passed.  disable timeout and perform callback */
             e->deadline = 0.0;
-            valkeyAsyncHandleTimeout(ac);
-            handled |= VALKEY_POLL_HANDLED_TIMEOUT;
+            kvAsyncHandleTimeout(ac);
+            handled |= KV_POLL_HANDLED_TIMEOUT;
         }
     }
 
@@ -128,28 +128,28 @@ static int valkeyPollTick(valkeyAsyncContext *ac, double timeout) {
     return handled;
 }
 
-static void valkeyPollAddRead(void *data) {
-    valkeyPollEvents *e = (valkeyPollEvents *)data;
+static void kvPollAddRead(void *data) {
+    kvPollEvents *e = (kvPollEvents *)data;
     e->reading = 1;
 }
 
-static void valkeyPollDelRead(void *data) {
-    valkeyPollEvents *e = (valkeyPollEvents *)data;
+static void kvPollDelRead(void *data) {
+    kvPollEvents *e = (kvPollEvents *)data;
     e->reading = 0;
 }
 
-static void valkeyPollAddWrite(void *data) {
-    valkeyPollEvents *e = (valkeyPollEvents *)data;
+static void kvPollAddWrite(void *data) {
+    kvPollEvents *e = (kvPollEvents *)data;
     e->writing = 1;
 }
 
-static void valkeyPollDelWrite(void *data) {
-    valkeyPollEvents *e = (valkeyPollEvents *)data;
+static void kvPollDelWrite(void *data) {
+    kvPollEvents *e = (kvPollEvents *)data;
     e->writing = 0;
 }
 
-static void valkeyPollCleanup(void *data) {
-    valkeyPollEvents *e = (valkeyPollEvents *)data;
+static void kvPollCleanup(void *data) {
+    kvPollEvents *e = (kvPollEvents *)data;
 
     /* if we are currently processing a tick, postpone deletion */
     if (e->in_tick)
@@ -158,24 +158,24 @@ static void valkeyPollCleanup(void *data) {
         vk_free(e);
 }
 
-static void valkeyPollScheduleTimer(void *data, struct timeval tv) {
-    valkeyPollEvents *e = (valkeyPollEvents *)data;
-    double now = valkeyPollGetNow();
-    e->deadline = now + valkeyPollTimevalToDouble(&tv);
+static void kvPollScheduleTimer(void *data, struct timeval tv) {
+    kvPollEvents *e = (kvPollEvents *)data;
+    double now = kvPollGetNow();
+    e->deadline = now + kvPollTimevalToDouble(&tv);
 }
 
-static int valkeyPollAttach(valkeyAsyncContext *ac) {
-    valkeyContext *c = &(ac->c);
-    valkeyPollEvents *e;
+static int kvPollAttach(kvAsyncContext *ac) {
+    kvContext *c = &(ac->c);
+    kvPollEvents *e;
 
     /* Nothing should be attached when something is already attached */
     if (ac->ev.data != NULL)
-        return VALKEY_ERR;
+        return KV_ERR;
 
     /* Create container for context and r/w events */
-    e = (valkeyPollEvents *)vk_malloc(sizeof(*e));
+    e = (kvPollEvents *)vk_malloc(sizeof(*e));
     if (e == NULL)
-        return VALKEY_ERR;
+        return KV_ERR;
     memset(e, 0, sizeof(*e));
 
     e->context = ac;
@@ -185,30 +185,30 @@ static int valkeyPollAttach(valkeyAsyncContext *ac) {
     e->deadline = 0.0;
 
     /* Register functions to start/stop listening for events */
-    ac->ev.addRead = valkeyPollAddRead;
-    ac->ev.delRead = valkeyPollDelRead;
-    ac->ev.addWrite = valkeyPollAddWrite;
-    ac->ev.delWrite = valkeyPollDelWrite;
-    ac->ev.scheduleTimer = valkeyPollScheduleTimer;
-    ac->ev.cleanup = valkeyPollCleanup;
+    ac->ev.addRead = kvPollAddRead;
+    ac->ev.delRead = kvPollDelRead;
+    ac->ev.addWrite = kvPollAddWrite;
+    ac->ev.delWrite = kvPollDelWrite;
+    ac->ev.scheduleTimer = kvPollScheduleTimer;
+    ac->ev.cleanup = kvPollCleanup;
     ac->ev.data = e;
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
 /* Internal adapter function with correct function signature. */
-static int valkeyPollAttachAdapter(valkeyAsyncContext *ac, VALKEY_UNUSED void *unused) {
-    return valkeyPollAttach(ac);
+static int kvPollAttachAdapter(kvAsyncContext *ac, KV_UNUSED void *unused) {
+    return kvPollAttach(ac);
 }
 
-VALKEY_UNUSED
-static int valkeyClusterOptionsUsePoll(valkeyClusterOptions *options) {
+KV_UNUSED
+static int kvClusterOptionsUsePoll(kvClusterOptions *options) {
     if (options == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    options->attach_fn = valkeyPollAttachAdapter;
-    return VALKEY_OK;
+    options->attach_fn = kvPollAttachAdapter;
+    return KV_OK;
 }
 
-#endif /* VALKEY_ADAPTERS_POLL_H */
+#endif /* KV_ADAPTERS_POLL_H */

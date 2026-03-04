@@ -1,16 +1,16 @@
-#include <valkey/async.h>
-#include <valkey/valkey.h>
+#include <kv/async.h>
+#include <kv/kv.h>
 
-#include <valkey/adapters/glib.h>
+#include <kv/adapters/glib.h>
 
 #include <stdlib.h>
 
 static GMainLoop *mainloop;
 
 static void
-connect_cb(valkeyAsyncContext *ac G_GNUC_UNUSED,
+connect_cb(kvAsyncContext *ac G_GNUC_UNUSED,
            int status) {
-    if (status != VALKEY_OK) {
+    if (status != KV_OK) {
         g_printerr("Failed to connect: %s\n", ac->errstr);
         g_main_loop_quit(mainloop);
     } else {
@@ -19,9 +19,9 @@ connect_cb(valkeyAsyncContext *ac G_GNUC_UNUSED,
 }
 
 static void
-disconnect_cb(const valkeyAsyncContext *ac G_GNUC_UNUSED,
+disconnect_cb(const kvAsyncContext *ac G_GNUC_UNUSED,
               int status) {
-    if (status != VALKEY_OK) {
+    if (status != KV_OK) {
         g_error("Failed to disconnect: %s", ac->errstr);
     } else {
         g_printerr("Disconnected...\n");
@@ -30,37 +30,37 @@ disconnect_cb(const valkeyAsyncContext *ac G_GNUC_UNUSED,
 }
 
 static void
-command_cb(valkeyAsyncContext *ac,
+command_cb(kvAsyncContext *ac,
            gpointer r,
            gpointer user_data G_GNUC_UNUSED) {
-    valkeyReply *reply = r;
+    kvReply *reply = r;
 
     if (reply) {
         g_print("REPLY: %s\n", reply->str);
     }
 
-    valkeyAsyncDisconnect(ac);
+    kvAsyncDisconnect(ac);
 }
 
 gint main(gint argc G_GNUC_UNUSED, gchar *argv[] G_GNUC_UNUSED) {
-    valkeyAsyncContext *ac;
+    kvAsyncContext *ac;
     GMainContext *context = NULL;
     GSource *source;
 
-    ac = valkeyAsyncConnect("127.0.0.1", 6379);
+    ac = kvAsyncConnect("127.0.0.1", 6379);
     if (ac->err) {
         g_printerr("%s\n", ac->errstr);
         exit(EXIT_FAILURE);
     }
 
-    source = valkey_source_new(ac);
+    source = kv_source_new(ac);
     mainloop = g_main_loop_new(context, FALSE);
     g_source_attach(source, context);
 
-    valkeyAsyncSetConnectCallback(ac, connect_cb);
-    valkeyAsyncSetDisconnectCallback(ac, disconnect_cb);
-    valkeyAsyncCommand(ac, command_cb, NULL, "SET key 1234");
-    valkeyAsyncCommand(ac, command_cb, NULL, "GET key");
+    kvAsyncSetConnectCallback(ac, connect_cb);
+    kvAsyncSetDisconnectCallback(ac, disconnect_cb);
+    kvAsyncCommand(ac, command_cb, NULL, "SET key 1234");
+    kvAsyncCommand(ac, command_cb, NULL, "GET key");
 
     g_main_loop_run(mainloop);
 

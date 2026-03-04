@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Valkey Contributors
+ * Copyright (c) KV Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -78,8 +78,8 @@ void lolwut9Command(client *c) {
         output_array[i * (cols + 1) + cols] = '\n';
     }
     output_array = sdscatprintf(output_array, "Ascii representation of Julia set with constant %.2f + %.2fi\n", julia_r, julia_i);
-    output_array = sdscatprintf(output_array, "Don't forget to have fun! %s ver. ", server.extended_redis_compat ? "Redis" : "Valkey");
-    output_array = sdscat(output_array, server.extended_redis_compat ? REDIS_VERSION : VALKEY_VERSION);
+    output_array = sdscatprintf(output_array, "Don't forget to have fun! %s ver. ", server.extended_redis_compat ? "Redis" : "KV");
+    output_array = sdscat(output_array, server.extended_redis_compat ? REDIS_VERSION : KV_VERSION);
     output_array = sdscatlen(output_array, "\n", 1);
     addReplyVerbatim(c, output_array, sdslen(output_array), "txt");
     sdsfree(output_array);

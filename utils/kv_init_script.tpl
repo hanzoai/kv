@@ -5,7 +5,7 @@ case "$1" in
         then
             echo "$PIDFILE exists, process is already running or crashed"
         else
-            echo "Starting Valkey server..."
+            echo "Starting KV server..."
             $EXEC $CONF
         fi
         ;;
@@ -16,22 +16,22 @@ case "$1" in
         else
             PID=$(cat $PIDFILE)
             echo "Stopping ..."
-            $CLIEXEC -p $VALKEYPORT shutdown
+            $CLIEXEC -p $KVPORT shutdown
             while [ -x /proc/${PID} ]
             do
-                echo "Waiting for Valkey to shutdown ..."
+                echo "Waiting for KV to shutdown ..."
                 sleep 1
             done
-            echo "Valkey stopped"
+            echo "KV stopped"
         fi
         ;;
     status)
         PID=$(cat $PIDFILE)
         if [ ! -x /proc/${PID} ]
         then
-            echo 'Valkey is not running'
+            echo 'KV is not running'
         else
-            echo "Valkey is running ($PID)"
+            echo "KV is running ($PID)"
         fi
         ;;
     restart)

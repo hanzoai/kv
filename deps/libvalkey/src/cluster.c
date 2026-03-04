@@ -51,21 +51,21 @@
 #include <string.h>
 
 /* Make sure standalone and cluster options don't overlap. */
-vk_static_assert(VALKEY_OPT_USE_CLUSTER_NODES > VALKEY_OPT_LAST_SA_OPTION);
+vk_static_assert(KV_OPT_USE_CLUSTER_NODES > KV_OPT_LAST_SA_OPTION);
 
 /* Internal option flags. */
-#define VALKEY_FLAG_USE_CLUSTER_NODES 0x1
-#define VALKEY_FLAG_PARSE_REPLICAS 0x2
-#define VALKEY_FLAG_DISCONNECTING 0x4
-#define VALKEY_FLAG_BLOCKING_INITIAL_UPDATE 0x8
+#define KV_FLAG_USE_CLUSTER_NODES 0x1
+#define KV_FLAG_PARSE_REPLICAS 0x2
+#define KV_FLAG_DISCONNECTING 0x4
+#define KV_FLAG_BLOCKING_INITIAL_UPDATE 0x8
 
 // Cluster errors are offset by 100 to be sufficiently out of range of
-// standard Valkey errors
-#define VALKEY_ERR_CLUSTER_TOO_MANY_RETRIES 100
+// standard KV errors
+#define KV_ERR_CLUSTER_TOO_MANY_RETRIES 100
 
-#define VALKEY_COMMAND_CLUSTER_NODES "CLUSTER NODES"
-#define VALKEY_COMMAND_CLUSTER_SLOTS "CLUSTER SLOTS"
-#define VALKEY_COMMAND_ASKING "ASKING"
+#define KV_COMMAND_CLUSTER_NODES "CLUSTER NODES"
+#define KV_COMMAND_CLUSTER_SLOTS "CLUSTER SLOTS"
+#define KV_COMMAND_ASKING "ASKING"
 
 #define CLUSTER_DEFAULT_MAX_RETRY_COUNT 5
 #define NO_RETRY -1
@@ -74,9 +74,9 @@ vk_static_assert(VALKEY_OPT_USE_CLUSTER_NODES > VALKEY_OPT_LAST_SA_OPTION);
 #define SLOTMAP_UPDATE_ONGOING INT64_MAX
 
 typedef struct cluster_async_data {
-    valkeyClusterAsyncContext *acc;
+    kvClusterAsyncContext *acc;
     struct cmd *command;
-    valkeyClusterCallbackFn *callback;
+    kvClusterCallbackFn *callback;
     int retry_count;
     void *privdata;
 } cluster_async_data;
@@ -90,18 +90,18 @@ typedef enum {
     CLUSTER_ERR_OTHER
 } replyErrorType;
 
-static void freeValkeyClusterNode(valkeyClusterNode *node);
+static void freeKVClusterNode(kvClusterNode *node);
 static void cluster_slot_destroy(cluster_slot *slot);
-static int updateNodesAndSlotmap(valkeyClusterContext *cc, dict *nodes);
-static int updateSlotMapAsync(valkeyClusterAsyncContext *acc,
-                              valkeyAsyncContext *ac);
-static int valkeyClusterSetOptionAddNodes(valkeyClusterContext *cc, const char *addrs);
-static int valkeyClusterSetOptionConnectTimeout(valkeyClusterContext *cc, const struct timeval tv);
-static int valkeyClusterSetOptionPassword(valkeyClusterContext *cc, const char *password);
-static int valkeyClusterSetOptionUsername(valkeyClusterContext *cc, const char *username);
-static int valkeyClusterAsyncConnect(valkeyClusterAsyncContext *acc);
+static int updateNodesAndSlotmap(kvClusterContext *cc, dict *nodes);
+static int updateSlotMapAsync(kvClusterAsyncContext *acc,
+                              kvAsyncContext *ac);
+static int kvClusterSetOptionAddNodes(kvClusterContext *cc, const char *addrs);
+static int kvClusterSetOptionConnectTimeout(kvClusterContext *cc, const struct timeval tv);
+static int kvClusterSetOptionPassword(kvClusterContext *cc, const char *password);
+static int kvClusterSetOptionUsername(kvClusterContext *cc, const char *username);
+static int kvClusterAsyncConnect(kvClusterAsyncContext *acc);
 
-void listClusterNodeDestructor(void *val) { freeValkeyClusterNode(val); }
+void listClusterNodeDestructor(void *val) { freeKVClusterNode(val); }
 
 void listClusterSlotDestructor(void *val) { cluster_slot_destroy(val); }
 
@@ -124,7 +124,7 @@ static void dictSdsDestructor(void *val) {
 }
 
 static void dictClusterNodeDestructor(void *val) {
-    freeValkeyClusterNode(val);
+    freeKVClusterNode(val);
 }
 
 /* Destructor function for clusterNodeListDictType. */
@@ -133,8 +133,8 @@ static void dictClusterNodeListDestructor(void *val) {
 }
 
 /* Cluster node hash table
- * maps node address (1.2.3.4:6379) to a valkeyClusterNode
- * Has ownership of valkeyClusterNode memory
+ * maps node address (1.2.3.4:6379) to a kvClusterNode
+ * Has ownership of kvClusterNode memory
  */
 dictType clusterNodesDictType = {
     .hashFunction = dictSdsHash,
@@ -142,7 +142,7 @@ dictType clusterNodesDictType = {
     .keyDestructor = dictSdsDestructor,
     .valDestructor = dictClusterNodeDestructor};
 
-/* Hash table dictType to map node address to a list of valkeyClusterNodes. */
+/* Hash table dictType to map node address to a list of kvClusterNodes. */
 dictType clusterNodeListDictType = {
     .hashFunction = dictSdsHash,
     .keyCompare = dictSdsKeyCompare,
@@ -189,7 +189,7 @@ static unsigned int keyHashSlot(char *key, int keylen) {
     return crc16(key + s + 1, e - s - 1) & 0x3FFF;
 }
 
-static void valkeyClusterSetError(valkeyClusterContext *cc, int type,
+static void kvClusterSetError(kvClusterContext *cc, int type,
                                   const char *str) {
     cc->err = type;
 
@@ -202,15 +202,15 @@ static void valkeyClusterSetError(valkeyClusterContext *cc, int type,
     }
 }
 
-static inline void valkeyClusterClearError(valkeyClusterContext *cc) {
+static inline void kvClusterClearError(kvClusterContext *cc) {
     cc->err = 0;
     cc->errstr[0] = '\0';
 }
 
-static replyErrorType getReplyErrorType(valkeyReply *reply) {
+static replyErrorType getReplyErrorType(kvReply *reply) {
     assert(reply);
 
-    if (reply->type != VALKEY_REPLY_ERROR)
+    if (reply->type != KV_REPLY_ERROR)
         return CLUSTER_NO_ERROR;
     if (memcmp(reply->str, "MOVED", 5) == 0)
         return CLUSTER_ERR_MOVED;
@@ -224,13 +224,13 @@ static replyErrorType getReplyErrorType(valkeyReply *reply) {
 }
 
 /* Create and initiate the cluster node structure */
-static valkeyClusterNode *createValkeyClusterNode(void) {
+static kvClusterNode *createKVClusterNode(void) {
     /* use calloc to guarantee all fields are zeroed */
-    return vk_calloc(1, sizeof(valkeyClusterNode));
+    return vk_calloc(1, sizeof(kvClusterNode));
 }
 
 /* Cleanup the cluster node structure */
-static void freeValkeyClusterNode(valkeyClusterNode *node) {
+static void freeKVClusterNode(kvClusterNode *node) {
     if (node == NULL) {
         return;
     }
@@ -238,21 +238,21 @@ static void freeValkeyClusterNode(valkeyClusterNode *node) {
     sdsfree(node->name);
     sdsfree(node->addr);
     sdsfree(node->host);
-    valkeyFree(node->con);
+    kvFree(node->con);
 
     if (node->acon != NULL) {
         /* Detach this cluster node from the async context. This makes sure
-         * that valkeyAsyncFree() wont attempt to update the pointer via its
+         * that kvAsyncFree() wont attempt to update the pointer via its
          * dataCleanup and unlinkAsyncContextAndNode() */
         node->acon->data = NULL;
-        valkeyAsyncFree(node->acon);
+        kvAsyncFree(node->acon);
     }
     listRelease(node->slots);
     listRelease(node->replicas);
     vk_free(node);
 }
 
-static cluster_slot *cluster_slot_create(valkeyClusterNode *node) {
+static cluster_slot *cluster_slot_create(kvClusterNode *node) {
     cluster_slot *slot;
 
     slot = vk_calloc(1, sizeof(*slot));
@@ -262,7 +262,7 @@ static cluster_slot *cluster_slot_create(valkeyClusterNode *node) {
     slot->node = node;
 
     if (node != NULL) {
-        assert(node->role == VALKEY_ROLE_PRIMARY);
+        assert(node->role == KV_ROLE_PRIMARY);
         if (node->slots == NULL) {
             node->slots = listCreate();
             if (node->slots == NULL) {
@@ -282,30 +282,30 @@ static cluster_slot *cluster_slot_create(valkeyClusterNode *node) {
     return slot;
 }
 
-static int cluster_slot_ref_node(cluster_slot *slot, valkeyClusterNode *node) {
+static int cluster_slot_ref_node(cluster_slot *slot, kvClusterNode *node) {
     if (slot == NULL || node == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    if (node->role != VALKEY_ROLE_PRIMARY) {
-        return VALKEY_ERR;
+    if (node->role != KV_ROLE_PRIMARY) {
+        return KV_ERR;
     }
 
     if (node->slots == NULL) {
         node->slots = listCreate();
         if (node->slots == NULL) {
-            return VALKEY_ERR;
+            return KV_ERR;
         }
 
         node->slots->free = listClusterSlotDestructor;
     }
 
     if (listAddNodeTail(node->slots, slot) == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
     slot->node = node;
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
 static void cluster_slot_destroy(cluster_slot *slot) {
@@ -321,55 +321,55 @@ static void cluster_slot_destroy(cluster_slot *slot) {
 /**
  * Handle password authentication in the synchronous API
  */
-static int authenticate(valkeyClusterContext *cc, valkeyContext *c) {
+static int authenticate(kvClusterContext *cc, kvContext *c) {
     if (cc == NULL || c == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     // Skip if no password configured
     if (cc->password == NULL) {
-        return VALKEY_OK;
+        return KV_OK;
     }
 
-    valkeyReply *reply;
+    kvReply *reply;
     if (cc->username != NULL) {
-        reply = valkeyCommand(c, "AUTH %s %s", cc->username, cc->password);
+        reply = kvCommand(c, "AUTH %s %s", cc->username, cc->password);
     } else {
-        reply = valkeyCommand(c, "AUTH %s", cc->password);
+        reply = kvCommand(c, "AUTH %s", cc->password);
     }
 
     if (reply == NULL) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER,
+        kvClusterSetError(cc, KV_ERR_OTHER,
                               "Command AUTH reply error (NULL)");
         goto error;
     }
 
-    if (reply->type == VALKEY_REPLY_ERROR) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, reply->str);
+    if (reply->type == KV_REPLY_ERROR) {
+        kvClusterSetError(cc, KV_ERR_OTHER, reply->str);
         goto error;
     }
 
     freeReplyObject(reply);
-    return VALKEY_OK;
+    return KV_OK;
 
 error:
     freeReplyObject(reply);
 
-    return VALKEY_ERR;
+    return KV_ERR;
 }
 
 /**
  * Return a new node with the "cluster slots" command reply.
  */
-static valkeyClusterNode *node_get_with_slots(valkeyClusterContext *cc,
+static kvClusterNode *node_get_with_slots(kvClusterContext *cc,
                                               char *host, int port,
                                               uint8_t role) {
-    valkeyClusterNode *node = createValkeyClusterNode();
+    kvClusterNode *node = createKVClusterNode();
     if (node == NULL) {
         goto oom;
     }
 
-    if (role == VALKEY_ROLE_PRIMARY) {
+    if (role == KV_ROLE_PRIMARY) {
         node->slots = listCreate();
         if (node->slots == NULL) {
             goto oom;
@@ -397,7 +397,7 @@ static valkeyClusterNode *node_get_with_slots(valkeyClusterContext *cc,
     return node;
 
 oom:
-    valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
+    kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
     if (node != NULL) {
         sdsfree(node->addr);
         sdsfree(node->host);
@@ -408,9 +408,9 @@ oom:
 
 static void cluster_nodes_swap_ctx(dict *nodes_f, dict *nodes_t) {
     dictEntry *de_f, *de_t;
-    valkeyClusterNode *node_f, *node_t;
-    valkeyContext *c;
-    valkeyAsyncContext *ac;
+    kvClusterNode *node_f, *node_t;
+    kvContext *c;
+    kvAsyncContext *ac;
 
     if (nodes_f == NULL || nodes_t == NULL) {
         return;
@@ -452,25 +452,25 @@ static void cluster_nodes_swap_ctx(dict *nodes_f, dict *nodes_t) {
 /**
  * Parse the "cluster slots" command reply to nodes dict.
  */
-static dict *parse_cluster_slots(valkeyClusterContext *cc, valkeyContext *c,
-                                 valkeyReply *reply) {
+static dict *parse_cluster_slots(kvClusterContext *cc, kvContext *c,
+                                 kvReply *reply) {
     int ret;
     cluster_slot *slot = NULL;
     dict *nodes = NULL;
     dictEntry *den;
-    valkeyReply *elem_slots;
-    valkeyReply *elem_slots_begin, *elem_slots_end;
-    valkeyReply *elem_nodes;
-    valkeyReply *elem_ip, *elem_port;
-    valkeyClusterNode *primary = NULL, *replica;
+    kvReply *elem_slots;
+    kvReply *elem_slots_begin, *elem_slots_end;
+    kvReply *elem_nodes;
+    kvReply *elem_ip, *elem_port;
+    kvClusterNode *primary = NULL, *replica;
     uint32_t i, idx;
 
-    if (reply->type != VALKEY_REPLY_ARRAY) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "Unexpected reply type");
+    if (reply->type != KV_REPLY_ARRAY) {
+        kvClusterSetError(cc, KV_ERR_OTHER, "Unexpected reply type");
         goto error;
     }
     if (reply->elements == 0) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "No slot information");
+        kvClusterSetError(cc, KV_ERR_OTHER, "No slot information");
         goto error;
     }
 
@@ -481,9 +481,9 @@ static dict *parse_cluster_slots(valkeyClusterContext *cc, valkeyContext *c,
 
     for (i = 0; i < reply->elements; i++) {
         elem_slots = reply->element[i];
-        if (elem_slots->type != VALKEY_REPLY_ARRAY ||
+        if (elem_slots->type != KV_REPLY_ARRAY ||
             elem_slots->elements < 3) {
-            valkeyClusterSetError(cc, VALKEY_ERR_OTHER,
+            kvClusterSetError(cc, KV_ERR_OTHER,
                                   "Command(cluster slots) reply error: "
                                   "first sub_reply is not an array.");
             goto error;
@@ -498,8 +498,8 @@ static dict *parse_cluster_slots(valkeyClusterContext *cc, valkeyContext *c,
         for (idx = 0; idx < elem_slots->elements; idx++) {
             if (idx == 0) {
                 elem_slots_begin = elem_slots->element[idx];
-                if (elem_slots_begin->type != VALKEY_REPLY_INTEGER) {
-                    valkeyClusterSetError(cc, VALKEY_ERR_OTHER,
+                if (elem_slots_begin->type != KV_REPLY_INTEGER) {
+                    kvClusterSetError(cc, KV_ERR_OTHER,
                                           "Command(cluster slots) reply error: "
                                           "slot begin is not an integer.");
                     goto error;
@@ -507,8 +507,8 @@ static dict *parse_cluster_slots(valkeyClusterContext *cc, valkeyContext *c,
                 slot->start = (int)(elem_slots_begin->integer);
             } else if (idx == 1) {
                 elem_slots_end = elem_slots->element[idx];
-                if (elem_slots_end->type != VALKEY_REPLY_INTEGER) {
-                    valkeyClusterSetError(cc, VALKEY_ERR_OTHER,
+                if (elem_slots_end->type != KV_REPLY_INTEGER) {
+                    kvClusterSetError(cc, KV_ERR_OTHER,
                                           "Command(cluster slots) reply error: "
                                           "slot end is not an integer.");
                     goto error;
@@ -517,18 +517,18 @@ static dict *parse_cluster_slots(valkeyClusterContext *cc, valkeyContext *c,
                 slot->end = (int)(elem_slots_end->integer);
 
                 if (slot->start > slot->end) {
-                    valkeyClusterSetError(
-                        cc, VALKEY_ERR_OTHER,
+                    kvClusterSetError(
+                        cc, KV_ERR_OTHER,
                         "Command(cluster slots) reply error: "
                         "slot begin is bigger than slot end.");
                     goto error;
                 }
             } else {
                 elem_nodes = elem_slots->element[idx];
-                if (elem_nodes->type != VALKEY_REPLY_ARRAY ||
+                if (elem_nodes->type != KV_REPLY_ARRAY ||
                     elem_nodes->elements < 2) {
-                    valkeyClusterSetError(
-                        cc, VALKEY_ERR_OTHER,
+                    kvClusterSetError(
+                        cc, KV_ERR_OTHER,
                         "Command(cluster slots) reply error: "
                         "nodes sub_reply is not a correct array.");
                     goto error;
@@ -539,23 +539,23 @@ static dict *parse_cluster_slots(valkeyClusterContext *cc, valkeyContext *c,
 
                 /* Validate ip element. Accept a NULL value ip (NIL type) since
                  * we will handle the unknown endpoint special. */
-                if (elem_ip == NULL || (elem_ip->type != VALKEY_REPLY_STRING &&
-                                        elem_ip->type != VALKEY_REPLY_NIL)) {
-                    valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "Invalid node address");
+                if (elem_ip == NULL || (elem_ip->type != KV_REPLY_STRING &&
+                                        elem_ip->type != KV_REPLY_NIL)) {
+                    kvClusterSetError(cc, KV_ERR_OTHER, "Invalid node address");
                     goto error;
                 }
 
                 /* Validate port element. */
-                if (elem_port == NULL || elem_port->type != VALKEY_REPLY_INTEGER ||
+                if (elem_port == NULL || elem_port->type != KV_REPLY_INTEGER ||
                     (elem_port->integer < 1 || elem_port->integer > UINT16_MAX)) {
-                    valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "Invalid port");
+                    kvClusterSetError(cc, KV_ERR_OTHER, "Invalid port");
                     goto error;
                 }
 
                 /* Get the received ip/host. According to the docs an unknown
                  * endpoint or an empty string can be treated as it means
                  * the same address as we sent this command to.
-                 * An unknown endpoint has the type VALKEY_REPLY_NIL and its
+                 * An unknown endpoint has the type KV_REPLY_NIL and its
                  * length is initiated to zero. */
                 char *host = (elem_ip->len > 0) ? elem_ip->str : c->tcp.host;
                 if (host == NULL) {
@@ -580,7 +580,7 @@ static dict *parse_cluster_slots(valkeyClusterContext *cc, valkeyContext *c,
                         /* Skip parsing this primary node since it's already known. */
                         primary = dictGetVal(den);
                         ret = cluster_slot_ref_node(slot, primary);
-                        if (ret != VALKEY_OK) {
+                        if (ret != KV_OK) {
                             goto oom;
                         }
 
@@ -588,33 +588,33 @@ static dict *parse_cluster_slots(valkeyClusterContext *cc, valkeyContext *c,
                         break;
                     }
 
-                    primary = node_get_with_slots(cc, host, port, VALKEY_ROLE_PRIMARY);
+                    primary = node_get_with_slots(cc, host, port, KV_ROLE_PRIMARY);
                     if (primary == NULL) {
                         goto error;
                     }
 
                     sds key = sdsnewlen(primary->addr, sdslen(primary->addr));
                     if (key == NULL) {
-                        freeValkeyClusterNode(primary);
+                        freeKVClusterNode(primary);
                         goto oom;
                     }
 
                     ret = dictAdd(nodes, key, primary);
                     if (ret != DICT_OK) {
                         sdsfree(key);
-                        freeValkeyClusterNode(primary);
+                        freeKVClusterNode(primary);
                         goto oom;
                     }
 
                     ret = cluster_slot_ref_node(slot, primary);
-                    if (ret != VALKEY_OK) {
+                    if (ret != KV_OK) {
                         goto oom;
                     }
 
                     slot = NULL;
-                } else if (cc->flags & VALKEY_FLAG_PARSE_REPLICAS) {
+                } else if (cc->flags & KV_FLAG_PARSE_REPLICAS) {
                     replica = node_get_with_slots(cc, host, port,
-                                                  VALKEY_ROLE_REPLICA);
+                                                  KV_ROLE_REPLICA);
                     if (replica == NULL) {
                         goto error;
                     }
@@ -622,7 +622,7 @@ static dict *parse_cluster_slots(valkeyClusterContext *cc, valkeyContext *c,
                     if (primary->replicas == NULL) {
                         primary->replicas = listCreate();
                         if (primary->replicas == NULL) {
-                            freeValkeyClusterNode(replica);
+                            freeKVClusterNode(replica);
                             goto oom;
                         }
 
@@ -630,7 +630,7 @@ static dict *parse_cluster_slots(valkeyClusterContext *cc, valkeyContext *c,
                     }
 
                     if (listAddNodeTail(primary->replicas, replica) == NULL) {
-                        freeValkeyClusterNode(replica);
+                        freeKVClusterNode(replica);
                         goto oom;
                     }
                 }
@@ -641,7 +641,7 @@ static dict *parse_cluster_slots(valkeyClusterContext *cc, valkeyContext *c,
     return nodes;
 
 oom:
-    valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
+    kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
     // passthrough
 
 error:
@@ -651,10 +651,10 @@ error:
 }
 
 /* Keep lists of parsed replica nodes in a dict using the primary_id as key. */
-static int retain_replica_node(dict *replicas, char *primary_id, valkeyClusterNode *node) {
+static int retain_replica_node(dict *replicas, char *primary_id, kvClusterNode *node) {
     sds key = sdsnew(primary_id);
     if (key == NULL)
-        return VALKEY_ERR;
+        return KV_ERR;
 
     struct hilist *replicaList;
 
@@ -664,13 +664,13 @@ static int retain_replica_node(dict *replicas, char *primary_id, valkeyClusterNo
         replicaList = listCreate();
         if (replicaList == NULL) {
             sdsfree(key);
-            return VALKEY_ERR;
+            return KV_ERR;
         }
         replicaList->free = listClusterNodeDestructor;
         if (dictAdd(replicas, key, replicaList) != DICT_OK) {
             sdsfree(key);
             listRelease(replicaList);
-            return VALKEY_ERR;
+            return KV_ERR;
         }
     } else {
         sdsfree(key);
@@ -678,22 +678,22 @@ static int retain_replica_node(dict *replicas, char *primary_id, valkeyClusterNo
     }
 
     if (listAddNodeTail(replicaList, node) == NULL)
-        return VALKEY_ERR;
+        return KV_ERR;
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
 /* Store parsed replica nodes in the primary nodes, which holds a list of replica
  * nodes. The `replicas` dict shall contain lists of nodes with primary_id as key. */
 static int store_replica_nodes(dict *nodes, dict *replicas) {
     if (replicas == NULL)
-        return VALKEY_OK;
+        return KV_OK;
 
     dictIterator di;
     dictInitIterator(&di, nodes);
     dictEntry *de;
     while ((de = dictNext(&di))) {
-        valkeyClusterNode *primary = dictGetVal(de);
+        kvClusterNode *primary = dictGetVal(de);
 
         /* Move replica nodes related to this primary. */
         dictEntry *der = dictFind(replicas, primary->name);
@@ -704,20 +704,20 @@ static int store_replica_nodes(dict *nodes, dict *replicas) {
             dictSetVal(replicas, der, NULL);
         }
     }
-    return VALKEY_OK;
+    return KV_OK;
 }
 
 /* Parse a node from a single CLUSTER NODES line.
- * Returns VALKEY_OK and an allocated valkeyClusterNode as a pointer in
- * `parsed_node`, or VALKEY_ERR when the parsing fails.
+ * Returns KV_OK and an allocated kvClusterNode as a pointer in
+ * `parsed_node`, or KV_ERR when the parsing fails.
  * Only parse primary nodes if the `parsed_primary_id` argument is NULL,
  * otherwise replicas are also parsed and its primary_id is returned by pointer
  * via 'parsed_primary_id'.
- * The valkeyContext used when sending the CLUSTER NODES command should be
+ * The kvContext used when sending the CLUSTER NODES command should be
  * provided in `c` since its destination IP address is used when no IP address
  * is found in the parsed string. */
-static int parse_cluster_nodes_line(valkeyClusterContext *cc, valkeyContext *c, char *line,
-                                    valkeyClusterNode **parsed_node, char **parsed_primary_id) {
+static int parse_cluster_nodes_line(kvClusterContext *cc, kvContext *c, char *line,
+                                    kvClusterNode **parsed_node, char **parsed_primary_id) {
     char *p, *id = NULL, *addr = NULL, *flags = NULL, *primary_id = NULL,
              *link_state = NULL, *slots = NULL;
     /* Find required fields and keep a pointer to each field:
@@ -741,40 +741,40 @@ static int parse_cluster_nodes_line(valkeyClusterContext *cc, valkeyContext *c, 
     // clang-format on
 
     if (link_state == NULL) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "Mandatory fields missing");
-        return VALKEY_ERR;
+        kvClusterSetError(cc, KV_ERR_OTHER, "Mandatory fields missing");
+        return KV_ERR;
     }
 
     /* Parse flags, a comma separated list of following flags:
      * myself, master, slave, fail?, fail, handshake, noaddr, nofailover, noflags. */
-    uint8_t role = VALKEY_ROLE_UNKNOWN;
+    uint8_t role = KV_ROLE_UNKNOWN;
     while (*flags != '\0') {
         if ((p = strchr(flags, ',')) != NULL)
             *p = '\0';
         if (memcmp(flags, "master", 6) == 0)
-            role = VALKEY_ROLE_PRIMARY;
+            role = KV_ROLE_PRIMARY;
         else if (memcmp(flags, "slave", 5) == 0)
-            role = VALKEY_ROLE_REPLICA;
+            role = KV_ROLE_REPLICA;
         else if (memcmp(flags, "noaddr", 6) == 0) {
             *parsed_node = NULL;
-            return VALKEY_OK; /* Skip nodes with 'noaddr'. */
+            return KV_OK; /* Skip nodes with 'noaddr'. */
         }
         if (p == NULL) /* No more flags. */
             break;
         flags = p + 1; /* Start of next flag. */
     }
-    if (role == VALKEY_ROLE_UNKNOWN) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "Unknown role");
-        return VALKEY_ERR;
+    if (role == KV_ROLE_UNKNOWN) {
+        kvClusterSetError(cc, KV_ERR_OTHER, "Unknown role");
+        return KV_ERR;
     }
 
     /* Only parse replicas when requested. */
-    if (role == VALKEY_ROLE_REPLICA && parsed_primary_id == NULL) {
+    if (role == KV_ROLE_REPLICA && parsed_primary_id == NULL) {
         *parsed_node = NULL;
-        return VALKEY_OK;
+        return KV_OK;
     }
 
-    valkeyClusterNode *node = createValkeyClusterNode();
+    kvClusterNode *node = createKVClusterNode();
     if (node == NULL) {
         goto oom;
     }
@@ -791,17 +791,17 @@ static int parse_cluster_nodes_line(valkeyClusterContext *cc, valkeyContext *c, 
 
     /* Find the required port separator. */
     if ((p = strrchr(addr, ':')) == NULL) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "Invalid node address");
-        freeValkeyClusterNode(node);
-        return VALKEY_ERR;
+        kvClusterSetError(cc, KV_ERR_OTHER, "Invalid node address");
+        freeKVClusterNode(node);
+        return KV_ERR;
     }
 
     /* Get the port (skip the found port separator). */
     int port = vk_atoi(p + 1, strlen(p + 1));
     if (port < 1 || port > UINT16_MAX) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "Invalid port");
-        freeValkeyClusterNode(node);
-        return VALKEY_ERR;
+        kvClusterSetError(cc, KV_ERR_OTHER, "Invalid port");
+        freeKVClusterNode(node);
+        return KV_ERR;
     }
     node->port = port;
 
@@ -837,10 +837,10 @@ static int parse_cluster_nodes_line(valkeyClusterContext *cc, valkeyContext *c, 
     }
 
     /* No slot parsing needed for replicas, but return primary id. */
-    if (node->role == VALKEY_ROLE_REPLICA) {
+    if (node->role == KV_ROLE_REPLICA) {
         *parsed_primary_id = primary_id;
         *parsed_node = node;
-        return VALKEY_OK;
+        return KV_OK;
     }
 
     node->slots = listCreate();
@@ -851,7 +851,7 @@ static int parse_cluster_nodes_line(valkeyClusterContext *cc, valkeyContext *c, 
     /* Parse slots when available. */
     if (slots == NULL) {
         *parsed_node = node;
-        return VALKEY_OK;
+        return KV_OK;
     }
     /* Parse each slot element. */
     while (*slots != '\0') {
@@ -885,25 +885,25 @@ static int parse_cluster_nodes_line(valkeyClusterContext *cc, valkeyContext *c, 
         slots = p + 1; /* Start of next entry. */
     }
     *parsed_node = node;
-    return VALKEY_OK;
+    return KV_OK;
 
 oom:
-    freeValkeyClusterNode(node);
-    valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
-    return VALKEY_ERR;
+    freeKVClusterNode(node);
+    kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
+    return KV_ERR;
 }
 
 /**
  * Parse the "cluster nodes" command reply to nodes dict.
  */
-static dict *parse_cluster_nodes(valkeyClusterContext *cc, valkeyContext *c, valkeyReply *reply) {
+static dict *parse_cluster_nodes(kvClusterContext *cc, kvContext *c, kvReply *reply) {
     dict *nodes = NULL;
     int slot_ranges_found = 0;
-    int add_replicas = cc->flags & VALKEY_FLAG_PARSE_REPLICAS;
+    int add_replicas = cc->flags & KV_FLAG_PARSE_REPLICAS;
     dict *replicas = NULL;
 
-    if (reply->type != VALKEY_REPLY_STRING) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "Unexpected reply type");
+    if (reply->type != KV_REPLY_STRING) {
+        kvClusterSetError(cc, KV_ERR_OTHER, "Unexpected reply type");
         goto error;
     }
 
@@ -920,54 +920,54 @@ static dict *parse_cluster_nodes(valkeyClusterContext *cc, valkeyContext *c, val
         lines = p + 1; /* Start of next line. */
 
         char *primary_id;
-        valkeyClusterNode *node;
-        if (parse_cluster_nodes_line(cc, c, line, &node, add_replicas ? &primary_id : NULL) != VALKEY_OK)
+        kvClusterNode *node;
+        if (parse_cluster_nodes_line(cc, c, line, &node, add_replicas ? &primary_id : NULL) != KV_OK)
             goto error;
         if (node == NULL)
             continue; /* Line skipped. */
-        if (node->role == VALKEY_ROLE_PRIMARY) {
+        if (node->role == KV_ROLE_PRIMARY) {
             sds key = sdsnew(node->addr);
             if (key == NULL) {
-                freeValkeyClusterNode(node);
+                freeKVClusterNode(node);
                 goto oom;
             }
             if (dictFind(nodes, key) != NULL) {
-                valkeyClusterSetError(cc, VALKEY_ERR_OTHER,
+                kvClusterSetError(cc, KV_ERR_OTHER,
                                       "Duplicate addresses in cluster nodes response");
                 sdsfree(key);
-                freeValkeyClusterNode(node);
+                freeKVClusterNode(node);
                 goto error;
             }
             if (dictAdd(nodes, key, node) != DICT_OK) {
                 sdsfree(key);
-                freeValkeyClusterNode(node);
+                freeKVClusterNode(node);
                 goto oom;
             }
             slot_ranges_found += listLength(node->slots);
 
         } else {
-            assert(node->role == VALKEY_ROLE_REPLICA);
+            assert(node->role == KV_ROLE_REPLICA);
             if (replicas == NULL) {
                 if ((replicas = dictCreate(&clusterNodeListDictType)) == NULL) {
-                    freeValkeyClusterNode(node);
+                    freeKVClusterNode(node);
                     goto oom;
                 }
             }
             /* Retain parsed replica nodes until all primaries are parsed. */
-            if (retain_replica_node(replicas, primary_id, node) != VALKEY_OK) {
-                freeValkeyClusterNode(node);
+            if (retain_replica_node(replicas, primary_id, node) != KV_OK) {
+                freeKVClusterNode(node);
                 goto oom;
             }
         }
     }
 
     if (slot_ranges_found == 0) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "No slot information");
+        kvClusterSetError(cc, KV_ERR_OTHER, "No slot information");
         goto error;
     }
 
     /* Store the retained replica nodes in primary nodes. */
-    if (store_replica_nodes(nodes, replicas) != VALKEY_OK) {
+    if (store_replica_nodes(nodes, replicas) != KV_OK) {
         goto oom;
     }
     dictRelease(replicas);
@@ -975,7 +975,7 @@ static dict *parse_cluster_nodes(valkeyClusterContext *cc, valkeyContext *c, val
     return nodes;
 
 oom:
-    valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
+    kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
     // passthrough
 
 error:
@@ -985,41 +985,41 @@ error:
 }
 
 /* Sends CLUSTER SLOTS or CLUSTER NODES to the node with context c. */
-static int clusterUpdateRouteSendCommand(valkeyClusterContext *cc,
-                                         valkeyContext *c) {
-    const char *cmd = (cc->flags & VALKEY_FLAG_USE_CLUSTER_NODES ?
-                           VALKEY_COMMAND_CLUSTER_NODES :
-                           VALKEY_COMMAND_CLUSTER_SLOTS);
-    if (valkeyAppendCommand(c, cmd) != VALKEY_OK) {
-        valkeyClusterSetError(cc, c->err, c->errstr);
-        return VALKEY_ERR;
+static int clusterUpdateRouteSendCommand(kvClusterContext *cc,
+                                         kvContext *c) {
+    const char *cmd = (cc->flags & KV_FLAG_USE_CLUSTER_NODES ?
+                           KV_COMMAND_CLUSTER_NODES :
+                           KV_COMMAND_CLUSTER_SLOTS);
+    if (kvAppendCommand(c, cmd) != KV_OK) {
+        kvClusterSetError(cc, c->err, c->errstr);
+        return KV_ERR;
     }
     /* Flush buffer to socket. */
-    if (valkeyBufferWrite(c, NULL) == VALKEY_ERR) {
-        valkeyClusterSetError(cc, c->err, c->errstr);
-        return VALKEY_ERR;
+    if (kvBufferWrite(c, NULL) == KV_ERR) {
+        kvClusterSetError(cc, c->err, c->errstr);
+        return KV_ERR;
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
 /* Receives and handles a CLUSTER SLOTS or CLUSTER NODES reply from node with
  * context c. */
-static int clusterUpdateRouteHandleReply(valkeyClusterContext *cc,
-                                         valkeyContext *c) {
-    valkeyReply *reply = NULL;
-    if (valkeyGetReply(c, (void **)&reply) != VALKEY_OK) {
-        valkeyClusterSetError(cc, c->err, c->errstr);
-        return VALKEY_ERR;
+static int clusterUpdateRouteHandleReply(kvClusterContext *cc,
+                                         kvContext *c) {
+    kvReply *reply = NULL;
+    if (kvGetReply(c, (void **)&reply) != KV_OK) {
+        kvClusterSetError(cc, c->err, c->errstr);
+        return KV_ERR;
     }
-    if (reply->type == VALKEY_REPLY_ERROR) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, reply->str);
+    if (reply->type == KV_REPLY_ERROR) {
+        kvClusterSetError(cc, KV_ERR_OTHER, reply->str);
         freeReplyObject(reply);
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     dict *nodes;
-    if (cc->flags & VALKEY_FLAG_USE_CLUSTER_NODES) {
+    if (cc->flags & KV_FLAG_USE_CLUSTER_NODES) {
         nodes = parse_cluster_nodes(cc, c, reply);
     } else {
         nodes = parse_cluster_slots(cc, c, reply);
@@ -1028,16 +1028,16 @@ static int clusterUpdateRouteHandleReply(valkeyClusterContext *cc,
     return updateNodesAndSlotmap(cc, nodes);
 }
 
-/* Update known cluster nodes with a new collection of valkeyClusterNodes.
+/* Update known cluster nodes with a new collection of kvClusterNodes.
  * Will also update the slot-to-node lookup table for the new nodes. */
-static int updateNodesAndSlotmap(valkeyClusterContext *cc, dict *nodes) {
+static int updateNodesAndSlotmap(kvClusterContext *cc, dict *nodes) {
     if (nodes == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    /* Create a slot to valkeyClusterNode lookup table */
-    valkeyClusterNode **table;
-    table = vk_calloc(VALKEYCLUSTER_SLOTS, sizeof(valkeyClusterNode *));
+    /* Create a slot to kvClusterNode lookup table */
+    kvClusterNode **table;
+    table = vk_calloc(KVCLUSTER_SLOTS, sizeof(kvClusterNode *));
     if (table == NULL) {
         goto oom;
     }
@@ -1047,9 +1047,9 @@ static int updateNodesAndSlotmap(valkeyClusterContext *cc, dict *nodes) {
 
     dictEntry *de;
     while ((de = dictNext(&di))) {
-        valkeyClusterNode *node = dictGetVal(de);
-        if (node->role != VALKEY_ROLE_PRIMARY) {
-            valkeyClusterSetError(cc, VALKEY_ERR_OTHER,
+        kvClusterNode *node = dictGetVal(de);
+        if (node->role != KV_ROLE_PRIMARY) {
+            kvClusterSetError(cc, KV_ERR_OTHER,
                                   "Node role must be primary");
             goto error;
         }
@@ -1064,14 +1064,14 @@ static int updateNodesAndSlotmap(valkeyClusterContext *cc, dict *nodes) {
         listNode *ln;
         while ((ln = listNext(&li))) {
             cluster_slot *slot = listNodeValue(ln);
-            if (slot->start > slot->end || slot->end >= VALKEYCLUSTER_SLOTS) {
-                valkeyClusterSetError(cc, VALKEY_ERR_OTHER,
+            if (slot->start > slot->end || slot->end >= KVCLUSTER_SLOTS) {
+                kvClusterSetError(cc, KV_ERR_OTHER,
                                       "Slot region for node is invalid");
                 goto error;
             }
             for (uint32_t i = slot->start; i <= slot->end; i++) {
                 if (table[i] != NULL) {
-                    valkeyClusterSetError(cc, VALKEY_ERR_OTHER,
+                    kvClusterSetError(cc, KV_ERR_OTHER,
                                           "Different node holds same slot");
                     goto error;
                 }
@@ -1090,7 +1090,7 @@ static int updateNodesAndSlotmap(valkeyClusterContext *cc, dict *nodes) {
 
     cc->route_version++;
 
-    // Move all libvalkey contexts in cc->nodes to nodes
+    // Move all libkv contexts in cc->nodes to nodes
     cluster_nodes_swap_ctx(cc->nodes, nodes);
 
     /* Replace cc->nodes before releasing the old dict since
@@ -1100,32 +1100,32 @@ static int updateNodesAndSlotmap(valkeyClusterContext *cc, dict *nodes) {
     dictRelease(oldnodes);
 
     if (cc->event_callback != NULL) {
-        cc->event_callback(cc, VALKEYCLUSTER_EVENT_SLOTMAP_UPDATED,
+        cc->event_callback(cc, KVCLUSTER_EVENT_SLOTMAP_UPDATED,
                            cc->event_privdata);
         if (cc->route_version == 1) {
             /* Special event the first time the slotmap was updated. */
-            cc->event_callback(cc, VALKEYCLUSTER_EVENT_READY,
+            cc->event_callback(cc, KVCLUSTER_EVENT_READY,
                                cc->event_privdata);
         }
     }
     cc->need_update_route = 0;
-    return VALKEY_OK;
+    return KV_OK;
 
 oom:
-    valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
+    kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
     // passthrough
 error:
     vk_free(table);
     dictRelease(nodes);
-    return VALKEY_ERR;
+    return KV_ERR;
 }
 
-int valkeyClusterUpdateSlotmap(valkeyClusterContext *cc) {
+int kvClusterUpdateSlotmap(kvClusterContext *cc) {
     if (cc == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    valkeyClusterNode *node;
+    kvClusterNode *node;
     dictEntry *de;
 
     dictIterator di;
@@ -1135,54 +1135,54 @@ int valkeyClusterUpdateSlotmap(valkeyClusterContext *cc) {
         node = dictGetVal(de);
 
         /* Use existing connection or (re)connect to the node. */
-        valkeyContext *c = valkeyClusterGetValkeyContext(cc, node);
+        kvContext *c = kvClusterGetKVContext(cc, node);
         if (c == NULL)
             continue;
-        if (clusterUpdateRouteSendCommand(cc, c) != VALKEY_OK ||
-            clusterUpdateRouteHandleReply(cc, c) != VALKEY_OK) {
-            valkeyFree(node->con);
+        if (clusterUpdateRouteSendCommand(cc, c) != KV_OK ||
+            clusterUpdateRouteHandleReply(cc, c) != KV_OK) {
+            kvFree(node->con);
             node->con = NULL;
             continue;
         }
-        valkeyClusterClearError(cc);
-        return VALKEY_OK;
+        kvClusterClearError(cc);
+        return KV_OK;
     }
 
-    return VALKEY_ERR;
+    return KV_ERR;
 }
 
-static int valkeyClusterContextInit(valkeyClusterContext *cc,
-                                    const valkeyClusterOptions *options) {
+static int kvClusterContextInit(kvClusterContext *cc,
+                                    const kvClusterOptions *options) {
     cc->nodes = dictCreate(&clusterNodesDictType);
     if (cc->nodes == NULL) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
-        return VALKEY_ERR;
+        kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
+        return KV_ERR;
     }
     cc->requests = listCreate();
     if (cc->requests == NULL) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
-        return VALKEY_ERR;
+        kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
+        return KV_ERR;
     }
     cc->requests->free = listCommandFree;
 
-    int supported_options = (VALKEY_OPT_USE_CLUSTER_NODES | VALKEY_OPT_USE_REPLICAS |
-                             VALKEY_OPT_BLOCKING_INITIAL_UPDATE | VALKEY_OPT_REUSEADDR |
-                             VALKEY_OPT_PREFER_IPV4 | VALKEY_OPT_PREFER_IPV6 |
-                             VALKEY_OPT_PREFER_IP_UNSPEC | VALKEY_OPT_MPTCP);
+    int supported_options = (KV_OPT_USE_CLUSTER_NODES | KV_OPT_USE_REPLICAS |
+                             KV_OPT_BLOCKING_INITIAL_UPDATE | KV_OPT_REUSEADDR |
+                             KV_OPT_PREFER_IPV4 | KV_OPT_PREFER_IPV6 |
+                             KV_OPT_PREFER_IP_UNSPEC | KV_OPT_MPTCP);
     if (options->options & ~supported_options) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "Unsupported options");
-        return VALKEY_ERR;
+        kvClusterSetError(cc, KV_ERR_OTHER, "Unsupported options");
+        return KV_ERR;
     }
     cc->options = options->options;
 
-    if (options->options & VALKEY_OPT_USE_CLUSTER_NODES) {
-        cc->flags |= VALKEY_FLAG_USE_CLUSTER_NODES;
+    if (options->options & KV_OPT_USE_CLUSTER_NODES) {
+        cc->flags |= KV_FLAG_USE_CLUSTER_NODES;
     }
-    if (options->options & VALKEY_OPT_USE_REPLICAS) {
-        cc->flags |= VALKEY_FLAG_PARSE_REPLICAS;
+    if (options->options & KV_OPT_USE_REPLICAS) {
+        cc->flags |= KV_FLAG_PARSE_REPLICAS;
     }
-    if (options->options & VALKEY_OPT_BLOCKING_INITIAL_UPDATE) {
-        cc->flags |= VALKEY_FLAG_BLOCKING_INITIAL_UPDATE;
+    if (options->options & KV_OPT_BLOCKING_INITIAL_UPDATE) {
+        cc->flags |= KV_FLAG_BLOCKING_INITIAL_UPDATE;
     }
     if (options->max_retry > 0) {
         cc->max_retry_count = options->max_retry;
@@ -1190,24 +1190,24 @@ static int valkeyClusterContextInit(valkeyClusterContext *cc,
         cc->max_retry_count = CLUSTER_DEFAULT_MAX_RETRY_COUNT;
     }
     if (options->initial_nodes != NULL &&
-        valkeyClusterSetOptionAddNodes(cc, options->initial_nodes) != VALKEY_OK) {
-        return VALKEY_ERR; /* err and errstr already set. */
+        kvClusterSetOptionAddNodes(cc, options->initial_nodes) != KV_OK) {
+        return KV_ERR; /* err and errstr already set. */
     }
     if (options->connect_timeout != NULL &&
-        valkeyClusterSetOptionConnectTimeout(cc, *options->connect_timeout) != VALKEY_OK) {
-        return VALKEY_ERR; /* err and errstr already set. */
+        kvClusterSetOptionConnectTimeout(cc, *options->connect_timeout) != KV_OK) {
+        return KV_ERR; /* err and errstr already set. */
     }
     if (options->command_timeout != NULL &&
-        valkeyClusterSetOptionTimeout(cc, *options->command_timeout) != VALKEY_OK) {
-        return VALKEY_ERR; /* err and errstr already set. */
+        kvClusterSetOptionTimeout(cc, *options->command_timeout) != KV_OK) {
+        return KV_ERR; /* err and errstr already set. */
     }
     if (options->username != NULL &&
-        valkeyClusterSetOptionUsername(cc, options->username) != VALKEY_OK) {
-        return VALKEY_ERR; /* err and errstr already set. */
+        kvClusterSetOptionUsername(cc, options->username) != KV_OK) {
+        return KV_ERR; /* err and errstr already set. */
     }
     if (options->password != NULL &&
-        valkeyClusterSetOptionPassword(cc, options->password) != VALKEY_OK) {
-        return VALKEY_ERR; /* err and errstr already set. */
+        kvClusterSetOptionPassword(cc, options->password) != KV_OK) {
+        return KV_ERR; /* err and errstr already set. */
     }
     if (options->connect_callback) {
         cc->on_connect = options->connect_callback;
@@ -1221,15 +1221,15 @@ static int valkeyClusterContextInit(valkeyClusterContext *cc,
         cc->tls_init_fn = options->tls_init_fn;
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-void valkeyClusterFree(valkeyClusterContext *cc) {
+void kvClusterFree(kvClusterContext *cc) {
     if (cc == NULL)
         return;
 
     if (cc->event_callback) {
-        cc->event_callback(cc, VALKEYCLUSTER_EVENT_FREE_CONTEXT,
+        cc->event_callback(cc, KVCLUSTER_EVENT_FREE_CONTEXT,
                            cc->event_privdata);
     }
 
@@ -1245,44 +1245,44 @@ void valkeyClusterFree(valkeyClusterContext *cc) {
     vk_free(cc);
 }
 
-valkeyClusterContext *valkeyClusterConnectWithOptions(const valkeyClusterOptions *options) {
-    valkeyClusterContext *cc;
+kvClusterContext *kvClusterConnectWithOptions(const kvClusterOptions *options) {
+    kvClusterContext *cc;
 
-    cc = vk_calloc(1, sizeof(valkeyClusterContext));
+    cc = vk_calloc(1, sizeof(kvClusterContext));
     if (cc == NULL)
         return NULL;
 
-    if (valkeyClusterContextInit(cc, options) == VALKEY_OK) {
+    if (kvClusterContextInit(cc, options) == KV_OK) {
         /* Only connect if options are ok. */
-        valkeyClusterUpdateSlotmap(cc);
+        kvClusterUpdateSlotmap(cc);
     }
     return cc;
 }
 
-valkeyClusterContext *valkeyClusterConnect(const char *addrs) {
-    valkeyClusterOptions options = {0};
+kvClusterContext *kvClusterConnect(const char *addrs) {
+    kvClusterOptions options = {0};
     options.initial_nodes = addrs;
 
-    return valkeyClusterConnectWithOptions(&options);
+    return kvClusterConnectWithOptions(&options);
 }
 
-valkeyClusterContext *valkeyClusterConnectWithTimeout(const char *addrs,
+kvClusterContext *kvClusterConnectWithTimeout(const char *addrs,
                                                       const struct timeval tv) {
-    valkeyClusterOptions options = {0};
+    kvClusterOptions options = {0};
     options.initial_nodes = addrs;
     options.connect_timeout = &tv;
 
-    return valkeyClusterConnectWithOptions(&options);
+    return kvClusterConnectWithOptions(&options);
 }
 
-static int valkeyClusterSetOptionAddNode(valkeyClusterContext *cc, const char *addr) {
+static int kvClusterSetOptionAddNode(kvClusterContext *cc, const char *addr) {
     dictEntry *node_entry;
-    valkeyClusterNode *node = NULL;
+    kvClusterNode *node = NULL;
     int port, ret;
     sds ip = NULL;
 
     if (cc == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     sds addr_sds = sdsnew(addr);
@@ -1297,17 +1297,17 @@ static int valkeyClusterSetOptionAddNode(valkeyClusterContext *cc, const char *a
         /* Find the last occurrence of the port separator since
          * IPv6 addresses can contain ':' */
         if ((p = strrchr(addr, ':')) == NULL) {
-            valkeyClusterSetError(cc, VALKEY_ERR_OTHER,
+            kvClusterSetError(cc, KV_ERR_OTHER,
                                   "server address is incorrect, port separator missing.");
-            return VALKEY_ERR;
+            return KV_ERR;
         }
         // p includes separator
 
         if (p - addr <= 0) { /* length until separator */
-            valkeyClusterSetError(
-                cc, VALKEY_ERR_OTHER,
+            kvClusterSetError(
+                cc, KV_ERR_OTHER,
                 "server address is incorrect, address part missing.");
-            return VALKEY_ERR;
+            return KV_ERR;
         }
 
         ip = sdsnewlen(addr, p - addr);
@@ -1317,20 +1317,20 @@ static int valkeyClusterSetOptionAddNode(valkeyClusterContext *cc, const char *a
         p++; // remove separator character
 
         if (strlen(p) <= 0) {
-            valkeyClusterSetError(
-                cc, VALKEY_ERR_OTHER,
+            kvClusterSetError(
+                cc, KV_ERR_OTHER,
                 "server address is incorrect, port part missing.");
             goto error;
         }
 
         port = vk_atoi(p, strlen(p));
         if (port <= 0) {
-            valkeyClusterSetError(cc, VALKEY_ERR_OTHER,
+            kvClusterSetError(cc, KV_ERR_OTHER,
                                   "server port is incorrect");
             goto error;
         }
 
-        node = createValkeyClusterNode();
+        node = createKVClusterNode();
         if (node == NULL) {
             goto oom;
         }
@@ -1354,10 +1354,10 @@ static int valkeyClusterSetOptionAddNode(valkeyClusterContext *cc, const char *a
         }
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 
 oom:
-    valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
+    kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
     // passthrough
 
 error:
@@ -1366,10 +1366,10 @@ error:
         sdsfree(node->addr);
         vk_free(node);
     }
-    return VALKEY_ERR;
+    return KV_ERR;
 }
 
-static int valkeyClusterSetOptionAddNodes(valkeyClusterContext *cc,
+static int kvClusterSetOptionAddNodes(kvClusterContext *cc,
                                           const char *addrs) {
     int ret;
     sds *address = NULL;
@@ -1377,116 +1377,116 @@ static int valkeyClusterSetOptionAddNodes(valkeyClusterContext *cc,
     int i;
 
     if (cc == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     /* Split into individual addresses. */
     address = sdssplitlen(addrs, strlen(addrs), ",", strlen(","), &address_count);
     if (address == NULL) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
-        return VALKEY_ERR;
+        kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
+        return KV_ERR;
     }
 
     if (address_count <= 0) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER,
+        kvClusterSetError(cc, KV_ERR_OTHER,
                               "invalid server addresses (example format: "
                               "127.0.0.1:1234,127.0.0.2:5678)");
         sdsfreesplitres(address, address_count);
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     for (i = 0; i < address_count; i++) {
-        ret = valkeyClusterSetOptionAddNode(cc, address[i]);
-        if (ret != VALKEY_OK) {
+        ret = kvClusterSetOptionAddNode(cc, address[i]);
+        if (ret != KV_OK) {
             sdsfreesplitres(address, address_count);
-            return VALKEY_ERR;
+            return KV_ERR;
         }
     }
 
     sdsfreesplitres(address, address_count);
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
 /**
  * Configure a username used during authentication, see
- * the Valkey AUTH command.
+ * the KV AUTH command.
  * Disabled by default. Can be disabled again by providing an
  * empty string or a null pointer.
  */
-static int valkeyClusterSetOptionUsername(valkeyClusterContext *cc,
+static int kvClusterSetOptionUsername(kvClusterContext *cc,
                                           const char *username) {
     if (cc == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     // Disabling option
     if (username == NULL || username[0] == '\0') {
         vk_free(cc->username);
         cc->username = NULL;
-        return VALKEY_OK;
+        return KV_OK;
     }
 
     vk_free(cc->username);
     cc->username = vk_strdup(username);
     if (cc->username == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
 /**
  * Configure a password used when connecting to password-protected
- * Valkey instances. (See Valkey AUTH command)
+ * KV instances. (See KV AUTH command)
  */
-static int valkeyClusterSetOptionPassword(valkeyClusterContext *cc,
+static int kvClusterSetOptionPassword(kvClusterContext *cc,
                                           const char *password) {
 
     if (cc == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     // Disabling use of password
     if (password == NULL || password[0] == '\0') {
         vk_free(cc->password);
         cc->password = NULL;
-        return VALKEY_OK;
+        return KV_OK;
     }
 
     vk_free(cc->password);
     cc->password = vk_strdup(password);
     if (cc->password == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-static int valkeyClusterSetOptionConnectTimeout(valkeyClusterContext *cc,
+static int kvClusterSetOptionConnectTimeout(kvClusterContext *cc,
                                                 const struct timeval tv) {
 
     if (cc == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     if (cc->connect_timeout == NULL) {
         cc->connect_timeout = vk_malloc(sizeof(struct timeval));
         if (cc->connect_timeout == NULL) {
-            valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
-            return VALKEY_ERR;
+            kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
+            return KV_ERR;
         }
     }
 
     memcpy(cc->connect_timeout, &tv, sizeof(struct timeval));
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-int valkeyClusterSetOptionTimeout(valkeyClusterContext *cc,
+int kvClusterSetOptionTimeout(kvClusterContext *cc,
                                   const struct timeval tv) {
     if (cc == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     if (cc->command_timeout == NULL ||
@@ -1496,8 +1496,8 @@ int valkeyClusterSetOptionTimeout(valkeyClusterContext *cc,
         if (cc->command_timeout == NULL) {
             cc->command_timeout = vk_malloc(sizeof(struct timeval));
             if (cc->command_timeout == NULL) {
-                valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
-                return VALKEY_ERR;
+                kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
+                return KV_ERR;
             }
         }
 
@@ -1506,7 +1506,7 @@ int valkeyClusterSetOptionTimeout(valkeyClusterContext *cc,
         /* Set timeout on already connected nodes */
         if (dictSize(cc->nodes) > 0) {
             dictEntry *de;
-            valkeyClusterNode *node;
+            kvClusterNode *node;
 
             dictIterator di;
             dictInitIterator(&di, cc->nodes);
@@ -1514,14 +1514,14 @@ int valkeyClusterSetOptionTimeout(valkeyClusterContext *cc,
             while ((de = dictNext(&di)) != NULL) {
                 node = dictGetVal(de);
                 if (node->acon) {
-                    valkeyAsyncSetTimeout(node->acon, tv);
+                    kvAsyncSetTimeout(node->acon, tv);
                 }
                 if (node->con && node->con->err == 0) {
-                    valkeySetTimeout(node->con, tv);
+                    kvSetTimeout(node->con, tv);
                 }
 
                 if (node->replicas && listLength(node->replicas) > 0) {
-                    valkeyClusterNode *replica;
+                    kvClusterNode *replica;
                     listNode *ln;
 
                     listIter li;
@@ -1530,10 +1530,10 @@ int valkeyClusterSetOptionTimeout(valkeyClusterContext *cc,
                     while ((ln = listNext(&li)) != NULL) {
                         replica = listNodeValue(ln);
                         if (replica->acon) {
-                            valkeyAsyncSetTimeout(replica->acon, tv);
+                            kvAsyncSetTimeout(replica->acon, tv);
                         }
                         if (replica->con && replica->con->err == 0) {
-                            valkeySetTimeout(replica->con, tv);
+                            kvSetTimeout(replica->con, tv);
                         }
                     }
                 }
@@ -1541,12 +1541,12 @@ int valkeyClusterSetOptionTimeout(valkeyClusterContext *cc,
         }
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-valkeyContext *valkeyClusterGetValkeyContext(valkeyClusterContext *cc,
-                                             valkeyClusterNode *node) {
-    valkeyContext *c = NULL;
+kvContext *kvClusterGetKVContext(kvClusterContext *cc,
+                                             kvClusterNode *node) {
+    kvContext *c = NULL;
     if (node == NULL) {
         return NULL;
     }
@@ -1554,14 +1554,14 @@ valkeyContext *valkeyClusterGetValkeyContext(valkeyClusterContext *cc,
     c = node->con;
     if (c != NULL) {
         if (c->err) {
-            valkeyReconnect(c);
+            kvReconnect(c);
 
             if (cc->on_connect) {
-                cc->on_connect(c, c->err ? VALKEY_ERR : VALKEY_OK);
+                cc->on_connect(c, c->err ? KV_ERR : KV_OK);
             }
 
-            if (cc->tls && cc->tls_init_fn(c, cc->tls) != VALKEY_OK) {
-                valkeyClusterSetError(cc, c->err, c->errstr);
+            if (cc->tls && cc->tls_init_fn(c, cc->tls) != KV_OK) {
+                kvClusterSetError(cc, c->err, c->errstr);
             }
 
             authenticate(cc, c); // err and errstr handled in function
@@ -1574,36 +1574,36 @@ valkeyContext *valkeyClusterGetValkeyContext(valkeyClusterContext *cc,
         return NULL;
     }
 
-    valkeyOptions options = {0};
-    VALKEY_OPTIONS_SET_TCP(&options, node->host, node->port);
+    kvOptions options = {0};
+    KV_OPTIONS_SET_TCP(&options, node->host, node->port);
     options.connect_timeout = cc->connect_timeout;
     options.command_timeout = cc->command_timeout;
     options.options = cc->options;
 
-    c = valkeyConnectWithOptions(&options);
+    c = kvConnectWithOptions(&options);
     if (c == NULL) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
+        kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
         return NULL;
     }
 
     if (cc->on_connect) {
-        cc->on_connect(c, c->err ? VALKEY_ERR : VALKEY_OK);
+        cc->on_connect(c, c->err ? KV_ERR : KV_OK);
     }
 
     if (c->err) {
-        valkeyClusterSetError(cc, c->err, c->errstr);
-        valkeyFree(c);
+        kvClusterSetError(cc, c->err, c->errstr);
+        kvFree(c);
         return NULL;
     }
 
-    if (cc->tls && cc->tls_init_fn(c, cc->tls) != VALKEY_OK) {
-        valkeyClusterSetError(cc, c->err, c->errstr);
-        valkeyFree(c);
+    if (cc->tls && cc->tls_init_fn(c, cc->tls) != KV_OK) {
+        kvClusterSetError(cc, c->err, c->errstr);
+        kvFree(c);
         return NULL;
     }
 
-    if (authenticate(cc, c) != VALKEY_OK) {
-        valkeyFree(c);
+    if (authenticate(cc, c) != KV_OK) {
+        kvFree(c);
         return NULL;
     }
 
@@ -1612,24 +1612,24 @@ valkeyContext *valkeyClusterGetValkeyContext(valkeyClusterContext *cc,
     return c;
 }
 
-static valkeyClusterNode *node_get_by_table(valkeyClusterContext *cc,
+static kvClusterNode *node_get_by_table(kvClusterContext *cc,
                                             uint32_t slot_num) {
     if (cc == NULL) {
         return NULL;
     }
 
-    if (slot_num >= VALKEYCLUSTER_SLOTS) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "invalid slot");
+    if (slot_num >= KVCLUSTER_SLOTS) {
+        kvClusterSetError(cc, KV_ERR_OTHER, "invalid slot");
         return NULL;
     }
 
     if (cc->table == NULL) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "slotmap not available");
+        kvClusterSetError(cc, KV_ERR_OTHER, "slotmap not available");
         return NULL;
     }
 
     if (cc->table[slot_num] == NULL) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER,
+        kvClusterSetError(cc, KV_ERR_OTHER,
                               "slot not served by any node");
         return NULL;
     }
@@ -1637,57 +1637,57 @@ static valkeyClusterNode *node_get_by_table(valkeyClusterContext *cc,
     return cc->table[slot_num];
 }
 
-/* Helper function for the valkeyClusterAppendCommand* family of functions.
+/* Helper function for the kvClusterAppendCommand* family of functions.
  *
  * Write a formatted command to the output buffer. When this family
- * is used, you need to call valkeyGetReply yourself to retrieve
+ * is used, you need to call kvGetReply yourself to retrieve
  * the reply (or replies in pub/sub).
  */
-static int valkeyClusterAppendCommandInternal(valkeyClusterContext *cc,
+static int kvClusterAppendCommandInternal(kvClusterContext *cc,
                                               struct cmd *command) {
 
-    valkeyClusterNode *node;
-    valkeyContext *c = NULL;
+    kvClusterNode *node;
+    kvContext *c = NULL;
 
     if (cc == NULL || command == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     node = node_get_by_table(cc, (uint32_t)command->slot_num);
     if (node == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    c = valkeyClusterGetValkeyContext(cc, node);
+    c = kvClusterGetKVContext(cc, node);
     if (c == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     } else if (c->err) {
-        valkeyClusterSetError(cc, c->err, c->errstr);
-        return VALKEY_ERR;
+        kvClusterSetError(cc, c->err, c->errstr);
+        return KV_ERR;
     }
 
-    if (valkeyAppendFormattedCommand(c, command->cmd, command->clen) !=
-        VALKEY_OK) {
-        valkeyClusterSetError(cc, c->err, c->errstr);
-        return VALKEY_ERR;
+    if (kvAppendFormattedCommand(c, command->cmd, command->clen) !=
+        KV_OK) {
+        kvClusterSetError(cc, c->err, c->errstr);
+        return KV_ERR;
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-/* Helper functions for the valkeyClusterGetReply* family of functions.
+/* Helper functions for the kvClusterGetReply* family of functions.
  */
-static int valkeyClusterGetReplyFromNode(valkeyClusterContext *cc,
-                                         valkeyClusterNode *node,
+static int kvClusterGetReplyFromNode(kvClusterContext *cc,
+                                         kvClusterNode *node,
                                          void **reply) {
-    valkeyContext *c;
+    kvContext *c;
 
     if (cc == NULL || node == NULL || reply == NULL)
-        return VALKEY_ERR;
+        return KV_ERR;
 
     c = node->con;
     if (c == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     } else if (c->err) {
         if (cc->need_update_route == 0) {
             cc->retry_count++;
@@ -1696,31 +1696,31 @@ static int valkeyClusterGetReplyFromNode(valkeyClusterContext *cc,
                 cc->retry_count = 0;
             }
         }
-        valkeyClusterSetError(cc, c->err, c->errstr);
-        return VALKEY_ERR;
+        kvClusterSetError(cc, c->err, c->errstr);
+        return KV_ERR;
     }
 
-    if (valkeyGetReply(c, reply) != VALKEY_OK) {
-        valkeyClusterSetError(cc, c->err, c->errstr);
-        return VALKEY_ERR;
+    if (kvGetReply(c, reply) != KV_OK) {
+        kvClusterSetError(cc, c->err, c->errstr);
+        return KV_ERR;
     }
 
     if (getReplyErrorType(*reply) == CLUSTER_ERR_MOVED)
         cc->need_update_route = 1;
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
 /* Parses a MOVED or ASK error reply and returns the destination node. The slot
  * is returned by pointer, if provided. When the parsed endpoint/IP is an empty
  * string the address from which the reply was sent from is used instead, as
- * described in the Valkey Cluster Specification. This address is provided via
- * the valkeyContext given in 'c'. */
-static valkeyClusterNode *getNodeFromRedirectReply(valkeyClusterContext *cc,
-                                                   valkeyContext *c,
-                                                   valkeyReply *reply,
+ * described in the KV Cluster Specification. This address is provided via
+ * the kvContext given in 'c'. */
+static kvClusterNode *getNodeFromRedirectReply(kvClusterContext *cc,
+                                                   kvContext *c,
+                                                   kvReply *reply,
                                                    int *slotptr) {
-    valkeyClusterNode *node = NULL;
+    kvClusterNode *node = NULL;
     sds key = NULL;
     sds endpoint = NULL;
     char *str = reply->str;
@@ -1744,19 +1744,19 @@ static valkeyClusterNode *getNodeFromRedirectReply(valkeyClusterContext *cc,
 
     /* Make sure all expected fields are found. */
     if (addr == NULL) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "Failed to parse redirect");
+        kvClusterSetError(cc, KV_ERR_OTHER, "Failed to parse redirect");
         return NULL;
     }
     /* Find the last occurrence of the port separator since
      * IPv6 addresses can contain ':' */
     if ((p = strrchr(addr, ':')) == NULL) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "Invalid address in redirect");
+        kvClusterSetError(cc, KV_ERR_OTHER, "Invalid address in redirect");
         return NULL;
     }
     /* Get the port (skip the found port separator). */
     int port = vk_atoi(p + 1, strlen(p + 1));
     if (port < 1 || port > UINT16_MAX) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "Invalid port in redirect");
+        kvClusterSetError(cc, KV_ERR_OTHER, "Invalid port in redirect");
         return NULL;
     }
 
@@ -1805,11 +1805,11 @@ static valkeyClusterNode *getNodeFromRedirectReply(valkeyClusterContext *cc,
     }
 
     /* Add this node since it was unknown */
-    node = createValkeyClusterNode();
+    node = createKVClusterNode();
     if (node == NULL) {
         goto oom;
     }
-    node->role = VALKEY_ROLE_PRIMARY;
+    node->role = KV_ROLE_PRIMARY;
     node->host = endpoint;
     node->port = port;
     node->addr = sdsdup(key);
@@ -1823,7 +1823,7 @@ static valkeyClusterNode *getNodeFromRedirectReply(valkeyClusterContext *cc,
     return node;
 
 oom:
-    valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
+    kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
     sdsfree(key);
     sdsfree(endpoint);
     if (node != NULL) {
@@ -1833,19 +1833,19 @@ oom:
     return NULL;
 }
 
-static void *valkey_cluster_command_execute(valkeyClusterContext *cc,
+static void *kv_cluster_command_execute(kvClusterContext *cc,
                                             struct cmd *command) {
     void *reply = NULL;
-    valkeyClusterNode *node;
-    valkeyContext *c = NULL;
-    valkeyContext *c_updating_route = NULL;
+    kvClusterNode *node;
+    kvContext *c = NULL;
+    kvContext *c_updating_route = NULL;
 
 retry:
 
     node = node_get_by_table(cc, (uint32_t)command->slot_num);
     if (node == NULL) {
         /* Update the slotmap since the slot is not served. */
-        if (valkeyClusterUpdateSlotmap(cc) != VALKEY_OK) {
+        if (kvClusterUpdateSlotmap(cc) != KV_OK) {
             goto error;
         }
         node = node_get_by_table(cc, (uint32_t)command->slot_num);
@@ -1855,11 +1855,11 @@ retry:
         }
     }
 
-    c = valkeyClusterGetValkeyContext(cc, node);
+    c = kvClusterGetKVContext(cc, node);
     if (c == NULL || c->err) {
         /* Failed to connect. Maybe there was a failover and this node is gone.
          * Update slotmap to find out. */
-        if (valkeyClusterUpdateSlotmap(cc) != VALKEY_OK) {
+        if (kvClusterUpdateSlotmap(cc) != KV_OK) {
             goto error;
         }
 
@@ -1867,11 +1867,11 @@ retry:
         if (node == NULL) {
             goto error;
         }
-        c = valkeyClusterGetValkeyContext(cc, node);
+        c = kvClusterGetKVContext(cc, node);
         if (c == NULL) {
             goto error;
         } else if (c->err) {
-            valkeyClusterSetError(cc, c->err, c->errstr);
+            kvClusterSetError(cc, c->err, c->errstr);
             goto error;
         }
     }
@@ -1879,25 +1879,25 @@ retry:
 moved_retry:
 ask_retry:
 
-    if (valkeyAppendFormattedCommand(c, command->cmd, command->clen) !=
-        VALKEY_OK) {
-        valkeyClusterSetError(cc, c->err, c->errstr);
+    if (kvAppendFormattedCommand(c, command->cmd, command->clen) !=
+        KV_OK) {
+        kvClusterSetError(cc, c->err, c->errstr);
         goto error;
     }
 
     /* If update slotmap has been scheduled, do that in the same pipeline. */
     if (cc->need_update_route && c_updating_route == NULL) {
-        if (clusterUpdateRouteSendCommand(cc, c) == VALKEY_OK) {
+        if (clusterUpdateRouteSendCommand(cc, c) == KV_OK) {
             c_updating_route = c;
         }
     }
 
-    if (valkeyGetReply(c, &reply) != VALKEY_OK) {
-        valkeyClusterSetError(cc, c->err, c->errstr);
+    if (kvGetReply(c, &reply) != KV_OK) {
+        kvClusterSetError(cc, c->err, c->errstr);
         /* We may need to update the slotmap if this node is removed from the
          * cluster, but the current request may have already timed out so we
          * schedule it for later. */
-        if (c->err != VALKEY_ERR_OOM)
+        if (c->err != KV_ERR_OOM)
             cc->need_update_route = 1;
         goto error;
     }
@@ -1906,7 +1906,7 @@ ask_retry:
     if (error_type > CLUSTER_NO_ERROR && error_type < CLUSTER_ERR_OTHER) {
         cc->retry_count++;
         if (cc->retry_count > cc->max_retry_count) {
-            valkeyClusterSetError(cc, VALKEY_ERR_CLUSTER_TOO_MANY_RETRIES,
+            kvClusterSetError(cc, KV_ERR_CLUSTER_TOO_MANY_RETRIES,
                                   "too many cluster retries");
             goto error;
         }
@@ -1929,24 +1929,24 @@ ask_retry:
             }
 
             if (c_updating_route == NULL) {
-                if (clusterUpdateRouteSendCommand(cc, c) == VALKEY_OK) {
+                if (clusterUpdateRouteSendCommand(cc, c) == KV_OK) {
                     /* Deferred update route using the node that sent the
                      * redirect. */
                     c_updating_route = c;
-                } else if (valkeyClusterUpdateSlotmap(cc) == VALKEY_OK) {
+                } else if (kvClusterUpdateSlotmap(cc) == KV_OK) {
                     /* Synchronous update route successful using new connection. */
-                    valkeyClusterClearError(cc);
+                    kvClusterClearError(cc);
                 } else {
                     /* Failed to update route. Specific error already set. */
                     goto error;
                 }
             }
 
-            c = valkeyClusterGetValkeyContext(cc, node);
+            c = kvClusterGetKVContext(cc, node);
             if (c == NULL) {
                 goto error;
             } else if (c->err) {
-                valkeyClusterSetError(cc, c->err, c->errstr);
+                kvClusterSetError(cc, c->err, c->errstr);
                 goto error;
             }
 
@@ -1962,17 +1962,17 @@ ask_retry:
             freeReplyObject(reply);
             reply = NULL;
 
-            c = valkeyClusterGetValkeyContext(cc, node);
+            c = kvClusterGetKVContext(cc, node);
             if (c == NULL) {
                 goto error;
             } else if (c->err) {
-                valkeyClusterSetError(cc, c->err, c->errstr);
+                kvClusterSetError(cc, c->err, c->errstr);
                 goto error;
             }
 
-            reply = valkeyCommand(c, VALKEY_COMMAND_ASKING);
+            reply = kvCommand(c, KV_COMMAND_ASKING);
             if (reply == NULL) {
-                valkeyClusterSetError(cc, c->err, c->errstr);
+                kvClusterSetError(cc, c->err, c->errstr);
                 goto error;
             }
 
@@ -2007,10 +2007,10 @@ done:
     if (c_updating_route) {
         /* Deferred CLUSTER SLOTS or CLUSTER NODES in progress. Wait for the
          * reply and handle it. */
-        if (clusterUpdateRouteHandleReply(cc, c_updating_route) != VALKEY_OK) {
+        if (clusterUpdateRouteHandleReply(cc, c_updating_route) != KV_OK) {
             /* Clear error and update synchronously using another node. */
-            valkeyClusterClearError(cc);
-            if (valkeyClusterUpdateSlotmap(cc) != VALKEY_OK) {
+            kvClusterClearError(cc);
+            if (kvClusterUpdateSlotmap(cc) != KV_OK) {
                 /* Clear the reply to indicate failure. */
                 freeReplyObject(reply);
                 reply = NULL;
@@ -2022,40 +2022,40 @@ done:
 }
 
 /* Prepare command by parsing the string to find the key and to get the slot. */
-static int prepareCommand(valkeyClusterContext *cc, struct cmd *command) {
+static int prepareCommand(kvClusterContext *cc, struct cmd *command) {
     if (command->cmd == NULL || command->clen <= 0) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    valkey_parse_cmd(command);
+    kv_parse_cmd(command);
     if (command->result == CMD_PARSE_ENOMEM) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
-        return VALKEY_ERR;
+        kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
+        return KV_ERR;
     }
     if (command->result != CMD_PARSE_OK) {
-        valkeyClusterSetError(cc, VALKEY_ERR_PROTOCOL, command->errstr);
-        return VALKEY_ERR;
+        kvClusterSetError(cc, KV_ERR_PROTOCOL, command->errstr);
+        return KV_ERR;
     }
     if (command->key.len == 0) {
-        valkeyClusterSetError(
-            cc, VALKEY_ERR_OTHER,
-            "No keys in command(must have keys for valkey cluster mode)");
-        return VALKEY_ERR;
+        kvClusterSetError(
+            cc, KV_ERR_OTHER,
+            "No keys in command(must have keys for kv cluster mode)");
+        return KV_ERR;
     }
     command->slot_num = keyHashSlot(command->key.start, command->key.len);
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-void *valkeyClusterFormattedCommand(valkeyClusterContext *cc, char *cmd,
+void *kvClusterFormattedCommand(kvClusterContext *cc, char *cmd,
                                     int len) {
-    valkeyReply *reply = NULL;
+    kvReply *reply = NULL;
     struct cmd *command = NULL;
 
     if (cc == NULL) {
         return NULL;
     }
 
-    valkeyClusterClearError(cc);
+    kvClusterClearError(cc);
 
     command = command_get();
     if (command == NULL) {
@@ -2064,18 +2064,18 @@ void *valkeyClusterFormattedCommand(valkeyClusterContext *cc, char *cmd,
     command->cmd = cmd;
     command->clen = len;
 
-    if (prepareCommand(cc, command) != VALKEY_OK) {
+    if (prepareCommand(cc, command) != KV_OK) {
         goto error;
     }
 
-    reply = valkey_cluster_command_execute(cc, command);
+    reply = kv_cluster_command_execute(cc, command);
     command->cmd = NULL;
     command_destroy(command);
     cc->retry_count = 0;
     return reply;
 
 oom:
-    valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
+    kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
     // passthrough
 
 error:
@@ -2087,9 +2087,9 @@ error:
     return NULL;
 }
 
-void *valkeyClustervCommand(valkeyClusterContext *cc, const char *format,
+void *kvClustervCommand(kvClusterContext *cc, const char *format,
                             va_list ap) {
-    valkeyReply *reply;
+    kvReply *reply;
     char *cmd;
     int len;
 
@@ -2097,117 +2097,117 @@ void *valkeyClustervCommand(valkeyClusterContext *cc, const char *format,
         return NULL;
     }
 
-    len = valkeyvFormatCommand(&cmd, format, ap);
+    len = kvvFormatCommand(&cmd, format, ap);
 
     if (len == -1) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
+        kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
         return NULL;
     } else if (len == -2) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "Invalid format string");
+        kvClusterSetError(cc, KV_ERR_OTHER, "Invalid format string");
         return NULL;
     }
 
-    reply = valkeyClusterFormattedCommand(cc, cmd, len);
+    reply = kvClusterFormattedCommand(cc, cmd, len);
 
     vk_free(cmd);
 
     return reply;
 }
 
-void *valkeyClusterCommand(valkeyClusterContext *cc, const char *format, ...) {
+void *kvClusterCommand(kvClusterContext *cc, const char *format, ...) {
     va_list ap;
-    valkeyReply *reply = NULL;
+    kvReply *reply = NULL;
 
     va_start(ap, format);
-    reply = valkeyClustervCommand(cc, format, ap);
+    reply = kvClustervCommand(cc, format, ap);
     va_end(ap);
 
     return reply;
 }
 
-void *valkeyClustervCommandToNode(valkeyClusterContext *cc,
-                                  valkeyClusterNode *node, const char *format,
+void *kvClustervCommandToNode(kvClusterContext *cc,
+                                  kvClusterNode *node, const char *format,
                                   va_list ap) {
-    valkeyContext *c;
+    kvContext *c;
     int ret;
     void *reply;
     int updating_slotmap = 0;
 
-    c = valkeyClusterGetValkeyContext(cc, node);
+    c = kvClusterGetKVContext(cc, node);
     if (c == NULL) {
         return NULL;
     } else if (c->err) {
-        valkeyClusterSetError(cc, c->err, c->errstr);
+        kvClusterSetError(cc, c->err, c->errstr);
         return NULL;
     }
 
-    valkeyClusterClearError(cc);
+    kvClusterClearError(cc);
 
-    ret = valkeyvAppendCommand(c, format, ap);
+    ret = kvvAppendCommand(c, format, ap);
 
-    if (ret != VALKEY_OK) {
-        valkeyClusterSetError(cc, c->err, c->errstr);
+    if (ret != KV_OK) {
+        kvClusterSetError(cc, c->err, c->errstr);
         return NULL;
     }
 
     if (cc->need_update_route) {
         /* Pipeline slotmap update on the same connection. */
-        if (clusterUpdateRouteSendCommand(cc, c) == VALKEY_OK) {
+        if (clusterUpdateRouteSendCommand(cc, c) == KV_OK) {
             updating_slotmap = 1;
         }
     }
 
-    if (valkeyGetReply(c, &reply) != VALKEY_OK) {
-        valkeyClusterSetError(cc, c->err, c->errstr);
-        if (c->err != VALKEY_ERR_OOM)
+    if (kvGetReply(c, &reply) != KV_OK) {
+        kvClusterSetError(cc, c->err, c->errstr);
+        if (c->err != KV_ERR_OOM)
             cc->need_update_route = 1;
         return NULL;
     }
 
     if (updating_slotmap) {
         /* Handle reply from pipelined CLUSTER SLOTS or CLUSTER NODES. */
-        if (clusterUpdateRouteHandleReply(cc, c) != VALKEY_OK) {
+        if (clusterUpdateRouteHandleReply(cc, c) != KV_OK) {
             /* Ignore error. Update will be triggered on the next command. */
-            valkeyClusterClearError(cc);
+            kvClusterClearError(cc);
         }
     }
 
     return reply;
 }
 
-void *valkeyClusterCommandToNode(valkeyClusterContext *cc,
-                                 valkeyClusterNode *node, const char *format,
+void *kvClusterCommandToNode(kvClusterContext *cc,
+                                 kvClusterNode *node, const char *format,
                                  ...) {
     va_list ap;
-    valkeyReply *reply = NULL;
+    kvReply *reply = NULL;
 
     va_start(ap, format);
-    reply = valkeyClustervCommandToNode(cc, node, format, ap);
+    reply = kvClustervCommandToNode(cc, node, format, ap);
     va_end(ap);
 
     return reply;
 }
 
-void *valkeyClusterCommandArgv(valkeyClusterContext *cc, int argc,
+void *kvClusterCommandArgv(kvClusterContext *cc, int argc,
                                const char **argv, const size_t *argvlen) {
-    valkeyReply *reply = NULL;
+    kvReply *reply = NULL;
     char *cmd;
     int len;
 
-    len = valkeyFormatCommandArgv(&cmd, argc, argv, argvlen);
+    len = kvFormatCommandArgv(&cmd, argc, argv, argvlen);
     if (len == -1) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
+        kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
         return NULL;
     }
 
-    reply = valkeyClusterFormattedCommand(cc, cmd, len);
+    reply = kvClusterFormattedCommand(cc, cmd, len);
 
     vk_free(cmd);
 
     return reply;
 }
 
-int valkeyClusterAppendFormattedCommand(valkeyClusterContext *cc, char *cmd,
+int kvClusterAppendFormattedCommand(kvClusterContext *cc, char *cmd,
                                         int len) {
     struct cmd *command = NULL;
 
@@ -2218,11 +2218,11 @@ int valkeyClusterAppendFormattedCommand(valkeyClusterContext *cc, char *cmd,
     command->cmd = cmd;
     command->clen = len;
 
-    if (prepareCommand(cc, command) != VALKEY_OK) {
+    if (prepareCommand(cc, command) != KV_OK) {
         goto error;
     }
 
-    if (valkeyClusterAppendCommandInternal(cc, command) != VALKEY_OK) {
+    if (kvClusterAppendCommandInternal(cc, command) != KV_OK) {
         goto error;
     }
 
@@ -2231,10 +2231,10 @@ int valkeyClusterAppendFormattedCommand(valkeyClusterContext *cc, char *cmd,
     if (listAddNodeTail(cc->requests, command) == NULL) {
         goto oom;
     }
-    return VALKEY_OK;
+    return KV_OK;
 
 oom:
-    valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
+    kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
     // passthrough
 
 error:
@@ -2242,78 +2242,78 @@ error:
         command->cmd = NULL;
         command_destroy(command);
     }
-    return VALKEY_ERR;
+    return KV_ERR;
 }
 
-int valkeyClustervAppendCommand(valkeyClusterContext *cc, const char *format,
+int kvClustervAppendCommand(kvClusterContext *cc, const char *format,
                                 va_list ap) {
     int ret;
     char *cmd;
     int len;
 
-    len = valkeyvFormatCommand(&cmd, format, ap);
+    len = kvvFormatCommand(&cmd, format, ap);
     if (len == -1) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
-        return VALKEY_ERR;
+        kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
+        return KV_ERR;
     } else if (len == -2) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "Invalid format string");
-        return VALKEY_ERR;
+        kvClusterSetError(cc, KV_ERR_OTHER, "Invalid format string");
+        return KV_ERR;
     }
 
-    ret = valkeyClusterAppendFormattedCommand(cc, cmd, len);
+    ret = kvClusterAppendFormattedCommand(cc, cmd, len);
 
     vk_free(cmd);
 
     return ret;
 }
 
-int valkeyClusterAppendCommand(valkeyClusterContext *cc, const char *format,
+int kvClusterAppendCommand(kvClusterContext *cc, const char *format,
                                ...) {
 
     int ret;
     va_list ap;
 
     if (cc == NULL || format == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     va_start(ap, format);
-    ret = valkeyClustervAppendCommand(cc, format, ap);
+    ret = kvClustervAppendCommand(cc, format, ap);
     va_end(ap);
 
     return ret;
 }
 
-int valkeyClustervAppendCommandToNode(valkeyClusterContext *cc,
-                                      valkeyClusterNode *node,
+int kvClustervAppendCommandToNode(kvClusterContext *cc,
+                                      kvClusterNode *node,
                                       const char *format, va_list ap) {
-    valkeyContext *c;
+    kvContext *c;
     struct cmd *command = NULL;
     char *cmd = NULL;
     int len;
 
-    c = valkeyClusterGetValkeyContext(cc, node);
+    c = kvClusterGetKVContext(cc, node);
     if (c == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     } else if (c->err) {
-        valkeyClusterSetError(cc, c->err, c->errstr);
-        return VALKEY_ERR;
+        kvClusterSetError(cc, c->err, c->errstr);
+        return KV_ERR;
     }
 
-    len = valkeyvFormatCommand(&cmd, format, ap);
+    len = kvvFormatCommand(&cmd, format, ap);
 
     if (len == -1) {
         goto oom;
     } else if (len == -2) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "Invalid format string");
-        return VALKEY_ERR;
+        kvClusterSetError(cc, KV_ERR_OTHER, "Invalid format string");
+        return KV_ERR;
     }
 
-    // Append the command to the outgoing valkey buffer
-    if (valkeyAppendFormattedCommand(c, cmd, len) != VALKEY_OK) {
-        valkeyClusterSetError(cc, c->err, c->errstr);
+    // Append the command to the outgoing kv buffer
+    if (kvAppendFormattedCommand(c, cmd, len) != KV_OK) {
+        kvClusterSetError(cc, c->err, c->errstr);
         vk_free(cmd);
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     // Keep the command in the outstanding request list
@@ -2331,59 +2331,59 @@ int valkeyClustervAppendCommandToNode(valkeyClusterContext *cc,
     if (listAddNodeTail(cc->requests, command) == NULL)
         goto oom;
 
-    return VALKEY_OK;
+    return KV_OK;
 
 oom:
     command_destroy(command);
-    valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
-    return VALKEY_ERR;
+    kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
+    return KV_ERR;
 }
 
-int valkeyClusterAppendCommandToNode(valkeyClusterContext *cc,
-                                     valkeyClusterNode *node,
+int kvClusterAppendCommandToNode(kvClusterContext *cc,
+                                     kvClusterNode *node,
                                      const char *format, ...) {
     int ret;
     va_list ap;
 
     if (cc == NULL || node == NULL || format == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     va_start(ap, format);
-    ret = valkeyClustervAppendCommandToNode(cc, node, format, ap);
+    ret = kvClustervAppendCommandToNode(cc, node, format, ap);
     va_end(ap);
 
     return ret;
 }
 
-int valkeyClusterAppendCommandArgv(valkeyClusterContext *cc, int argc,
+int kvClusterAppendCommandArgv(kvClusterContext *cc, int argc,
                                    const char **argv, const size_t *argvlen) {
     int ret;
     char *cmd;
     int len;
 
-    len = valkeyFormatCommandArgv(&cmd, argc, argv, argvlen);
+    len = kvFormatCommandArgv(&cmd, argc, argv, argvlen);
     if (len == -1) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OOM, "Out of memory");
-        return VALKEY_ERR;
+        kvClusterSetError(cc, KV_ERR_OOM, "Out of memory");
+        return KV_ERR;
     }
 
-    ret = valkeyClusterAppendFormattedCommand(cc, cmd, len);
+    ret = kvClusterAppendFormattedCommand(cc, cmd, len);
 
     vk_free(cmd);
 
     return ret;
 }
 
-VALKEY_UNUSED
-static int valkeyClusterSendAll(valkeyClusterContext *cc) {
+KV_UNUSED
+static int kvClusterSendAll(kvClusterContext *cc) {
     dictEntry *de;
-    valkeyClusterNode *node;
-    valkeyContext *c = NULL;
+    kvClusterNode *node;
+    kvContext *c = NULL;
     int wdone = 0;
 
     if (cc == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     dictIterator di;
@@ -2395,33 +2395,33 @@ static int valkeyClusterSendAll(valkeyClusterContext *cc) {
             continue;
         }
 
-        c = valkeyClusterGetValkeyContext(cc, node);
+        c = kvClusterGetKVContext(cc, node);
         if (c == NULL) {
             continue;
         }
 
         /* Write until done */
         do {
-            if (valkeyBufferWrite(c, &wdone) == VALKEY_ERR) {
-                return VALKEY_ERR;
+            if (kvBufferWrite(c, &wdone) == KV_ERR) {
+                return KV_ERR;
             }
         } while (!wdone);
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-VALKEY_UNUSED
-static int valkeyClusterClearAll(valkeyClusterContext *cc) {
+KV_UNUSED
+static int kvClusterClearAll(kvClusterContext *cc) {
     dictEntry *de;
-    valkeyClusterNode *node;
-    valkeyContext *c = NULL;
+    kvClusterNode *node;
+    kvContext *c = NULL;
 
     if (cc == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    valkeyClusterClearError(cc);
+    kvClusterClearError(cc);
 
     dictIterator di;
     dictInitIterator(&di, cc->nodes);
@@ -2437,22 +2437,22 @@ static int valkeyClusterClearAll(valkeyClusterContext *cc) {
             continue;
         }
 
-        valkeyFree(c);
+        kvFree(c);
         node->con = NULL;
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-int valkeyClusterGetReply(valkeyClusterContext *cc, void **reply) {
+int kvClusterGetReply(kvClusterContext *cc, void **reply) {
     struct cmd *command;
     listNode *list_command;
     int slot_num;
 
     if (cc == NULL || reply == NULL)
-        return VALKEY_ERR;
+        return KV_ERR;
 
-    valkeyClusterClearError(cc);
+    kvClusterClearError(cc);
     *reply = NULL;
 
     list_command = listFirst(cc->requests);
@@ -2460,12 +2460,12 @@ int valkeyClusterGetReply(valkeyClusterContext *cc, void **reply) {
     /* No queued requests. */
     if (list_command == NULL) {
         *reply = NULL;
-        return VALKEY_OK;
+        return KV_OK;
     }
 
     command = list_command->value;
     if (command == NULL) {
-        valkeyClusterSetError(cc, VALKEY_ERR_OTHER,
+        kvClusterSetError(cc, KV_ERR_OTHER,
                               "command in the requests list is null");
         goto error;
     }
@@ -2473,36 +2473,36 @@ int valkeyClusterGetReply(valkeyClusterContext *cc, void **reply) {
     /* Get reply when the command was sent via slot */
     slot_num = command->slot_num;
     if (slot_num >= 0) {
-        valkeyClusterNode *node;
+        kvClusterNode *node;
         if ((node = node_get_by_table(cc, (uint32_t)slot_num)) == NULL)
             goto error;
 
         listDelNode(cc->requests, list_command);
-        return valkeyClusterGetReplyFromNode(cc, node, reply);
+        return kvClusterGetReplyFromNode(cc, node, reply);
     }
     /* Get reply when the command was sent to a given node */
     if (command->node_addr != NULL) {
         dictEntry *de = dictFind(cc->nodes, command->node_addr);
         if (de == NULL) {
-            valkeyClusterSetError(cc, VALKEY_ERR_OTHER,
+            kvClusterSetError(cc, KV_ERR_OTHER,
                                   "command was sent to a now unknown node");
             goto error;
         }
 
         listDelNode(cc->requests, list_command);
-        return valkeyClusterGetReplyFromNode(cc, dictGetVal(de), reply);
+        return kvClusterGetReplyFromNode(cc, dictGetVal(de), reply);
     }
 
 error:
     listDelNode(cc->requests, list_command);
-    return VALKEY_ERR;
+    return KV_ERR;
 }
 
 /**
  * Resets cluster state after pipeline.
- * Resets Valkey node connections if pipeline commands were not called beforehand.
+ * Resets KV node connections if pipeline commands were not called beforehand.
  */
-void valkeyClusterReset(valkeyClusterContext *cc) {
+void kvClusterReset(kvClusterContext *cc) {
     int status;
     void *reply;
 
@@ -2511,18 +2511,18 @@ void valkeyClusterReset(valkeyClusterContext *cc) {
     }
 
     if (cc->err) {
-        valkeyClusterClearAll(cc);
+        kvClusterClearAll(cc);
     } else {
         /* Write/flush each nodes output buffer to socket */
-        valkeyClusterSendAll(cc);
+        kvClusterSendAll(cc);
 
         /* Expect a reply for each pipelined request */
         do {
-            status = valkeyClusterGetReply(cc, &reply);
-            if (status == VALKEY_OK) {
+            status = kvClusterGetReply(cc, &reply);
+            if (status == KV_OK) {
                 freeReplyObject(reply);
             } else {
-                valkeyClusterClearAll(cc);
+                kvClusterClearAll(cc);
                 break;
             }
         } while (reply != NULL);
@@ -2536,8 +2536,8 @@ void valkeyClusterReset(valkeyClusterContext *cc) {
     }
 
     if (cc->need_update_route) {
-        status = valkeyClusterUpdateSlotmap(cc);
-        if (status != VALKEY_OK) {
+        status = kvClusterUpdateSlotmap(cc);
+        if (status != KV_OK) {
             /* Specific error already set */
             return;
         }
@@ -2545,16 +2545,16 @@ void valkeyClusterReset(valkeyClusterContext *cc) {
     }
 }
 
-/*############valkey cluster async############*/
+/*############kv cluster async############*/
 
-static void valkeyClusterAsyncSetError(valkeyClusterAsyncContext *acc, int type,
+static void kvClusterAsyncSetError(kvClusterAsyncContext *acc, int type,
                                        const char *str) {
-    valkeyClusterSetError(&acc->cc, type, str); /* Keep error flags identical. */
+    kvClusterSetError(&acc->cc, type, str); /* Keep error flags identical. */
     acc->err = acc->cc.err;
 }
 
-static inline void valkeyClusterAsyncClearError(valkeyClusterAsyncContext *acc) {
-    valkeyClusterClearError(&acc->cc);
+static inline void kvClusterAsyncClearError(kvClusterAsyncContext *acc) {
+    kvClusterClearError(&acc->cc);
     acc->err = acc->cc.err;
 }
 
@@ -2574,18 +2574,18 @@ static void cluster_async_data_free(cluster_async_data *cad) {
 }
 
 static void unlinkAsyncContextAndNode(void *data) {
-    valkeyClusterNode *node;
+    kvClusterNode *node;
 
     if (data) {
-        node = (valkeyClusterNode *)(data);
+        node = (kvClusterNode *)(data);
         node->acon = NULL;
     }
 }
 
-valkeyAsyncContext *
-valkeyClusterGetValkeyAsyncContext(valkeyClusterAsyncContext *acc,
-                                   valkeyClusterNode *node) {
-    valkeyAsyncContext *ac;
+kvAsyncContext *
+kvClusterGetKVAsyncContext(kvClusterAsyncContext *acc,
+                                   kvClusterNode *node) {
+    kvAsyncContext *ac;
     int ret;
 
     if (node == NULL) {
@@ -2597,12 +2597,12 @@ valkeyClusterGetValkeyAsyncContext(valkeyClusterAsyncContext *acc,
         if (ac->c.err == 0) {
             return ac;
         } else {
-            /* The cluster node has a valkey context with errors. Libvalkey
+            /* The cluster node has a kv context with errors. Libkv
              * will asynchronously destruct the context and unlink it from
              * the cluster node object. Return an error until done.
              * An example scenario is when sending a command from a command
              * callback, which has a NULL reply due to a disconnect. */
-            valkeyClusterAsyncSetError(acc, ac->c.err, ac->c.errstr);
+            kvClusterAsyncSetError(acc, ac->c.err, ac->c.errstr);
             return NULL;
         }
     }
@@ -2610,71 +2610,71 @@ valkeyClusterGetValkeyAsyncContext(valkeyClusterAsyncContext *acc,
     // No async context exists, perform a connect
 
     if (node->host == NULL || node->port <= 0) {
-        valkeyClusterAsyncSetError(acc, VALKEY_ERR_OTHER,
+        kvClusterAsyncSetError(acc, KV_ERR_OTHER,
                                    "node host or port is error");
         return NULL;
     }
 
-    valkeyOptions options = {0};
-    VALKEY_OPTIONS_SET_TCP(&options, node->host, node->port);
+    kvOptions options = {0};
+    KV_OPTIONS_SET_TCP(&options, node->host, node->port);
     options.connect_timeout = acc->cc.connect_timeout;
     options.command_timeout = acc->cc.command_timeout;
     options.options = acc->cc.options;
 
     node->lastConnectionAttempt = vk_usec_now();
 
-    ac = valkeyAsyncConnectWithOptions(&options);
+    ac = kvAsyncConnectWithOptions(&options);
     if (ac == NULL) {
-        valkeyClusterAsyncSetError(acc, VALKEY_ERR_OOM, "Out of memory");
+        kvClusterAsyncSetError(acc, KV_ERR_OOM, "Out of memory");
         return NULL;
     }
 
     if (ac->err) {
-        valkeyClusterAsyncSetError(acc, ac->err, ac->errstr);
-        valkeyAsyncFree(ac);
+        kvClusterAsyncSetError(acc, ac->err, ac->errstr);
+        kvAsyncFree(ac);
         return NULL;
     }
 
     if (acc->cc.tls &&
-        acc->cc.tls_init_fn(&ac->c, acc->cc.tls) != VALKEY_OK) {
-        valkeyClusterAsyncSetError(acc, ac->c.err, ac->c.errstr);
-        valkeyAsyncFree(ac);
+        acc->cc.tls_init_fn(&ac->c, acc->cc.tls) != KV_OK) {
+        kvClusterAsyncSetError(acc, ac->c.err, ac->c.errstr);
+        kvAsyncFree(ac);
         return NULL;
     }
 
     // Authenticate when needed
     if (acc->cc.password != NULL) {
         if (acc->cc.username != NULL) {
-            ret = valkeyAsyncCommand(ac, NULL, NULL, "AUTH %s %s",
+            ret = kvAsyncCommand(ac, NULL, NULL, "AUTH %s %s",
                                      acc->cc.username, acc->cc.password);
         } else {
-            ret = valkeyAsyncCommand(ac, NULL, NULL, "AUTH %s",
+            ret = kvAsyncCommand(ac, NULL, NULL, "AUTH %s",
                                      acc->cc.password);
         }
 
-        if (ret != VALKEY_OK) {
-            valkeyClusterAsyncSetError(acc, ac->c.err, ac->c.errstr);
-            valkeyAsyncFree(ac);
+        if (ret != KV_OK) {
+            kvClusterAsyncSetError(acc, ac->c.err, ac->c.errstr);
+            kvAsyncFree(ac);
             return NULL;
         }
     }
 
     if (acc->attach_fn) {
         ret = acc->attach_fn(ac, acc->attach_data);
-        if (ret != VALKEY_OK) {
-            valkeyClusterAsyncSetError(acc, VALKEY_ERR_OTHER,
+        if (ret != KV_OK) {
+            kvClusterAsyncSetError(acc, KV_ERR_OTHER,
                                        "Failed to attach event adapter");
-            valkeyAsyncFree(ac);
+            kvAsyncFree(ac);
             return NULL;
         }
     }
 
     if (acc->onConnect) {
-        valkeyAsyncSetConnectCallback(ac, acc->onConnect);
+        kvAsyncSetConnectCallback(ac, acc->onConnect);
     }
 
     if (acc->onDisconnect) {
-        valkeyAsyncSetDisconnectCallback(ac, acc->onDisconnect);
+        kvAsyncSetDisconnectCallback(ac, acc->onDisconnect);
     }
 
     ac->data = node;
@@ -2684,14 +2684,14 @@ valkeyClusterGetValkeyAsyncContext(valkeyClusterAsyncContext *acc,
     return ac;
 }
 
-static int valkeyClusterAsyncContextInit(valkeyClusterAsyncContext *acc,
-                                         const valkeyClusterOptions *options) {
-    /* Setup errstr to point to common error string in valkeyClusterContext. */
+static int kvClusterAsyncContextInit(kvClusterAsyncContext *acc,
+                                         const kvClusterOptions *options) {
+    /* Setup errstr to point to common error string in kvClusterContext. */
     acc->errstr = acc->cc.errstr;
 
-    if (valkeyClusterContextInit(&acc->cc, options) != VALKEY_OK) {
-        valkeyClusterAsyncSetError(acc, acc->cc.err, acc->cc.errstr);
-        return VALKEY_ERR;
+    if (kvClusterContextInit(&acc->cc, options) != KV_OK) {
+        kvClusterAsyncSetError(acc, acc->cc.err, acc->cc.errstr);
+        return KV_ERR;
     }
 
     if (options->async_connect_callback != NULL) {
@@ -2701,36 +2701,36 @@ static int valkeyClusterAsyncContextInit(valkeyClusterAsyncContext *acc,
         acc->onDisconnect = options->async_disconnect_callback;
     }
     if (options->attach_fn == NULL) {
-        valkeyClusterAsyncSetError(acc, VALKEY_ERR_OTHER,
+        kvClusterAsyncSetError(acc, KV_ERR_OTHER,
                                    "No event library configured");
-        return VALKEY_ERR;
+        return KV_ERR;
     }
     acc->attach_fn = options->attach_fn;
     acc->attach_data = options->attach_data;
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-valkeyClusterAsyncContext *valkeyClusterAsyncConnectWithOptions(const valkeyClusterOptions *options) {
-    valkeyClusterAsyncContext *acc;
+kvClusterAsyncContext *kvClusterAsyncConnectWithOptions(const kvClusterOptions *options) {
+    kvClusterAsyncContext *acc;
 
-    acc = vk_calloc(1, sizeof(valkeyClusterAsyncContext));
+    acc = vk_calloc(1, sizeof(kvClusterAsyncContext));
     if (acc == NULL)
         return NULL;
 
-    if (valkeyClusterAsyncContextInit(acc, options) == VALKEY_OK) {
+    if (kvClusterAsyncContextInit(acc, options) == KV_OK) {
         /* Only connect if options are ok. */
-        valkeyClusterAsyncConnect(acc);
+        kvClusterAsyncConnect(acc);
     }
 
     return acc;
 }
 
-static int valkeyClusterAsyncConnect(valkeyClusterAsyncContext *acc) {
+static int kvClusterAsyncConnect(kvClusterAsyncContext *acc) {
     /* Use blocking initial slotmap update when configured. */
-    if (acc->cc.flags & VALKEY_FLAG_BLOCKING_INITIAL_UPDATE) {
-        if (valkeyClusterUpdateSlotmap(&acc->cc) != VALKEY_OK) {
-            valkeyClusterAsyncSetError(acc, acc->cc.err, acc->cc.errstr);
-            return VALKEY_ERR;
+    if (acc->cc.flags & KV_FLAG_BLOCKING_INITIAL_UPDATE) {
+        if (kvClusterUpdateSlotmap(&acc->cc) != KV_OK) {
+            kvClusterAsyncSetError(acc, acc->cc.err, acc->cc.errstr);
+            return KV_ERR;
         }
 
         /* Disconnect any non-async context used for the initial update. */
@@ -2738,24 +2738,24 @@ static int valkeyClusterAsyncConnect(valkeyClusterAsyncContext *acc) {
         dictInitIterator(&di, acc->cc.nodes);
         dictEntry *de;
         while ((de = dictNext(&di)) != NULL) {
-            valkeyClusterNode *node = dictGetVal(de);
+            kvClusterNode *node = dictGetVal(de);
             if (node->con) {
-                valkeyFree(node->con);
+                kvFree(node->con);
                 node->con = NULL;
             }
         }
 
-        return VALKEY_OK;
+        return KV_OK;
     }
     /* Use non-blocking initial slotmap update. */
     return updateSlotMapAsync(acc, NULL /*any node*/);
 }
 
 /* Reply callback function for CLUSTER SLOTS */
-void clusterSlotsReplyCallback(valkeyAsyncContext *ac, void *r,
+void clusterSlotsReplyCallback(kvAsyncContext *ac, void *r,
                                void *privdata) {
-    valkeyReply *reply = (valkeyReply *)r;
-    valkeyClusterAsyncContext *acc = (valkeyClusterAsyncContext *)privdata;
+    kvReply *reply = (kvReply *)r;
+    kvClusterAsyncContext *acc = (kvClusterAsyncContext *)privdata;
     acc->lastSlotmapUpdateAttempt = vk_usec_now();
 
     if (reply == NULL) {
@@ -2764,19 +2764,19 @@ void clusterSlotsReplyCallback(valkeyAsyncContext *ac, void *r,
         return;
     }
 
-    valkeyClusterContext *cc = &acc->cc;
+    kvClusterContext *cc = &acc->cc;
     dict *nodes = parse_cluster_slots(cc, &ac->c, reply);
-    if (updateNodesAndSlotmap(cc, nodes) != VALKEY_OK) {
+    if (updateNodesAndSlotmap(cc, nodes) != KV_OK) {
         /* Retry using available nodes */
         updateSlotMapAsync(acc, NULL);
     }
 }
 
 /* Reply callback function for CLUSTER NODES */
-void clusterNodesReplyCallback(valkeyAsyncContext *ac, void *r,
+void clusterNodesReplyCallback(kvAsyncContext *ac, void *r,
                                void *privdata) {
-    valkeyReply *reply = (valkeyReply *)r;
-    valkeyClusterAsyncContext *acc = (valkeyClusterAsyncContext *)privdata;
+    kvReply *reply = (kvReply *)r;
+    kvClusterAsyncContext *acc = (kvClusterAsyncContext *)privdata;
     acc->lastSlotmapUpdateAttempt = vk_usec_now();
 
     if (reply == NULL) {
@@ -2785,9 +2785,9 @@ void clusterNodesReplyCallback(valkeyAsyncContext *ac, void *r,
         return;
     }
 
-    valkeyClusterContext *cc = &acc->cc;
+    kvClusterContext *cc = &acc->cc;
     dict *nodes = parse_cluster_nodes(cc, &ac->c, reply);
-    if (updateNodesAndSlotmap(cc, nodes) != VALKEY_OK) {
+    if (updateNodesAndSlotmap(cc, nodes) != KV_OK) {
         /* Retry using available nodes */
         updateSlotMapAsync(acc, NULL);
     }
@@ -2795,7 +2795,7 @@ void clusterNodesReplyCallback(valkeyAsyncContext *ac, void *r,
 
 #define nodeIsConnected(n)                       \
     ((n)->acon != NULL && (n)->acon->err == 0 && \
-     (n)->acon->c.flags & VALKEY_CONNECTED)
+     (n)->acon->c.flags & KV_CONNECTED)
 
 /* Select a node.
  * Primarily selects a connected node found close to a randomly picked index of
@@ -2805,8 +2805,8 @@ void clusterNodesReplyCallback(valkeyAsyncContext *ac, void *r,
  * If no connected node is found a node for which a connect has not been attempted
  * within throttle-time, and is found near the picked index, is selected.
  */
-static valkeyClusterNode *selectNode(dict *nodes) {
-    valkeyClusterNode *node, *selected = NULL;
+static kvClusterNode *selectNode(dict *nodes) {
+    kvClusterNode *node, *selected = NULL;
     dictIterator di;
     dictInitIterator(&di, nodes);
 
@@ -2840,52 +2840,52 @@ static valkeyClusterNode *selectNode(dict *nodes) {
 
 /* Update the slot map by querying a selected cluster node. If ac is NULL, an
  * arbitrary connected node is selected. */
-static int updateSlotMapAsync(valkeyClusterAsyncContext *acc,
-                              valkeyAsyncContext *ac) {
+static int updateSlotMapAsync(kvClusterAsyncContext *acc,
+                              kvAsyncContext *ac) {
     if (acc->lastSlotmapUpdateAttempt == SLOTMAP_UPDATE_ONGOING) {
         /* Don't allow concurrent slot map updates. */
-        return VALKEY_ERR;
+        return KV_ERR;
     }
-    if (acc->cc.flags & VALKEY_FLAG_DISCONNECTING) {
+    if (acc->cc.flags & KV_FLAG_DISCONNECTING) {
         /* No slot map updates during a cluster client disconnect. */
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     if (ac == NULL) {
-        valkeyClusterNode *node = selectNode(acc->cc.nodes);
+        kvClusterNode *node = selectNode(acc->cc.nodes);
         if (node == NULL) {
             goto error;
         }
 
-        /* Get libvalkey context, connect if needed */
-        ac = valkeyClusterGetValkeyAsyncContext(acc, node);
+        /* Get libkv context, connect if needed */
+        ac = kvClusterGetKVAsyncContext(acc, node);
     }
     if (ac == NULL)
         goto error; /* Specific error already set */
 
     /* Send a command depending of config */
     int status;
-    if (acc->cc.flags & VALKEY_FLAG_USE_CLUSTER_NODES) {
-        status = valkeyAsyncCommand(ac, clusterNodesReplyCallback, acc,
-                                    VALKEY_COMMAND_CLUSTER_NODES);
+    if (acc->cc.flags & KV_FLAG_USE_CLUSTER_NODES) {
+        status = kvAsyncCommand(ac, clusterNodesReplyCallback, acc,
+                                    KV_COMMAND_CLUSTER_NODES);
     } else {
-        status = valkeyAsyncCommand(ac, clusterSlotsReplyCallback, acc,
-                                    VALKEY_COMMAND_CLUSTER_SLOTS);
+        status = kvAsyncCommand(ac, clusterSlotsReplyCallback, acc,
+                                    KV_COMMAND_CLUSTER_SLOTS);
     }
 
-    if (status == VALKEY_OK) {
+    if (status == KV_OK) {
         acc->lastSlotmapUpdateAttempt = SLOTMAP_UPDATE_ONGOING;
-        return VALKEY_OK;
+        return KV_OK;
     }
 
 error:
     acc->lastSlotmapUpdateAttempt = vk_usec_now();
-    return VALKEY_ERR;
+    return KV_ERR;
 }
 
 /* Start a slotmap update if the throttling allows. */
-static void throttledUpdateSlotMapAsync(valkeyClusterAsyncContext *acc,
-                                        valkeyAsyncContext *ac) {
+static void throttledUpdateSlotMapAsync(kvClusterAsyncContext *acc,
+                                        kvAsyncContext *ac) {
     if (acc->lastSlotmapUpdateAttempt != SLOTMAP_UPDATE_ONGOING &&
         (acc->lastSlotmapUpdateAttempt + SLOTMAP_UPDATE_THROTTLE_USEC) <
             vk_usec_now()) {
@@ -2893,15 +2893,15 @@ static void throttledUpdateSlotMapAsync(valkeyClusterAsyncContext *acc,
     }
 }
 
-static void valkeyClusterAsyncCallback(valkeyAsyncContext *ac, void *r,
+static void kvClusterAsyncCallback(kvAsyncContext *ac, void *r,
                                        void *privdata) {
     int ret;
-    valkeyReply *reply = r;
+    kvReply *reply = r;
     cluster_async_data *cad = privdata;
-    valkeyClusterAsyncContext *acc;
-    valkeyClusterContext *cc;
-    valkeyAsyncContext *ac_retry = NULL;
-    valkeyClusterNode *node;
+    kvClusterAsyncContext *acc;
+    kvClusterContext *cc;
+    kvAsyncContext *ac_retry = NULL;
+    kvClusterNode *node;
     struct cmd *command;
 
     if (cad == NULL) {
@@ -2924,10 +2924,10 @@ static void valkeyClusterAsyncCallback(valkeyAsyncContext *ac, void *r,
     }
 
     if (reply == NULL) {
-        /* Copy reply specific error from libvalkey */
-        valkeyClusterAsyncSetError(acc, ac->err, ac->errstr);
+        /* Copy reply specific error from libkv */
+        kvClusterAsyncSetError(acc, ac->err, ac->errstr);
 
-        node = (valkeyClusterNode *)ac->data;
+        node = (kvClusterNode *)ac->data;
         if (node == NULL)
             goto done; /* Node already removed from topology */
 
@@ -2937,7 +2937,7 @@ static void valkeyClusterAsyncCallback(valkeyAsyncContext *ac, void *r,
     }
 
     /* Skip retry handling when not expected, or during a client disconnect. */
-    if (cad->retry_count == NO_RETRY || cc->flags & VALKEY_FLAG_DISCONNECTING)
+    if (cad->retry_count == NO_RETRY || cc->flags & KV_FLAG_DISCONNECTING)
         goto done;
 
     replyErrorType error_type = getReplyErrorType(reply);
@@ -2945,7 +2945,7 @@ static void valkeyClusterAsyncCallback(valkeyAsyncContext *ac, void *r,
         cad->retry_count++;
         if (cad->retry_count > cc->max_retry_count) {
             cad->retry_count = 0;
-            valkeyClusterAsyncSetError(acc, VALKEY_ERR_CLUSTER_TOO_MANY_RETRIES,
+            kvClusterAsyncSetError(acc, KV_ERR_CLUSTER_TOO_MANY_RETRIES,
                                        "too many cluster retries");
             goto done;
         }
@@ -2958,32 +2958,32 @@ static void valkeyClusterAsyncCallback(valkeyAsyncContext *ac, void *r,
 
             node = getNodeFromRedirectReply(cc, &ac->c, reply, &slot);
             if (node == NULL) {
-                valkeyClusterAsyncSetError(acc, cc->err, cc->errstr);
+                kvClusterAsyncSetError(acc, cc->err, cc->errstr);
                 goto done;
             }
             /* Update the slot mapping entry for this slot. */
             if (slot >= 0) {
                 cc->table[slot] = node;
             }
-            ac_retry = valkeyClusterGetValkeyAsyncContext(acc, node);
+            ac_retry = kvClusterGetKVAsyncContext(acc, node);
 
             break;
         case CLUSTER_ERR_ASK:
             node = getNodeFromRedirectReply(cc, &ac->c, reply, NULL);
             if (node == NULL) {
-                valkeyClusterAsyncSetError(acc, cc->err, cc->errstr);
+                kvClusterAsyncSetError(acc, cc->err, cc->errstr);
                 goto done;
             }
 
-            ac_retry = valkeyClusterGetValkeyAsyncContext(acc, node);
+            ac_retry = kvClusterGetKVAsyncContext(acc, node);
             if (ac_retry == NULL) {
                 /* Specific error already set */
                 goto done;
             }
 
             ret =
-                valkeyAsyncCommand(ac_retry, NULL, NULL, VALKEY_COMMAND_ASKING);
-            if (ret != VALKEY_OK) {
+                kvAsyncCommand(ac_retry, NULL, NULL, KV_COMMAND_ASKING);
+            if (ret != KV_OK) {
                 goto error;
             }
 
@@ -3010,7 +3010,7 @@ done:
         cad->callback(acc, r, cad->privdata);
     }
 
-    valkeyClusterAsyncClearError(acc);
+    kvClusterAsyncClearError(acc);
 
     cluster_async_data_free(cad);
 
@@ -3018,9 +3018,9 @@ done:
 
 retry:
 
-    ret = valkeyAsyncFormattedCommand(ac_retry, valkeyClusterAsyncCallback, cad,
+    ret = kvAsyncFormattedCommand(ac_retry, kvClusterAsyncCallback, cad,
                                       command->cmd, command->clen);
-    if (ret != VALKEY_OK) {
+    if (ret != KV_OK) {
         goto error;
     }
 
@@ -3031,30 +3031,30 @@ error:
     cluster_async_data_free(cad);
 }
 
-int valkeyClusterAsyncFormattedCommand(valkeyClusterAsyncContext *acc,
-                                       valkeyClusterCallbackFn *fn,
+int kvClusterAsyncFormattedCommand(kvClusterAsyncContext *acc,
+                                       kvClusterCallbackFn *fn,
                                        void *privdata, char *cmd, int len) {
 
-    valkeyClusterContext *cc;
-    int status = VALKEY_OK;
-    valkeyClusterNode *node;
-    valkeyAsyncContext *ac;
+    kvClusterContext *cc;
+    int status = KV_OK;
+    kvClusterNode *node;
+    kvAsyncContext *ac;
     struct cmd *command = NULL;
     cluster_async_data *cad = NULL;
 
     if (acc == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     cc = &acc->cc;
 
     /* Don't accept new commands when the client is about to disconnect. */
-    if (cc->flags & VALKEY_FLAG_DISCONNECTING) {
-        valkeyClusterAsyncSetError(acc, VALKEY_ERR_OTHER, "disconnecting");
-        return VALKEY_ERR;
+    if (cc->flags & KV_FLAG_DISCONNECTING) {
+        kvClusterAsyncSetError(acc, KV_ERR_OTHER, "disconnecting");
+        return KV_ERR;
     }
 
-    valkeyClusterAsyncClearError(acc);
+    kvClusterAsyncClearError(acc);
 
     command = command_get();
     if (command == NULL) {
@@ -3068,8 +3068,8 @@ int valkeyClusterAsyncFormattedCommand(valkeyClusterAsyncContext *acc,
     memcpy(command->cmd, cmd, len);
     command->clen = len;
 
-    if (prepareCommand(cc, command) != VALKEY_OK) {
-        valkeyClusterAsyncSetError(acc, cc->err, cc->errstr);
+    if (prepareCommand(cc, command) != KV_OK) {
+        kvClusterAsyncSetError(acc, cc->err, cc->errstr);
         goto error;
     }
 
@@ -3079,11 +3079,11 @@ int valkeyClusterAsyncFormattedCommand(valkeyClusterAsyncContext *acc,
         throttledUpdateSlotMapAsync(acc, NULL);
 
         /* node_get_by_table() has set the error on cc. */
-        valkeyClusterAsyncSetError(acc, cc->err, cc->errstr);
+        kvClusterAsyncSetError(acc, cc->err, cc->errstr);
         goto error;
     }
 
-    ac = valkeyClusterGetValkeyAsyncContext(acc, node);
+    ac = kvClusterGetKVAsyncContext(acc, node);
     if (ac == NULL) {
         /* Specific error already set */
         goto error;
@@ -3100,48 +3100,48 @@ int valkeyClusterAsyncFormattedCommand(valkeyClusterAsyncContext *acc,
     cad->callback = fn;
     cad->privdata = privdata;
 
-    status = valkeyAsyncFormattedCommand(ac, valkeyClusterAsyncCallback, cad,
+    status = kvAsyncFormattedCommand(ac, kvClusterAsyncCallback, cad,
                                          cmd, len);
-    if (status != VALKEY_OK) {
-        valkeyClusterAsyncSetError(acc, ac->err, ac->errstr);
+    if (status != KV_OK) {
+        kvClusterAsyncSetError(acc, ac->err, ac->errstr);
         goto error;
     }
-    return VALKEY_OK;
+    return KV_OK;
 
 oom:
-    valkeyClusterAsyncSetError(acc, VALKEY_ERR_OOM, "Out of memory");
+    kvClusterAsyncSetError(acc, KV_ERR_OOM, "Out of memory");
     // passthrough
 
 error:
     cluster_async_data_free(cad);
     command_destroy(command);
-    return VALKEY_ERR;
+    return KV_ERR;
 }
 
-int valkeyClusterAsyncFormattedCommandToNode(valkeyClusterAsyncContext *acc,
-                                             valkeyClusterNode *node,
-                                             valkeyClusterCallbackFn *fn,
+int kvClusterAsyncFormattedCommandToNode(kvClusterAsyncContext *acc,
+                                             kvClusterNode *node,
+                                             kvClusterCallbackFn *fn,
                                              void *privdata, char *cmd,
                                              int len) {
-    valkeyClusterContext *cc = &acc->cc;
-    valkeyAsyncContext *ac;
+    kvClusterContext *cc = &acc->cc;
+    kvAsyncContext *ac;
     int status;
     cluster_async_data *cad = NULL;
     struct cmd *command = NULL;
 
     /* Don't accept new commands when the client is about to disconnect. */
-    if (cc->flags & VALKEY_FLAG_DISCONNECTING) {
-        valkeyClusterAsyncSetError(acc, VALKEY_ERR_OTHER, "disconnecting");
-        return VALKEY_ERR;
+    if (cc->flags & KV_FLAG_DISCONNECTING) {
+        kvClusterAsyncSetError(acc, KV_ERR_OTHER, "disconnecting");
+        return KV_ERR;
     }
 
-    ac = valkeyClusterGetValkeyAsyncContext(acc, node);
+    ac = kvClusterGetKVAsyncContext(acc, node);
     if (ac == NULL) {
         /* Specific error already set */
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    valkeyClusterAsyncClearError(acc);
+    kvClusterAsyncClearError(acc);
 
     command = command_get();
     if (command == NULL) {
@@ -3166,69 +3166,69 @@ int valkeyClusterAsyncFormattedCommandToNode(valkeyClusterAsyncContext *acc,
     cad->privdata = privdata;
     cad->retry_count = NO_RETRY;
 
-    status = valkeyAsyncFormattedCommand(ac, valkeyClusterAsyncCallback, cad,
+    status = kvAsyncFormattedCommand(ac, kvClusterAsyncCallback, cad,
                                          cmd, len);
-    if (status != VALKEY_OK) {
-        valkeyClusterAsyncSetError(acc, ac->err, ac->errstr);
+    if (status != KV_OK) {
+        kvClusterAsyncSetError(acc, ac->err, ac->errstr);
         goto error;
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 
 oom:
-    valkeyClusterAsyncSetError(acc, VALKEY_ERR_OTHER, "Out of memory");
+    kvClusterAsyncSetError(acc, KV_ERR_OTHER, "Out of memory");
     // passthrough
 
 error:
     cluster_async_data_free(cad);
     command_destroy(command);
-    return VALKEY_ERR;
+    return KV_ERR;
 }
 
-int valkeyClustervAsyncCommand(valkeyClusterAsyncContext *acc,
-                               valkeyClusterCallbackFn *fn, void *privdata,
+int kvClustervAsyncCommand(kvClusterAsyncContext *acc,
+                               kvClusterCallbackFn *fn, void *privdata,
                                const char *format, va_list ap) {
     int ret;
     char *cmd;
     int len;
 
     if (acc == NULL) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    len = valkeyvFormatCommand(&cmd, format, ap);
+    len = kvvFormatCommand(&cmd, format, ap);
     if (len == -1) {
-        valkeyClusterAsyncSetError(acc, VALKEY_ERR_OOM, "Out of memory");
-        return VALKEY_ERR;
+        kvClusterAsyncSetError(acc, KV_ERR_OOM, "Out of memory");
+        return KV_ERR;
     } else if (len == -2) {
-        valkeyClusterAsyncSetError(acc, VALKEY_ERR_OTHER,
+        kvClusterAsyncSetError(acc, KV_ERR_OTHER,
                                    "Invalid format string");
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    ret = valkeyClusterAsyncFormattedCommand(acc, fn, privdata, cmd, len);
+    ret = kvClusterAsyncFormattedCommand(acc, fn, privdata, cmd, len);
 
     vk_free(cmd);
 
     return ret;
 }
 
-int valkeyClusterAsyncCommand(valkeyClusterAsyncContext *acc,
-                              valkeyClusterCallbackFn *fn, void *privdata,
+int kvClusterAsyncCommand(kvClusterAsyncContext *acc,
+                              kvClusterCallbackFn *fn, void *privdata,
                               const char *format, ...) {
     int ret;
     va_list ap;
 
     va_start(ap, format);
-    ret = valkeyClustervAsyncCommand(acc, fn, privdata, format, ap);
+    ret = kvClustervAsyncCommand(acc, fn, privdata, format, ap);
     va_end(ap);
 
     return ret;
 }
 
-int valkeyClusterAsyncCommandToNode(valkeyClusterAsyncContext *acc,
-                                    valkeyClusterNode *node,
-                                    valkeyClusterCallbackFn *fn, void *privdata,
+int kvClusterAsyncCommandToNode(kvClusterAsyncContext *acc,
+                                    kvClusterNode *node,
+                                    kvClusterCallbackFn *fn, void *privdata,
                                     const char *format, ...) {
     int ret;
     va_list ap;
@@ -3237,48 +3237,48 @@ int valkeyClusterAsyncCommandToNode(valkeyClusterAsyncContext *acc,
 
     /* Allocate cmd and encode the variadic command */
     va_start(ap, format);
-    len = valkeyvFormatCommand(&cmd, format, ap);
+    len = kvvFormatCommand(&cmd, format, ap);
     va_end(ap);
 
     if (len == -1) {
-        valkeyClusterAsyncSetError(acc, VALKEY_ERR_OTHER, "Out of memory");
-        return VALKEY_ERR;
+        kvClusterAsyncSetError(acc, KV_ERR_OTHER, "Out of memory");
+        return KV_ERR;
     } else if (len == -2) {
-        valkeyClusterAsyncSetError(acc, VALKEY_ERR_OTHER,
+        kvClusterAsyncSetError(acc, KV_ERR_OTHER,
                                    "Invalid format string");
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    ret = valkeyClusterAsyncFormattedCommandToNode(acc, node, fn, privdata, cmd,
+    ret = kvClusterAsyncFormattedCommandToNode(acc, node, fn, privdata, cmd,
                                                    len);
     vk_free(cmd);
     return ret;
 }
 
-int valkeyClusterAsyncCommandArgv(valkeyClusterAsyncContext *acc,
-                                  valkeyClusterCallbackFn *fn, void *privdata,
+int kvClusterAsyncCommandArgv(kvClusterAsyncContext *acc,
+                                  kvClusterCallbackFn *fn, void *privdata,
                                   int argc, const char **argv,
                                   const size_t *argvlen) {
     int ret;
     char *cmd;
     int len;
 
-    len = valkeyFormatCommandArgv(&cmd, argc, argv, argvlen);
+    len = kvFormatCommandArgv(&cmd, argc, argv, argvlen);
     if (len == -1) {
-        valkeyClusterAsyncSetError(acc, VALKEY_ERR_OOM, "Out of memory");
-        return VALKEY_ERR;
+        kvClusterAsyncSetError(acc, KV_ERR_OOM, "Out of memory");
+        return KV_ERR;
     }
 
-    ret = valkeyClusterAsyncFormattedCommand(acc, fn, privdata, cmd, len);
+    ret = kvClusterAsyncFormattedCommand(acc, fn, privdata, cmd, len);
 
     vk_free(cmd);
 
     return ret;
 }
 
-int valkeyClusterAsyncCommandArgvToNode(valkeyClusterAsyncContext *acc,
-                                        valkeyClusterNode *node,
-                                        valkeyClusterCallbackFn *fn,
+int kvClusterAsyncCommandArgvToNode(kvClusterAsyncContext *acc,
+                                        kvClusterNode *node,
+                                        kvClusterCallbackFn *fn,
                                         void *privdata, int argc,
                                         const char **argv,
                                         const size_t *argvlen) {
@@ -3287,13 +3287,13 @@ int valkeyClusterAsyncCommandArgvToNode(valkeyClusterAsyncContext *acc,
     char *cmd;
     int len;
 
-    len = valkeyFormatCommandArgv(&cmd, argc, argv, argvlen);
+    len = kvFormatCommandArgv(&cmd, argc, argv, argvlen);
     if (len == -1) {
-        valkeyClusterAsyncSetError(acc, VALKEY_ERR_OOM, "Out of memory");
-        return VALKEY_ERR;
+        kvClusterAsyncSetError(acc, KV_ERR_OOM, "Out of memory");
+        return KV_ERR;
     }
 
-    ret = valkeyClusterAsyncFormattedCommandToNode(acc, node, fn, privdata, cmd,
+    ret = kvClusterAsyncFormattedCommandToNode(acc, node, fn, privdata, cmd,
                                                    len);
 
     vk_free(cmd);
@@ -3301,18 +3301,18 @@ int valkeyClusterAsyncCommandArgvToNode(valkeyClusterAsyncContext *acc,
     return ret;
 }
 
-void valkeyClusterAsyncDisconnect(valkeyClusterAsyncContext *acc) {
-    valkeyClusterContext *cc;
-    valkeyAsyncContext *ac;
+void kvClusterAsyncDisconnect(kvClusterAsyncContext *acc) {
+    kvClusterContext *cc;
+    kvAsyncContext *ac;
     dictEntry *de;
-    valkeyClusterNode *node;
+    kvClusterNode *node;
 
     if (acc == NULL) {
         return;
     }
 
     cc = &acc->cc;
-    cc->flags |= VALKEY_FLAG_DISCONNECTING;
+    cc->flags |= KV_FLAG_DISCONNECTING;
 
     dictIterator di;
     dictInitIterator(&di, cc->nodes);
@@ -3326,31 +3326,31 @@ void valkeyClusterAsyncDisconnect(valkeyClusterAsyncContext *acc) {
             continue;
         }
 
-        valkeyAsyncDisconnect(ac);
+        kvAsyncDisconnect(ac);
     }
 }
 
-void valkeyClusterAsyncFree(valkeyClusterAsyncContext *acc) {
+void kvClusterAsyncFree(kvClusterAsyncContext *acc) {
     if (acc == NULL)
         return;
 
-    valkeyClusterContext *cc = &acc->cc;
-    cc->flags |= VALKEY_FLAG_DISCONNECTING;
-    valkeyClusterFree(cc);
+    kvClusterContext *cc = &acc->cc;
+    cc->flags |= KV_FLAG_DISCONNECTING;
+    kvClusterFree(cc);
 }
 
 struct nodeIterator {
     uint64_t route_version;
-    valkeyClusterContext *cc;
+    kvClusterContext *cc;
     int retries_left;
     dictIterator di;
 };
 /* Make sure the opaque memory blob can contain a nodeIterator. */
-vk_static_assert(sizeof(valkeyClusterNodeIterator) >= sizeof(struct nodeIterator));
+vk_static_assert(sizeof(kvClusterNodeIterator) >= sizeof(struct nodeIterator));
 
 /* Initiate an iterator for iterating over current cluster nodes */
-void valkeyClusterInitNodeIterator(valkeyClusterNodeIterator *iter,
-                                   valkeyClusterContext *cc) {
+void kvClusterInitNodeIterator(kvClusterNodeIterator *iter,
+                                   kvClusterContext *cc) {
     struct nodeIterator *ni = (struct nodeIterator *)iter;
     ni->cc = cc;
     ni->route_version = cc->route_version;
@@ -3361,7 +3361,7 @@ void valkeyClusterInitNodeIterator(valkeyClusterNodeIterator *iter,
 /* Get next node from the iterator
  * The iterator will restart if the routing table is updated
  * before all nodes have been iterated. */
-valkeyClusterNode *valkeyClusterNodeNext(valkeyClusterNodeIterator *iter) {
+kvClusterNode *kvClusterNodeNext(kvClusterNodeIterator *iter) {
     struct nodeIterator *ni = (struct nodeIterator *)iter;
     if (ni->retries_left <= 0)
         return NULL;
@@ -3383,12 +3383,12 @@ valkeyClusterNode *valkeyClusterNodeNext(valkeyClusterNodeIterator *iter) {
 }
 
 /* Get hash slot for given key string, which can include hash tags */
-unsigned int valkeyClusterGetSlotByKey(char *key) {
+unsigned int kvClusterGetSlotByKey(char *key) {
     return keyHashSlot(key, strlen(key));
 }
 
 /* Get node that handles given key string, which can include hash tags */
-valkeyClusterNode *valkeyClusterGetNodeByKey(valkeyClusterContext *cc,
+kvClusterNode *kvClusterGetNodeByKey(kvClusterContext *cc,
                                              char *key) {
     return node_get_by_table(cc, keyHashSlot(key, strlen(key)));
 }

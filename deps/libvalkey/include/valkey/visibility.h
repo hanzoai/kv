@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-present, libvalkey contributors
+ * Copyright (c) 2025-present, libkv contributors
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,23 +27,23 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef VALKEY_VISIBILITY_H
-#define VALKEY_VISIBILITY_H
+#ifndef KV_VISIBILITY_H
+#define KV_VISIBILITY_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #if defined __GNUC__
-#define LIBVALKEY_API __attribute__((visibility("default")))
+#define LIBKV_API __attribute__((visibility("default")))
 #elif defined(_MSC_VER)
-#define LIBVALKEY_API __declspec(dllexport)
+#define LIBKV_API __declspec(dllexport)
 #else
-#define LIBVALKEY_API /* Unknown compiler */
+#define LIBKV_API /* Unknown compiler */
 #endif
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* VALKEY_VISIBILITY_H */
+#endif /* KV_VISIBILITY_H */

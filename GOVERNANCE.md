@@ -1,17 +1,17 @@
 # Project Governance
 
-The Valkey project is managed by a Technical Steering Committee (TSC) composed of the maintainers of the Valkey repository.
-The Valkey project includes all of the current and future repositories under the Valkey-io organization.
+The KV project is managed by a Technical Steering Committee (TSC) composed of the maintainers of the KV repository.
+The KV project includes all of the current and future repositories under the hanzoai organization.
 Committers are defined as individuals with write access to the code within a repository.
 Maintainers are defined as individuals with full access to a repository and own its governance.
 Both maintainers and committers shall be clearly listed in the MAINTAINERS.md file in a given project's repository.
-Maintainers of other repositories within the Valkey project are not members of the TSC unless explicitly added.
+Maintainers of other repositories within the KV project are not members of the TSC unless explicitly added.
 
 ## Technical Steering Committee
 
-The TSC is responsible for oversight of all technical, project, approval, and policy matters for Valkey.
+The TSC is responsible for oversight of all technical, project, approval, and policy matters for KV.
 
-The TSC members are listed in the [MAINTAINERS.md](MAINTAINERS.md) file in the Valkey repository.
+The TSC members are listed in the [MAINTAINERS.md](MAINTAINERS.md) file in the KV repository.
 
 At any time, no more than one third (1/3) of the TSC members may be employees, contractors, or representatives of the same organization or affiliated organizations.
 For the purposes of this document, “organization” includes companies, corporations, universities, research institutes, non-profits, governmental institutions, and any of their subsidiaries or affiliates.
@@ -22,8 +22,8 @@ The TSC shall strive to resolve the situation within 30 days of notification, an
 The TSC shall appoint a Chair responsible for organizing TSC meetings.
 If the TSC Chair is removed from the TSC (or the Chair steps down from that role), it is the responsibility of the TSC to appoint a new Chair.
 
-The TSC may, at its discretion, add or remove members who are not maintainers of the main Valkey repository.
-The TSC may, at its discretion, add or remove maintainers from other repositories within the Valkey project.
+The TSC may, at its discretion, add or remove members who are not maintainers of the main KV repository.
+The TSC may, at its discretion, add or remove maintainers from other repositories within the KV project.
 
 ## Voting
 
@@ -33,12 +33,12 @@ Rather, the TSC shall determine consensus based on their good faith consideratio
 The TSC shall document evidence of consensus in accordance with these requirements.
 If consensus cannot be reached, the TSC shall make the decision by a vote.
 
-A vote shall also be called when an issue or pull request is marked as a major decision, which are decisions that have a significant impact on the Valkey architecture or design.
+A vote shall also be called when an issue or pull request is marked as a major decision, which are decisions that have a significant impact on the KV architecture or design.
 
 ### Technical Major Decisions
 
 Technical major decisions include:
-* Fundamental changes to the Valkey core datastructures
+* Fundamental changes to the KV core datastructures
 * Adding a new data structure or API
 * Changes that affect backward compatibility
 * New user visible fields that need to be maintained
@@ -56,7 +56,7 @@ Governance major decisions include:
 * Adding TSC members or involuntary removal of TSC members
 * Modifying this governance document
 * Delegation of maintainership for projects or governance authority
-* Creating, modifying, or removing roles within the Valkey project
+* Creating, modifying, or removing roles within the KV project
 * Any change that alters voting rules, TSC responsibilities, or project oversight
 * Structural changes to the TSC, including composition limits
 
@@ -79,13 +79,13 @@ A maintainer's access (and accordingly, their position on the TSC) will be remov
 * Resignation: Written notice of resignation to the TSC.
 * Unreachable Member: If a member is unresponsive for more than six months, the remaining active members of the TSC may vote to remove the unreachable member by a simple majority.
 
-## Technical direction for other Valkey projects
+## Technical direction for other KV projects
 
-The TSC may delegate decision making for other projects within the Valkey organization to the maintainers responsible for those projects.
+The TSC may delegate decision making for other projects within the KV organization to the maintainers responsible for those projects.
 Delegation of decision making for a project is considered a [Governance Major Decision](#governance-major-decisions).
-Projects within the Valkey organization must indicate the individuals with commit permissions by updating the MAINTAINERS.md within their repositories.
+Projects within the KV organization must indicate the individuals with commit permissions by updating the MAINTAINERS.md within their repositories.
 
-The TSC may, at its discretion, overrule the decisions made by other projects within the Valkey organization, although they shall show restraint in doing so.
+The TSC may, at its discretion, overrule the decisions made by other projects within the KV organization, although they shall show restraint in doing so.
 
 ## License of this document
 

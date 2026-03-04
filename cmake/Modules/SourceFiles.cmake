@@ -2,8 +2,8 @@
 # Define the sources to be built
 # -------------------------------------------------
 
-# valkey-server source files
-set(VALKEY_SERVER_SRCS
+# kv-server source files
+set(KV_SERVER_SRCS
     ${CMAKE_SOURCE_DIR}/src/threads_mngr.c
     ${CMAKE_SOURCE_DIR}/src/adlist.c
     ${CMAKE_SOURCE_DIR}/src/vector.c
@@ -66,8 +66,8 @@ set(VALKEY_SERVER_SRCS
     ${CMAKE_SOURCE_DIR}/src/hyperloglog.c
     ${CMAKE_SOURCE_DIR}/src/latency.c
     ${CMAKE_SOURCE_DIR}/src/sparkline.c
-    ${CMAKE_SOURCE_DIR}/src/valkey-check-rdb.c
-    ${CMAKE_SOURCE_DIR}/src/valkey-check-aof.c
+    ${CMAKE_SOURCE_DIR}/src/kv-check-rdb.c
+    ${CMAKE_SOURCE_DIR}/src/kv-check-aof.c
     ${CMAKE_SOURCE_DIR}/src/geo.c
     ${CMAKE_SOURCE_DIR}/src/lazyfree.c
     ${CMAKE_SOURCE_DIR}/src/module.c
@@ -122,15 +122,15 @@ set(VALKEY_SERVER_SRCS
     ${CMAKE_SOURCE_DIR}/src/mutexqueue.c)
 
 
-# valkey-cli
-set(VALKEY_CLI_SRCS
+# kv-cli
+set(KV_CLI_SRCS
     ${CMAKE_SOURCE_DIR}/src/anet.c
     ${CMAKE_SOURCE_DIR}/src/adlist.c
     ${CMAKE_SOURCE_DIR}/src/dict.c
     ${CMAKE_SOURCE_DIR}/src/sds.c
     ${CMAKE_SOURCE_DIR}/src/sha256.c
     ${CMAKE_SOURCE_DIR}/src/util.c
-    ${CMAKE_SOURCE_DIR}/src/valkey-cli.c
+    ${CMAKE_SOURCE_DIR}/src/kv-cli.c
     ${CMAKE_SOURCE_DIR}/src/zmalloc.c
     ${CMAKE_SOURCE_DIR}/src/release.c
     ${CMAKE_SOURCE_DIR}/src/ae.c
@@ -146,14 +146,14 @@ set(VALKEY_CLI_SRCS
     ${CMAKE_SOURCE_DIR}/src/strl.c
     ${CMAKE_SOURCE_DIR}/src/cli_commands.c)
 
-# valkey-benchmark
-set(VALKEY_BENCHMARK_SRCS
+# kv-benchmark
+set(KV_BENCHMARK_SRCS
     ${CMAKE_SOURCE_DIR}/src/ae.c
     ${CMAKE_SOURCE_DIR}/src/anet.c
     ${CMAKE_SOURCE_DIR}/src/sds.c
     ${CMAKE_SOURCE_DIR}/src/sha256.c
     ${CMAKE_SOURCE_DIR}/src/util.c
-    ${CMAKE_SOURCE_DIR}/src/valkey-benchmark.c
+    ${CMAKE_SOURCE_DIR}/src/kv-benchmark.c
     ${CMAKE_SOURCE_DIR}/src/adlist.c
     ${CMAKE_SOURCE_DIR}/src/dict.c
     ${CMAKE_SOURCE_DIR}/src/zmalloc.c
@@ -171,8 +171,8 @@ set(VALKEY_BENCHMARK_SRCS
     ${CMAKE_SOURCE_DIR}/src/fuzzer_client.c
     ${CMAKE_SOURCE_DIR}/src/fuzzer_command_generator.c)
 
-# valkey-rdma module
-set(VALKEY_RDMA_MODULE_SRCS ${CMAKE_SOURCE_DIR}/src/rdma.c)
+# kv-rdma module
+set(KV_RDMA_MODULE_SRCS ${CMAKE_SOURCE_DIR}/src/rdma.c)
 
-# valkey-tls module
-set(VALKEY_TLS_MODULE_SRCS ${CMAKE_SOURCE_DIR}/src/tls.c)
+# kv-tls module
+set(KV_TLS_MODULE_SRCS ${CMAKE_SOURCE_DIR}/src/tls.c)

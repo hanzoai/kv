@@ -28,32 +28,32 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "valkey_private.h"
+#include "kv_private.h"
 
 #include <assert.h>
 
-static valkeyContextFuncs *valkeyContextFuncsArray[VALKEY_CONN_MAX];
+static kvContextFuncs *kvContextFuncsArray[KV_CONN_MAX];
 
-int valkeyContextRegisterFuncs(valkeyContextFuncs *funcs, enum valkeyConnectionType type) {
-    assert(type < VALKEY_CONN_MAX);
-    assert(!valkeyContextFuncsArray[type]);
+int kvContextRegisterFuncs(kvContextFuncs *funcs, enum kvConnectionType type) {
+    assert(type < KV_CONN_MAX);
+    assert(!kvContextFuncsArray[type]);
 
-    valkeyContextFuncsArray[type] = funcs;
-    return VALKEY_OK;
+    kvContextFuncsArray[type] = funcs;
+    return KV_OK;
 }
 
-void valkeyContextSetFuncs(valkeyContext *c) {
+void kvContextSetFuncs(kvContext *c) {
     static int initialized;
 
     if (!initialized) {
         initialized = 1;
-        valkeyContextRegisterTcpFuncs();
-        valkeyContextRegisterUnixFuncs();
-        valkeyContextRegisterUserfdFuncs();
+        kvContextRegisterTcpFuncs();
+        kvContextRegisterUnixFuncs();
+        kvContextRegisterUserfdFuncs();
     }
 
-    assert(c->connection_type < VALKEY_CONN_MAX);
+    assert(c->connection_type < KV_CONN_MAX);
     assert(!c->funcs);
-    c->funcs = valkeyContextFuncsArray[c->connection_type];
+    c->funcs = kvContextFuncsArray[c->connection_type];
     assert(c->funcs != NULL);
 }

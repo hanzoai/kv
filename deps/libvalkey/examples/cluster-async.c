@@ -1,12 +1,12 @@
-#include <valkey/cluster.h>
+#include <kv/cluster.h>
 
-#include <valkey/adapters/libevent.h>
+#include <kv/adapters/libevent.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 
-void getCallback(valkeyClusterAsyncContext *cc, void *r, void *privdata) {
-    valkeyReply *reply = (valkeyReply *)r;
+void getCallback(kvClusterAsyncContext *cc, void *r, void *privdata) {
+    kvReply *reply = (kvReply *)r;
     if (reply == NULL) {
         if (cc->err) {
             printf("errstr: %s\n", cc->errstr);
@@ -16,11 +16,11 @@ void getCallback(valkeyClusterAsyncContext *cc, void *r, void *privdata) {
     printf("privdata: %s reply: %s\n", (char *)privdata, reply->str);
 
     /* Disconnect after receiving the reply to GET */
-    valkeyClusterAsyncDisconnect(cc);
+    kvClusterAsyncDisconnect(cc);
 }
 
-void setCallback(valkeyClusterAsyncContext *cc, void *r, void *privdata) {
-    valkeyReply *reply = (valkeyReply *)r;
+void setCallback(kvClusterAsyncContext *cc, void *r, void *privdata) {
+    kvReply *reply = (kvReply *)r;
     if (reply == NULL) {
         if (cc->err) {
             printf("errstr: %s\n", cc->errstr);
@@ -30,16 +30,16 @@ void setCallback(valkeyClusterAsyncContext *cc, void *r, void *privdata) {
     printf("privdata: %s reply: %s\n", (char *)privdata, reply->str);
 }
 
-void connectCallback(valkeyAsyncContext *ac, int status) {
-    if (status != VALKEY_OK) {
+void connectCallback(kvAsyncContext *ac, int status) {
+    if (status != KV_OK) {
         printf("Error: %s\n", ac->errstr);
         return;
     }
     printf("Connected to %s:%d\n", ac->c.tcp.host, ac->c.tcp.port);
 }
 
-void disconnectCallback(const valkeyAsyncContext *ac, int status) {
-    if (status != VALKEY_OK) {
+void disconnectCallback(const kvAsyncContext *ac, int status) {
+    if (status != KV_OK) {
         printf("Error: %s\n", ac->errstr);
         return;
     }
@@ -49,14 +49,14 @@ void disconnectCallback(const valkeyAsyncContext *ac, int status) {
 int main(void) {
     struct event_base *base = event_base_new();
 
-    valkeyClusterOptions options = {0};
+    kvClusterOptions options = {0};
     options.initial_nodes = "127.0.0.1:7000";
     options.async_connect_callback = connectCallback;
     options.async_disconnect_callback = disconnectCallback;
-    valkeyClusterOptionsUseLibevent(&options, base);
+    kvClusterOptionsUseLibevent(&options, base);
 
     printf("Connecting...\n");
-    valkeyClusterAsyncContext *acc = valkeyClusterAsyncConnectWithOptions(&options);
+    kvClusterAsyncContext *acc = kvClusterAsyncConnectWithOptions(&options);
     if (!acc) {
         printf("Error: Allocation failure\n");
         exit(-1);
@@ -67,27 +67,27 @@ int main(void) {
     }
 
     int status;
-    status = valkeyClusterAsyncCommand(acc, setCallback, (char *)"THE_ID",
+    status = kvClusterAsyncCommand(acc, setCallback, (char *)"THE_ID",
                                        "SET %s %s", "key", "value");
-    if (status != VALKEY_OK) {
+    if (status != KV_OK) {
         printf("error: err=%d errstr=%s\n", acc->err, acc->errstr);
     }
 
-    status = valkeyClusterAsyncCommand(acc, getCallback, (char *)"THE_ID",
+    status = kvClusterAsyncCommand(acc, getCallback, (char *)"THE_ID",
                                        "GET %s", "key");
-    if (status != VALKEY_OK) {
+    if (status != KV_OK) {
         printf("error: err=%d errstr=%s\n", acc->err, acc->errstr);
     }
 
-    status = valkeyClusterAsyncCommand(acc, setCallback, (char *)"THE_ID",
+    status = kvClusterAsyncCommand(acc, setCallback, (char *)"THE_ID",
                                        "SET %s %s", "key2", "value2");
-    if (status != VALKEY_OK) {
+    if (status != KV_OK) {
         printf("error: err=%d errstr=%s\n", acc->err, acc->errstr);
     }
 
-    status = valkeyClusterAsyncCommand(acc, getCallback, (char *)"THE_ID",
+    status = kvClusterAsyncCommand(acc, getCallback, (char *)"THE_ID",
                                        "GET %s", "key2");
-    if (status != VALKEY_OK) {
+    if (status != KV_OK) {
         printf("error: err=%d errstr=%s\n", acc->err, acc->errstr);
     }
 
@@ -95,7 +95,7 @@ int main(void) {
     event_base_dispatch(base);
 
     printf("Done..\n");
-    valkeyClusterAsyncFree(acc);
+    kvClusterAsyncFree(acc);
     event_base_free(base);
     return 0;
 }

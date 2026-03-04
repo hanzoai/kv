@@ -1,7 +1,7 @@
 source "../tests/includes/utils.tcl"
 
 proc set_redis_announce_ip {addr} {
-    foreach_valkey_id id {
+    foreach_kv_id id {
         R $id config set replica-announce-ip $addr
     }
 }
@@ -16,8 +16,8 @@ proc set_all_instances_hostname {hostname} {
     foreach_sentinel_id id {
         set_instance_attrib sentinel $id host $hostname
     }
-    foreach_valkey_id id {
-        set_instance_attrib valkey $id host $hostname
+    foreach_kv_id id {
+        set_instance_attrib kv $id host $hostname
     }
 }
 

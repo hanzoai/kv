@@ -1,10 +1,10 @@
 ---
 applyTo:
   - "src/**/*.{c,h}"
-  - "valkey.conf"
+  - "kv.conf"
 ---
 
-# Valkey Core Engine Review Standards
+# KV Core Engine Review Standards
 
 Apply these standards to core engine C code. Do NOT apply to `deps/` (vendored dependencies).
 
@@ -41,7 +41,7 @@ Apply these standards to core engine C code. Do NOT apply to `deps/` (vendored d
 - **Command Changes:** New/modified commands need corresponding updates in `src/commands/*.json`.
 - **New C Files:** Remind to update `CMakeLists.txt` when adding new `.c` source files.
 - **License:** New files need BSD-3-Clause header. Material changes (>100 lines) also require it.
-- **Documentation:** User-facing changes need docs at [valkey-doc](https://github.com/valkey-io/valkey-doc).
+- **Documentation:** User-facing changes need docs at [kv-doc](https://github.com/hanzoai/kv-doc).
 
 ## 6. Critical Escalation
 - **Trigger:** Changes to `cluster*.c`, `replication.c`, `rdb.c`, `aof.c`.
