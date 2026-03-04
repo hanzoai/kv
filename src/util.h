@@ -27,8 +27,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef VALKEY_UTIL_H
-#define VALKEY_UTIL_H
+#ifndef KV_UTIL_H
+#define KV_UTIL_H
 
 #include <stdint.h>
 #include "sds.h"
@@ -113,8 +113,8 @@ int snprintf_async_signal_safe(char *to, size_t n, const char *fmt, ...) __attri
 #else
 int snprintf_async_signal_safe(char *to, size_t n, const char *fmt, ...);
 #endif
-size_t valkey_strlcpy(char *dst, const char *src, size_t dsize);
-size_t valkey_strlcat(char *dst, const char *src, size_t dsize);
+size_t kv_strlcpy(char *dst, const char *src, size_t dsize);
+size_t kv_strlcat(char *dst, const char *src, size_t dsize);
 void getRandomSeedCString(char *buff, size_t len);
 void setRandomSeedCString(char *seed_str, size_t len);
 void getRandomHexChars(char *p, size_t len);

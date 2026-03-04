@@ -17,7 +17,7 @@ perl -we 'use sigtrap "handler", sub{exit}, "CONT"; sleep 1; die "timeout"' &
 syncpid=$!
 
 # Start simulated server.
-timeout 5s ./simulated-valkey.pl -p 7400 -d --sigcont $syncpid <<'EOF' &
+timeout 5s ./simulated-kv.pl -p 7400 -d --sigcont $syncpid <<'EOF' &
 # The initial slotmap is not covering any slots, expect a retry.
 EXPECT CONNECT
 EXPECT ["CLUSTER", "NODES"]

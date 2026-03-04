@@ -1,7 +1,7 @@
 #ifndef __CLICOMMON_H
 #define __CLICOMMON_H
 
-#include <valkey/valkey.h>
+#include <kv/kv.h>
 #include "sds.h"
 
 typedef struct cliSSLconfig {
@@ -33,9 +33,9 @@ typedef struct cliConnInfo {
     char *user;
 } cliConnInfo;
 
-int cliSecureConnection(valkeyContext *c, cliSSLconfig config, const char **err);
+int cliSecureConnection(kvContext *c, cliSSLconfig config, const char **err);
 
-ssize_t cliWriteConn(valkeyContext *c, const char *buf, size_t buf_len);
+ssize_t cliWriteConn(kvContext *c, const char *buf, size_t buf_len);
 
 int cliSecureInit(void);
 
@@ -51,6 +51,6 @@ void freeCliConnInfo(cliConnInfo connInfo);
 
 sds cliVersion(void);
 
-valkeyContext *valkeyConnectWrapper(enum valkeyConnectionType ct, const char *ip_or_path, int port, const struct timeval tv, int nonblock, int multipath);
+kvContext *kvConnectWrapper(enum kvConnectionType ct, const char *ip_or_path, int port, const struct timeval tv, int nonblock, int multipath);
 
 #endif /* __CLICOMMON_H */

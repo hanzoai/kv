@@ -1,5 +1,5 @@
 ## Introduction
-Valkey uses a very simple C testing framework, built up over time but now based loosely off of [Unity](https://www.throwtheswitch.org/unity).
+KV uses a very simple C testing framework, built up over time but now based loosely off of [Unity](https://www.throwtheswitch.org/unity).
 
 All test files are located at `src/unit/test_*`.
 A single test file can have multiple individual tests, and they must be of the form `int test_<test_name>(int argc, char *argv[], int flags) {`, where test_name is the name of the test.
@@ -47,13 +47,13 @@ int test_example(int argc, char *argv[], int flags) {
 Tests can be run by executing:
 
 ```
-make valkey-unit-tests
-./valkey-unit-tests
+make kv-unit-tests
+./kv-unit-tests
 ```
 
 Running a single unit test file
 ```
-./valkey-unit-tests --single test_crc64.c
+./kv-unit-tests --single test_crc64.c
 ```
 
 Will just run the `test_crc64.c` file.

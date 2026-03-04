@@ -13,7 +13,7 @@ proc get_my_replica {cluster_nodes} {
     set slave_info [split [lindex $line 1] ":@"]
     set ip [lindex $slave_info 0]
     set port [lindex $slave_info 1]
-    return [valkey_client_by_addr $ip $port]
+    return [kv_client_by_addr $ip $port]
 }
 
 start_cluster 1 1 {tags {external:skip cluster} } {

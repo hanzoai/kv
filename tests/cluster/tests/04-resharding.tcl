@@ -15,14 +15,14 @@ test "Cluster is up" {
 }
 
 test "Enable AOF in all the instances" {
-    foreach_valkey_id id {
+    foreach_kv_id id {
         R $id config set appendonly yes
         # We use "appendfsync no" because it's fast but also guarantees that
         # write(2) is performed before replying to client.
         R $id config set appendfsync no
     }
 
-    foreach_valkey_id id {
+    foreach_kv_id id {
         wait_for_condition 1000 500 {
             [RI $id aof_rewrite_in_progress] == 0 &&
             [RI $id aof_enabled] == 1
@@ -54,12 +54,12 @@ proc process_is_running {pid} {
 
 set numkeys 50000
 set numops 200000
-set start_node_port [get_instance_attrib valkey 0 port]
-set cluster [valkey_cluster 127.0.0.1:$start_node_port]
+set start_node_port [get_instance_attrib kv 0 port]
+set cluster [kv_cluster 127.0.0.1:$start_node_port]
 if {$::tls} {
     # setup a non-TLS cluster client to the TLS cluster
-    set plaintext_port [get_instance_attrib valkey 0 plaintext-port]
-    set cluster_plaintext [valkey_cluster 127.0.0.1:$plaintext_port 0]
+    set plaintext_port [get_instance_attrib kv 0 plaintext-port]
+    set cluster_plaintext [kv_cluster 127.0.0.1:$plaintext_port 0]
     puts "Testing TLS cluster on start node 127.0.0.1:$start_node_port, plaintext port $plaintext_port"
 } else {
     set cluster_plaintext $cluster
@@ -84,13 +84,13 @@ test "Cluster consistency during live resharding" {
             flush stdout
             set target [dict get [get_myself [randomInt 5]] id]
             set tribpid [lindex [exec \
-                $::VALKEY_CLI_BIN --cluster reshard \
-                127.0.0.1:[get_instance_attrib valkey 0 port] \
+                $::KV_CLI_BIN --cluster reshard \
+                127.0.0.1:[get_instance_attrib kv 0 port] \
                 --cluster-from all \
                 --cluster-to $target \
                 --cluster-slots 100 \
                 --cluster-yes \
-                {*}[valkeycli_tls_config "../../../tests"] \
+                {*}[kvcli_tls_config "../../../tests"] \
                 | [info nameofexecutable] \
                 ../tests/helpers/onlydots.tcl \
                 &] 0]
@@ -138,11 +138,11 @@ test "Verify $numkeys keys for consistency with logical content" {
 }
 
 test "Terminate and restart all the instances" {
-    foreach_valkey_id id {
+    foreach_kv_id id {
         # Stop AOF so that an initial AOFRW won't prevent the instance from terminating
         R $id config set appendonly no
-        kill_instance valkey $id
-        restart_instance valkey $id
+        kill_instance kv $id
+        restart_instance kv $id
     }
 }
 
@@ -160,20 +160,20 @@ test "Verify $numkeys keys after the restart" {
 }
 
 test "Disable AOF in all the instances" {
-    foreach_valkey_id id {
+    foreach_kv_id id {
         R $id config set appendonly no
     }
 }
 
 test "Verify slaves consistency" {
     set verified_masters 0
-    foreach_valkey_id id {
+    foreach_kv_id id {
         set role [R $id role]
         lassign $role myrole myoffset slaves
         if {$myrole eq {slave}} continue
-        set masterport [get_instance_attrib valkey $id port]
+        set masterport [get_instance_attrib kv $id port]
         set masterdigest [R $id debug digest]
-        foreach_valkey_id sid {
+        foreach_kv_id sid {
             set srole [R $sid role]
             if {[lindex $srole 0] eq {master}} continue
             if {[lindex $srole 2] != $masterport} continue
@@ -190,7 +190,7 @@ test "Verify slaves consistency" {
 
 test "Dump sanitization was skipped for migrations" {
     set verified_masters 0
-    foreach_valkey_id id {
+    foreach_kv_id id {
         assert {[RI $id dump_payload_sanitizations] == 0}
     }
 }

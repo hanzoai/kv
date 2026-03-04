@@ -24,7 +24,7 @@ permissions:
 jobs:
   test-external-standalone:
     runs-on: ubuntu-latest
-    if: github.event_name != 'schedule' || github.repository == 'valkey-io/valkey'
+    if: github.event_name != 'schedule' || github.repository == 'kv-io/kv'
     timeout-minutes: 1440
     steps:
       - name: Install libbacktrace
@@ -34,13 +34,13 @@ jobs:
           ref: b9e40069c0b47a722286b94eb5231f7f05c08713
           path: libbacktrace
       - run: cd libbacktrace && ./configure && make && sudo make install
-      - name: Checkout Valkey
+      - name: Checkout KV
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Build
         run: make SERVER_CFLAGS=-Werror USE_LIBBACKTRACE=yes
-      - name: Start valkey-server
+      - name: Start kv-server
         run: |
-          ./src/valkey-server --daemonize yes --save "" --logfile external-server.log \
+          ./src/kv-server --daemonize yes --save "" --logfile external-server.log \
             --enable-protected-configs yes --enable-debug-command yes --enable-module-command yes
       - name: Run external test
         run: |
@@ -57,7 +57,7 @@ jobs:
 
   test-external-cluster:
     runs-on: ubuntu-latest
-    if: github.event_name != 'schedule' || github.repository == 'valkey-io/valkey'
+    if: github.event_name != 'schedule' || github.repository == 'kv-io/kv'
     timeout-minutes: 1440
     steps:
       - name: Install libbacktrace
@@ -67,17 +67,17 @@ jobs:
           ref: b9e40069c0b47a722286b94eb5231f7f05c08713
           path: libbacktrace
       - run: cd libbacktrace && ./configure && make && sudo make install
-      - name: Checkout Valkey
+      - name: Checkout KV
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Build
         run: make SERVER_CFLAGS=-Werror USE_LIBBACKTRACE=yes
-      - name: Start valkey-server
+      - name: Start kv-server
         run: |
-          ./src/valkey-server --cluster-enabled yes --cluster-databases 16 --daemonize yes \
+          ./src/kv-server --cluster-enabled yes --cluster-databases 16 --daemonize yes \
             --save "" --logfile external-server.log \
             --enable-protected-configs yes --enable-debug-command yes --enable-module-command yes
       - name: Create a single node cluster
-        run: ./src/valkey-cli cluster addslots $(for slot in {0..16383}; do echo $slot; done); sleep 5
+        run: ./src/kv-cli cluster addslots $(for slot in {0..16383}; do echo $slot; done); sleep 5
       - name: Run external test
         run: |
           ./runtest \
@@ -94,7 +94,7 @@ jobs:
 
   test-external-nodebug:
     runs-on: ubuntu-latest
-    if: github.event_name != 'schedule' || github.repository == 'valkey-io/valkey'
+    if: github.event_name != 'schedule' || github.repository == 'kv-io/kv'
     timeout-minutes: 1440
     steps:
       - name: Install libbacktrace
@@ -104,13 +104,13 @@ jobs:
           ref: b9e40069c0b47a722286b94eb5231f7f05c08713
           path: libbacktrace
       - run: cd libbacktrace && ./configure && make && sudo make install
-      - name: Checkout Valkey
+      - name: Checkout KV
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Build
         run: make SERVER_CFLAGS=-Werror USE_LIBBACKTRACE=yes
-      - name: Start valkey-server
+      - name: Start kv-server
         run: |
-          ./src/valkey-server --daemonize yes --save "" --logfile external-server.log
+          ./src/kv-server --daemonize yes --save "" --logfile external-server.log
       - name: Run external test
         run: |
           ./runtest \

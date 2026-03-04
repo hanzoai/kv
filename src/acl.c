@@ -69,7 +69,7 @@ struct ACLCategoryItem {
     char *name;
     uint64_t flag;
 } ACLDefaultCommandCategories[] = {
-    /* See valkey.conf for details on each category. */
+    /* See kv.conf for details on each category. */
     {"keyspace", ACL_CATEGORY_KEYSPACE},
     {"read", ACL_CATEGORY_READ},
     {"write", ACL_CATEGORY_WRITE},
@@ -733,7 +733,7 @@ static int ACLSetSelectorCategory(aclSelector *selector, const char *category, i
  * If rule_out is not NULL, it will be set to a duplicate of the first matching
  * rule.
  * Returns 1 if any rules are found, 0 otherwise. */
-int ACLModuleHasCommandRules(const struct ValkeyModule *module, sds *rule_out) {
+int ACLModuleHasCommandRules(const struct KVModule *module, sds *rule_out) {
     raxIterator ri;
     raxStart(&ri, Users);
     raxSeek(&ri, "^", NULL, 0);
@@ -2482,7 +2482,7 @@ static int ACLLoadConfiguredUsers(void) {
 
 /* This function loads the ACL from the specified filename: every line
  * is validated and should be either empty or in the format used to specify
- * users in the valkey.conf or in the ACL file, that is:
+ * users in the kv.conf or in the ACL file, that is:
  *
  *  user <username> ... rules ...
  *
@@ -2737,7 +2737,7 @@ static int ACLSaveToFile(const char *filename) {
         }
         offset += written_bytes;
     }
-    if (valkey_fsync(fd) == -1) {
+    if (kv_fsync(fd) == -1) {
         serverLog(LL_WARNING, "Syncing ACL file for ACL SAVE: %s", strerror(errno));
         goto cleanup;
     }
@@ -2767,17 +2767,17 @@ cleanup:
 
 /* This function is called once the server is already running, modules are
  * loaded, and we are ready to start, in order to load the ACLs either from
- * the pending list of users defined in valkey.conf, or from the ACL file.
+ * the pending list of users defined in kv.conf, or from the ACL file.
  * The function will just exit with an error if the user is trying to mix
  * both the loading methods. */
 void ACLLoadUsersAtStartup(void) {
     if (server.acl_filename[0] != '\0' && listLength(UsersToLoad) != 0) {
         serverLog(LL_WARNING,
-                  "Configuring %s with users defined in valkey.conf and at "
+                  "Configuring %s with users defined in kv.conf and at "
                   "the same setting an ACL file path is invalid. This setup "
                   "is very likely to lead to configuration errors and security "
                   "holes, please define either an ACL file or declare users "
-                  "directly in your valkey.conf, but not both.",
+                  "directly in your kv.conf, but not both.",
                   SERVER_TITLE);
         exit(1);
     }

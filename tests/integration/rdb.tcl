@@ -338,7 +338,7 @@ test {client freed during loading} {
         # connect and disconnect 5 clients
         set clients {}
         for {set j 0} {$j < 5} {incr j} {
-            lappend clients [valkey_deferring_client]
+            lappend clients [kv_deferring_client]
         }
         foreach rd $clients {
             $rd debug log bla
@@ -413,7 +413,7 @@ start_server {overrides {save ""}} {
         # populate the db with 10k keys of 512B each (since we want to measure the COW size by
         # changing some keys and read the reported COW size, we are using small key size to prevent from
         # the "dismiss mechanism" free memory and reduce the COW size)
-        set rd [valkey_deferring_client 0]
+        set rd [kv_deferring_client 0]
         set size 500 ;# aim for the 512 bin (sds overhead)
         set cmd_count 10000
         for {set k 0} {$k < $cmd_count} {incr k} {

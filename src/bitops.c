@@ -754,7 +754,7 @@ void getbitCommand(client *c) {
 }
 
 /* BITOP op_name target_key src_key1 src_key2 src_key3 ... src_keyN */
-VALKEY_NO_SANITIZE("alignment")
+KV_NO_SANITIZE("alignment")
 void bitopCommand(client *c) {
     char *opname = objectGetVal(c->argv[1]);
     robj *o, *targetkey = c->argv[2];

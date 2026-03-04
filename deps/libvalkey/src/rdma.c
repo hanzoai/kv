@@ -34,8 +34,8 @@
 #include "rdma.h"
 
 #include "async.h"
-#include "valkey.h"
-#include "valkey_private.h"
+#include "kv.h"
+#include "kv_private.h"
 #include "vkutil.h"
 
 #include <arpa/inet.h>
@@ -51,9 +51,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-static valkeyContextFuncs valkeyContextRdmaFuncs;
+static kvContextFuncs kvContextRdmaFuncs;
 
-typedef struct valkeyRdmaFeature {
+typedef struct kvRdmaFeature {
     /* defined as following Opcodes */
     uint16_t opcode;
     /* select features */
@@ -61,15 +61,15 @@ typedef struct valkeyRdmaFeature {
     uint8_t rsvd[20];
     /* feature bits */
     uint64_t features;
-} valkeyRdmaFeature;
+} kvRdmaFeature;
 
-typedef struct valkeyRdmaKeepalive {
+typedef struct kvRdmaKeepalive {
     /* defined as following Opcodes */
     uint16_t opcode;
     uint8_t rsvd[30];
-} valkeyRdmaKeepalive;
+} kvRdmaKeepalive;
 
-typedef struct valkeyRdmaMemory {
+typedef struct kvRdmaMemory {
     /* defined as following Opcodes */
     uint16_t opcode;
     uint8_t rsvd[14];
@@ -80,24 +80,24 @@ typedef struct valkeyRdmaMemory {
     uint32_t length;
     /* the RDMA remote key of 'RX buffer' */
     uint32_t key;
-} valkeyRdmaMemory;
+} kvRdmaMemory;
 
-typedef union valkeyRdmaCmd {
-    valkeyRdmaFeature feature;
-    valkeyRdmaKeepalive keepalive;
-    valkeyRdmaMemory memory;
-} valkeyRdmaCmd;
+typedef union kvRdmaCmd {
+    kvRdmaFeature feature;
+    kvRdmaKeepalive keepalive;
+    kvRdmaMemory memory;
+} kvRdmaCmd;
 
-typedef enum valkeyRdmaOpcode {
+typedef enum kvRdmaOpcode {
     GetServerFeature = 0,
     SetClientFeature = 1,
     Keepalive = 2,
     RegisterXferMemory = 3,
-} valkeyRdmaOpcode;
+} kvRdmaOpcode;
 
-#define VALKEY_RDMA_MAX_WQE 1024
-#define VALKEY_RDMA_DEFAULT_RX_LEN (1024 * 1024)
-#define VALKEY_RDMA_INVALID_OPCODE 0xffff
+#define KV_RDMA_MAX_WQE 1024
+#define KV_RDMA_DEFAULT_RX_LEN (1024 * 1024)
+#define KV_RDMA_INVALID_OPCODE 0xffff
 
 typedef struct RdmaContext {
     struct rdma_cm_id *cm_id;
@@ -123,20 +123,20 @@ typedef struct RdmaContext {
     unsigned int recv_offset;
     struct ibv_mr *recv_mr;
 
-    /* CMD 0 ~ VALKEY_RDMA_MAX_WQE for recv buffer
-     * VALKEY_RDMA_MAX_WQE ~ 2 * VALKEY_RDMA_MAX_WQE -1 for send buffer */
-    valkeyRdmaCmd *cmd_buf;
+    /* CMD 0 ~ KV_RDMA_MAX_WQE for recv buffer
+     * KV_RDMA_MAX_WQE ~ 2 * KV_RDMA_MAX_WQE -1 for send buffer */
+    kvRdmaCmd *cmd_buf;
     struct ibv_mr *cmd_mr;
 } RdmaContext;
 
-static int valkeyRdmaCM(valkeyContext *c, long timeout);
+static int kvRdmaCM(kvContext *c, long timeout);
 
-static int valkeyRdmaSetFdBlocking(valkeyContext *c, int fd, int blocking) {
+static int kvRdmaSetFdBlocking(kvContext *c, int fd, int blocking) {
     int flags;
 
     if ((flags = fcntl(fd, F_GETFL)) == -1) {
-        valkeySetError(c, VALKEY_ERR_IO, "fcntl(F_GETFL)");
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_IO, "fcntl(F_GETFL)");
+        return KV_ERR;
     }
 
     if (blocking)
@@ -145,16 +145,16 @@ static int valkeyRdmaSetFdBlocking(valkeyContext *c, int fd, int blocking) {
         flags |= O_NONBLOCK;
 
     if (fcntl(fd, F_SETFL, flags) == -1) {
-        valkeySetError(c, VALKEY_ERR_IO, "fcntl(F_SETFL)");
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_IO, "fcntl(F_SETFL)");
+        return KV_ERR;
     }
 
     return 0;
 }
 
-static int rdmaPostRecv(RdmaContext *ctx, struct rdma_cm_id *cm_id, valkeyRdmaCmd *cmd) {
+static int rdmaPostRecv(RdmaContext *ctx, struct rdma_cm_id *cm_id, kvRdmaCmd *cmd) {
     struct ibv_sge sge;
-    size_t length = sizeof(valkeyRdmaCmd);
+    size_t length = sizeof(kvRdmaCmd);
     struct ibv_recv_wr recv_wr, *bad_wr;
 
     sge.addr = (uint64_t)(uintptr_t)cmd;
@@ -167,10 +167,10 @@ static int rdmaPostRecv(RdmaContext *ctx, struct rdma_cm_id *cm_id, valkeyRdmaCm
     recv_wr.next = NULL;
 
     if (ibv_post_recv(cm_id->qp, &recv_wr, &bad_wr)) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
 static void rdmaDestroyIoBuf(RdmaContext *ctx) {
@@ -199,57 +199,57 @@ static void rdmaDestroyIoBuf(RdmaContext *ctx) {
     ctx->cmd_buf = NULL;
 }
 
-static int rdmaSetupIoBuf(valkeyContext *c, RdmaContext *ctx, struct rdma_cm_id *cm_id) {
+static int rdmaSetupIoBuf(kvContext *c, RdmaContext *ctx, struct rdma_cm_id *cm_id) {
     int access = IBV_ACCESS_LOCAL_WRITE;
-    size_t length = sizeof(valkeyRdmaCmd) * VALKEY_RDMA_MAX_WQE * 2;
-    valkeyRdmaCmd *cmd;
+    size_t length = sizeof(kvRdmaCmd) * KV_RDMA_MAX_WQE * 2;
+    kvRdmaCmd *cmd;
     int i;
 
     /* setup CMD buf & MR */
     ctx->cmd_buf = vk_calloc(length, 1);
     ctx->cmd_mr = ibv_reg_mr(ctx->pd, ctx->cmd_buf, length, access);
     if (!ctx->cmd_mr) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: reg recv mr failed");
+        kvSetError(c, KV_ERR_OTHER, "RDMA: reg recv mr failed");
         goto destroy_iobuf;
     }
 
-    for (i = 0; i < VALKEY_RDMA_MAX_WQE; i++) {
+    for (i = 0; i < KV_RDMA_MAX_WQE; i++) {
         cmd = ctx->cmd_buf + i;
 
-        if (rdmaPostRecv(ctx, cm_id, cmd) == VALKEY_ERR) {
-            valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: post recv failed");
+        if (rdmaPostRecv(ctx, cm_id, cmd) == KV_ERR) {
+            kvSetError(c, KV_ERR_OTHER, "RDMA: post recv failed");
             goto destroy_iobuf;
         }
     }
 
-    for (i = VALKEY_RDMA_MAX_WQE; i < VALKEY_RDMA_MAX_WQE * 2; i++) {
+    for (i = KV_RDMA_MAX_WQE; i < KV_RDMA_MAX_WQE * 2; i++) {
         cmd = ctx->cmd_buf + i;
-        cmd->keepalive.opcode = VALKEY_RDMA_INVALID_OPCODE;
+        cmd->keepalive.opcode = KV_RDMA_INVALID_OPCODE;
     }
 
     /* setup recv buf & MR */
     access = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
-    length = VALKEY_RDMA_DEFAULT_RX_LEN;
+    length = KV_RDMA_DEFAULT_RX_LEN;
     ctx->recv_buf = vk_calloc(length, 1);
     ctx->recv_length = length;
     ctx->recv_mr = ibv_reg_mr(ctx->pd, ctx->recv_buf, length, access);
     if (!ctx->recv_mr) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: reg send mr failed");
+        kvSetError(c, KV_ERR_OTHER, "RDMA: reg send mr failed");
         goto destroy_iobuf;
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 
 destroy_iobuf:
     rdmaDestroyIoBuf(ctx);
-    return VALKEY_ERR;
+    return KV_ERR;
 }
 
-static int rdmaAdjustSendbuf(valkeyContext *c, RdmaContext *ctx, unsigned int length) {
+static int rdmaAdjustSendbuf(kvContext *c, RdmaContext *ctx, unsigned int length) {
     int access = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
 
     if (length == ctx->send_length) {
-        return VALKEY_OK;
+        return KV_OK;
     }
 
     /* try to free old MR & buffer */
@@ -264,40 +264,40 @@ static int rdmaAdjustSendbuf(valkeyContext *c, RdmaContext *ctx, unsigned int le
     ctx->send_length = length;
     ctx->send_mr = ibv_reg_mr(ctx->pd, ctx->send_buf, length, access);
     if (!ctx->send_mr) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: reg send buf mr failed");
+        kvSetError(c, KV_ERR_OTHER, "RDMA: reg send buf mr failed");
         vk_free(ctx->send_buf);
         ctx->send_buf = NULL;
         ctx->send_length = 0;
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-static int rdmaSendCommand(valkeyContext *c, struct rdma_cm_id *cm_id, valkeyRdmaCmd *cmd) {
+static int rdmaSendCommand(kvContext *c, struct rdma_cm_id *cm_id, kvRdmaCmd *cmd) {
     RdmaContext *ctx = c->privctx;
     struct ibv_send_wr send_wr, *bad_wr;
     struct ibv_sge sge;
-    valkeyRdmaCmd *_cmd;
+    kvRdmaCmd *_cmd;
     int i;
     int ret;
 
     /* find an unused cmd buffer */
-    for (i = VALKEY_RDMA_MAX_WQE; i < 2 * VALKEY_RDMA_MAX_WQE; i++) {
+    for (i = KV_RDMA_MAX_WQE; i < 2 * KV_RDMA_MAX_WQE; i++) {
         _cmd = ctx->cmd_buf + i;
-        if (_cmd->keepalive.opcode == VALKEY_RDMA_INVALID_OPCODE) {
+        if (_cmd->keepalive.opcode == KV_RDMA_INVALID_OPCODE) {
             break;
         }
     }
 
-    if (i >= 2 * VALKEY_RDMA_MAX_WQE) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: no empty command buffers");
-        return VALKEY_ERR;
+    if (i >= 2 * KV_RDMA_MAX_WQE) {
+        kvSetError(c, KV_ERR_OTHER, "RDMA: no empty command buffers");
+        return KV_ERR;
     }
 
-    memcpy(_cmd, cmd, sizeof(valkeyRdmaCmd));
+    memcpy(_cmd, cmd, sizeof(kvRdmaCmd));
     sge.addr = (uint64_t)(uintptr_t)_cmd;
-    sge.length = sizeof(valkeyRdmaCmd);
+    sge.length = sizeof(kvRdmaCmd);
     sge.lkey = ctx->cmd_mr->lkey;
 
     send_wr.sg_list = &sge;
@@ -308,16 +308,16 @@ static int rdmaSendCommand(valkeyContext *c, struct rdma_cm_id *cm_id, valkeyRdm
     send_wr.next = NULL;
     ret = ibv_post_send(cm_id->qp, &send_wr, &bad_wr);
     if (ret) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: failed to send command buffers");
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OTHER, "RDMA: failed to send command buffers");
+        return KV_ERR;
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-static int connRdmaRegisterRx(valkeyContext *c, struct rdma_cm_id *cm_id) {
+static int connRdmaRegisterRx(kvContext *c, struct rdma_cm_id *cm_id) {
     RdmaContext *ctx = c->privctx;
-    valkeyRdmaCmd cmd = {0};
+    kvRdmaCmd cmd = {0};
 
     cmd.memory.opcode = htons(RegisterXferMemory);
     cmd.memory.addr = htobe64((uint64_t)ctx->recv_buf);
@@ -330,10 +330,10 @@ static int connRdmaRegisterRx(valkeyContext *c, struct rdma_cm_id *cm_id) {
     return rdmaSendCommand(c, cm_id, &cmd);
 }
 
-static int connRdmaHandleRecv(valkeyContext *c, RdmaContext *ctx, struct rdma_cm_id *cm_id, valkeyRdmaCmd *cmd, uint32_t byte_len) {
-    if (byte_len != sizeof(valkeyRdmaCmd)) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: FATAL error, recv corrupted cmd");
-        return VALKEY_ERR;
+static int connRdmaHandleRecv(kvContext *c, RdmaContext *ctx, struct rdma_cm_id *cm_id, kvRdmaCmd *cmd, uint32_t byte_len) {
+    if (byte_len != sizeof(kvRdmaCmd)) {
+        kvSetError(c, KV_ERR_OTHER, "RDMA: FATAL error, recv corrupted cmd");
+        return KV_ERR;
     }
 
     switch (ntohs(cmd->keepalive.opcode)) {
@@ -349,108 +349,108 @@ static int connRdmaHandleRecv(valkeyContext *c, RdmaContext *ctx, struct rdma_cm
         break;
 
     default:
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: FATAL error, unknown cmd");
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OTHER, "RDMA: FATAL error, unknown cmd");
+        return KV_ERR;
     }
 
     return rdmaPostRecv(ctx, cm_id, cmd);
 }
 
-static int connRdmaHandleRecvImm(RdmaContext *ctx, struct rdma_cm_id *cm_id, valkeyRdmaCmd *cmd, uint32_t byte_len) {
+static int connRdmaHandleRecvImm(RdmaContext *ctx, struct rdma_cm_id *cm_id, kvRdmaCmd *cmd, uint32_t byte_len) {
     assert(byte_len + ctx->rx_offset <= ctx->recv_length);
     ctx->rx_offset += byte_len;
 
     return rdmaPostRecv(ctx, cm_id, cmd);
 }
 
-static int connRdmaHandleSend(valkeyRdmaCmd *cmd) {
+static int connRdmaHandleSend(kvRdmaCmd *cmd) {
     /* mark this cmd has already sent */
     memset(cmd, 0x00, sizeof(*cmd));
-    cmd->keepalive.opcode = VALKEY_RDMA_INVALID_OPCODE;
+    cmd->keepalive.opcode = KV_RDMA_INVALID_OPCODE;
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-static int connRdmaHandleWrite(VALKEY_UNUSED RdmaContext *ctx, uint32_t VALKEY_UNUSED byte_len) {
+static int connRdmaHandleWrite(KV_UNUSED RdmaContext *ctx, uint32_t KV_UNUSED byte_len) {
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-static int connRdmaHandleCq(valkeyContext *c) {
+static int connRdmaHandleCq(kvContext *c) {
     RdmaContext *ctx = c->privctx;
     struct rdma_cm_id *cm_id = ctx->cm_id;
     struct ibv_cq *ev_cq = NULL;
     void *ev_ctx = NULL;
     struct ibv_wc wc = {0};
-    valkeyRdmaCmd *cmd;
+    kvRdmaCmd *cmd;
     int ret;
 
     if (ibv_get_cq_event(ctx->comp_channel, &ev_cq, &ev_ctx) < 0) {
         if (errno != EAGAIN) {
-            valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: get cq event failed");
-            return VALKEY_ERR;
+            kvSetError(c, KV_ERR_OTHER, "RDMA: get cq event failed");
+            return KV_ERR;
         }
 
-        return VALKEY_OK;
+        return KV_OK;
     }
 
     ibv_ack_cq_events(ctx->cq, 1);
     if (ibv_req_notify_cq(ev_cq, 0)) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: notify cq failed");
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OTHER, "RDMA: notify cq failed");
+        return KV_ERR;
     }
 
 pollcq:
     ret = ibv_poll_cq(ctx->cq, 1, &wc);
     if (ret < 0) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: poll cq failed");
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OTHER, "RDMA: poll cq failed");
+        return KV_ERR;
     } else if (ret == 0) {
-        return VALKEY_OK;
+        return KV_OK;
     }
 
     if (wc.status != IBV_WC_SUCCESS) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: send/recv failed");
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OTHER, "RDMA: send/recv failed");
+        return KV_ERR;
     }
 
     switch (wc.opcode) {
     case IBV_WC_RECV:
-        cmd = (valkeyRdmaCmd *)(uintptr_t)wc.wr_id;
-        if (connRdmaHandleRecv(c, ctx, cm_id, cmd, wc.byte_len) == VALKEY_ERR) {
-            return VALKEY_ERR;
+        cmd = (kvRdmaCmd *)(uintptr_t)wc.wr_id;
+        if (connRdmaHandleRecv(c, ctx, cm_id, cmd, wc.byte_len) == KV_ERR) {
+            return KV_ERR;
         }
 
         break;
 
     case IBV_WC_RECV_RDMA_WITH_IMM:
-        cmd = (valkeyRdmaCmd *)(uintptr_t)wc.wr_id;
-        if (connRdmaHandleRecvImm(ctx, cm_id, cmd, ntohl(wc.imm_data)) == VALKEY_ERR) {
-            return VALKEY_ERR;
+        cmd = (kvRdmaCmd *)(uintptr_t)wc.wr_id;
+        if (connRdmaHandleRecvImm(ctx, cm_id, cmd, ntohl(wc.imm_data)) == KV_ERR) {
+            return KV_ERR;
         }
 
         break;
     case IBV_WC_RDMA_WRITE:
-        if (connRdmaHandleWrite(ctx, wc.byte_len) == VALKEY_ERR) {
-            return VALKEY_ERR;
+        if (connRdmaHandleWrite(ctx, wc.byte_len) == KV_ERR) {
+            return KV_ERR;
         }
 
         break;
     case IBV_WC_SEND:
-        cmd = (valkeyRdmaCmd *)(uintptr_t)wc.wr_id;
-        if (connRdmaHandleSend(cmd) == VALKEY_ERR) {
-            return VALKEY_ERR;
+        cmd = (kvRdmaCmd *)(uintptr_t)wc.wr_id;
+        if (connRdmaHandleSend(cmd) == KV_ERR) {
+            return KV_ERR;
         }
 
         break;
     default:
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: unexpected opcode");
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OTHER, "RDMA: unexpected opcode");
+        return KV_ERR;
     }
 
     goto pollcq;
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
 /* There are two FD(s) in use:
@@ -458,70 +458,70 @@ pollcq:
  * - fd of completion channel: handle CQ event.
  * Return OK on CQ event ready, then CQ event should be handled outside.
  */
-static int valkeyRdmaPollCqCm(valkeyContext *c, long timed) {
-#define VALKEY_RDMA_POLLFD_CM 0
-#define VALKEY_RDMA_POLLFD_CQ 1
-#define VALKEY_RDMA_POLLFD_MAX 2
-    struct pollfd pfd[VALKEY_RDMA_POLLFD_MAX];
+static int kvRdmaPollCqCm(kvContext *c, long timed) {
+#define KV_RDMA_POLLFD_CM 0
+#define KV_RDMA_POLLFD_CQ 1
+#define KV_RDMA_POLLFD_MAX 2
+    struct pollfd pfd[KV_RDMA_POLLFD_MAX];
     RdmaContext *ctx = c->privctx;
     long now = vk_msec_now();
     int ret;
 
     if (now >= timed) {
-        valkeySetError(c, VALKEY_ERR_IO, "RDMA: IO timeout");
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_IO, "RDMA: IO timeout");
+        return KV_ERR;
     }
 
     /* pfd[0] for CM event */
-    pfd[VALKEY_RDMA_POLLFD_CM].fd = ctx->cm_channel->fd;
-    pfd[VALKEY_RDMA_POLLFD_CM].events = POLLIN;
-    pfd[VALKEY_RDMA_POLLFD_CM].revents = 0;
+    pfd[KV_RDMA_POLLFD_CM].fd = ctx->cm_channel->fd;
+    pfd[KV_RDMA_POLLFD_CM].events = POLLIN;
+    pfd[KV_RDMA_POLLFD_CM].revents = 0;
 
     /* pfd[1] for CQ event */
-    pfd[VALKEY_RDMA_POLLFD_CQ].fd = ctx->comp_channel->fd;
-    pfd[VALKEY_RDMA_POLLFD_CQ].events = POLLIN;
-    pfd[VALKEY_RDMA_POLLFD_CQ].revents = 0;
-    ret = poll(pfd, VALKEY_RDMA_POLLFD_MAX, timed - now);
+    pfd[KV_RDMA_POLLFD_CQ].fd = ctx->comp_channel->fd;
+    pfd[KV_RDMA_POLLFD_CQ].events = POLLIN;
+    pfd[KV_RDMA_POLLFD_CQ].revents = 0;
+    ret = poll(pfd, KV_RDMA_POLLFD_MAX, timed - now);
     if (ret < 0) {
-        valkeySetError(c, VALKEY_ERR_IO, "RDMA: Poll CQ/CM failed");
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_IO, "RDMA: Poll CQ/CM failed");
+        return KV_ERR;
     } else if (ret == 0) {
-        valkeySetError(c, VALKEY_ERR_IO, "Resource temporarily unavailable");
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_IO, "Resource temporarily unavailable");
+        return KV_ERR;
     }
 
-    if (pfd[VALKEY_RDMA_POLLFD_CM].revents & POLLIN) {
-        valkeyRdmaCM(c, 0);
-        if (!(c->flags & VALKEY_CONNECTED)) {
-            valkeySetError(c, VALKEY_ERR_EOF, "Server closed the connection");
-            return VALKEY_ERR;
+    if (pfd[KV_RDMA_POLLFD_CM].revents & POLLIN) {
+        kvRdmaCM(c, 0);
+        if (!(c->flags & KV_CONNECTED)) {
+            kvSetError(c, KV_ERR_EOF, "Server closed the connection");
+            return KV_ERR;
         }
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
-static ssize_t valkeyRdmaRead(valkeyContext *c, char *buf, size_t bufcap) {
+static ssize_t kvRdmaRead(kvContext *c, char *buf, size_t bufcap) {
     RdmaContext *ctx = c->privctx;
     struct rdma_cm_id *cm_id = ctx->cm_id;
     long timed, end;
     uint32_t toread, remained;
 
-    if (valkeyCommandTimeoutMsec(c, &timed)) {
-        return VALKEY_ERR;
+    if (kvCommandTimeoutMsec(c, &timed)) {
+        return KV_ERR;
     }
 
     end = vk_msec_now() + timed;
 
 pollcq:
     /* try to poll a CQ first */
-    if (connRdmaHandleCq(c) == VALKEY_ERR) {
-        return VALKEY_ERR;
+    if (connRdmaHandleCq(c) == KV_ERR) {
+        return KV_ERR;
     }
 
     if (ctx->recv_offset < ctx->rx_offset) {
         remained = ctx->rx_offset - ctx->recv_offset;
-        toread = valkeyMin(remained, bufcap);
+        toread = kvMin(remained, bufcap);
 
         memcpy(buf, ctx->recv_buf + ctx->recv_offset, toread);
         ctx->recv_offset += toread;
@@ -533,10 +533,10 @@ pollcq:
         return toread;
     }
 
-    if (valkeyRdmaPollCqCm(c, end) == VALKEY_OK) {
+    if (kvRdmaPollCqCm(c, end) == KV_OK) {
         goto pollcq;
     } else {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 }
 
@@ -558,14 +558,14 @@ static size_t connRdmaSend(RdmaContext *ctx, struct rdma_cm_id *cm_id, const voi
     send_wr.sg_list = &sge;
     send_wr.num_sge = 1;
     send_wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
-    send_wr.send_flags = (++ctx->send_ops % VALKEY_RDMA_MAX_WQE) ? 0 : IBV_SEND_SIGNALED;
+    send_wr.send_flags = (++ctx->send_ops % KV_RDMA_MAX_WQE) ? 0 : IBV_SEND_SIGNALED;
     send_wr.imm_data = htonl(data_len);
     send_wr.wr.rdma.remote_addr = (uint64_t)(uintptr_t)remote_addr;
     send_wr.wr.rdma.rkey = ctx->tx_key;
     send_wr.next = NULL;
     ret = ibv_post_send(cm_id->qp, &send_wr, &bad_wr);
     if (ret) {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 
     ctx->tx_offset += data_len;
@@ -573,7 +573,7 @@ static size_t connRdmaSend(RdmaContext *ctx, struct rdma_cm_id *cm_id, const voi
     return data_len;
 }
 
-static ssize_t valkeyRdmaWrite(valkeyContext *c) {
+static ssize_t kvRdmaWrite(kvContext *c) {
     RdmaContext *ctx = c->privctx;
     struct rdma_cm_id *cm_id = ctx->cm_id;
     size_t data_len = sdslen(c->obuf);
@@ -581,15 +581,15 @@ static ssize_t valkeyRdmaWrite(valkeyContext *c) {
     uint32_t towrite, wrote = 0;
     size_t ret;
 
-    if (valkeyCommandTimeoutMsec(c, &timed)) {
-        return VALKEY_ERR;
+    if (kvCommandTimeoutMsec(c, &timed)) {
+        return KV_ERR;
     }
 
     end = vk_msec_now() + timed;
 
 pollcq:
-    if (connRdmaHandleCq(c) == VALKEY_ERR) {
-        return VALKEY_ERR;
+    if (connRdmaHandleCq(c) == KV_ERR) {
+        return KV_ERR;
     }
 
     assert(ctx->tx_offset <= ctx->tx_length);
@@ -598,10 +598,10 @@ pollcq:
         goto waitcq;
     }
 
-    towrite = valkeyMin(ctx->tx_length - ctx->tx_offset, data_len - wrote);
+    towrite = kvMin(ctx->tx_length - ctx->tx_offset, data_len - wrote);
     ret = connRdmaSend(ctx, cm_id, c->obuf + wrote, towrite);
-    if (ret == (size_t)VALKEY_ERR) {
-        return VALKEY_ERR;
+    if (ret == (size_t)KV_ERR) {
+        return KV_ERR;
     }
 
     wrote += ret;
@@ -610,23 +610,23 @@ pollcq:
     }
 
 waitcq:
-    if (valkeyRdmaPollCqCm(c, end) == VALKEY_OK) {
+    if (kvRdmaPollCqCm(c, end) == KV_OK) {
         goto pollcq;
     } else {
-        return VALKEY_ERR;
+        return KV_ERR;
     }
 }
 
-/* RDMA has no POLLOUT event supported, so it couldn't work well with valkey async mechanism */
-static void valkeyRdmaAsyncRead(VALKEY_UNUSED valkeyAsyncContext *ac) {
-    assert("valkey async mechanism can't work with RDMA" == NULL);
+/* RDMA has no POLLOUT event supported, so it couldn't work well with kv async mechanism */
+static void kvRdmaAsyncRead(KV_UNUSED kvAsyncContext *ac) {
+    assert("kv async mechanism can't work with RDMA" == NULL);
 }
 
-static void valkeyRdmaAsyncWrite(VALKEY_UNUSED valkeyAsyncContext *ac) {
-    assert("valkey async mechanism can't work with RDMA" == NULL);
+static void kvRdmaAsyncWrite(KV_UNUSED kvAsyncContext *ac) {
+    assert("kv async mechanism can't work with RDMA" == NULL);
 }
 
-static void valkeyRdmaClose(valkeyContext *c) {
+static void kvRdmaClose(kvContext *c) {
     RdmaContext *ctx = c->privctx;
     struct rdma_cm_id *cm_id;
 
@@ -647,14 +647,14 @@ static void valkeyRdmaClose(valkeyContext *c) {
     rdma_destroy_event_channel(ctx->cm_channel);
 }
 
-static void valkeyRdmaFree(void *privctx) {
+static void kvRdmaFree(void *privctx) {
     if (!privctx)
         return;
 
     vk_free(privctx);
 }
 
-static int valkeyRdmaConnect(valkeyContext *c, struct rdma_cm_id *cm_id) {
+static int kvRdmaConnect(kvContext *c, struct rdma_cm_id *cm_id) {
     RdmaContext *ctx = c->privctx;
     struct ibv_comp_channel *comp_channel = NULL;
     struct ibv_cq *cq = NULL;
@@ -664,42 +664,42 @@ static int valkeyRdmaConnect(valkeyContext *c, struct rdma_cm_id *cm_id) {
 
     pd = ibv_alloc_pd(cm_id->verbs);
     if (!pd) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: alloc pd failed");
+        kvSetError(c, KV_ERR_OTHER, "RDMA: alloc pd failed");
         goto error;
     }
 
     comp_channel = ibv_create_comp_channel(cm_id->verbs);
     if (!comp_channel) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: alloc comp channel failed");
+        kvSetError(c, KV_ERR_OTHER, "RDMA: alloc comp channel failed");
         goto error;
     }
 
-    if (valkeyRdmaSetFdBlocking(c, comp_channel->fd, 0) != VALKEY_OK) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: set recv comp channel fd non-block failed");
+    if (kvRdmaSetFdBlocking(c, comp_channel->fd, 0) != KV_OK) {
+        kvSetError(c, KV_ERR_OTHER, "RDMA: set recv comp channel fd non-block failed");
         goto error;
     }
 
-    cq = ibv_create_cq(cm_id->verbs, VALKEY_RDMA_MAX_WQE * 2, ctx, comp_channel, 0);
+    cq = ibv_create_cq(cm_id->verbs, KV_RDMA_MAX_WQE * 2, ctx, comp_channel, 0);
     if (!cq) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: create send cq failed");
+        kvSetError(c, KV_ERR_OTHER, "RDMA: create send cq failed");
         goto error;
     }
 
     if (ibv_req_notify_cq(cq, 0)) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: notify send cq failed");
+        kvSetError(c, KV_ERR_OTHER, "RDMA: notify send cq failed");
         goto error;
     }
 
     /* create qp with attr */
-    init_attr.cap.max_send_wr = VALKEY_RDMA_MAX_WQE;
-    init_attr.cap.max_recv_wr = VALKEY_RDMA_MAX_WQE;
+    init_attr.cap.max_send_wr = KV_RDMA_MAX_WQE;
+    init_attr.cap.max_recv_wr = KV_RDMA_MAX_WQE;
     init_attr.cap.max_send_sge = 1;
     init_attr.cap.max_recv_sge = 1;
     init_attr.qp_type = IBV_QPT_RC;
     init_attr.send_cq = cq;
     init_attr.recv_cq = cq;
     if (rdma_create_qp(cm_id, pd, &init_attr)) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: create qp failed");
+        kvSetError(c, KV_ERR_OTHER, "RDMA: create qp failed");
         goto error;
     }
 
@@ -708,7 +708,7 @@ static int valkeyRdmaConnect(valkeyContext *c, struct rdma_cm_id *cm_id) {
     ctx->cq = cq;
     ctx->pd = pd;
 
-    if (rdmaSetupIoBuf(c, ctx, cm_id) != VALKEY_OK)
+    if (rdmaSetupIoBuf(c, ctx, cm_id) != KV_OK)
         goto free_qp;
 
     /* rdma connect with param */
@@ -717,11 +717,11 @@ static int valkeyRdmaConnect(valkeyContext *c, struct rdma_cm_id *cm_id) {
     conn_param.retry_count = 7;
     conn_param.rnr_retry_count = 7;
     if (rdma_connect(cm_id, &conn_param)) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: connect failed");
+        kvSetError(c, KV_ERR_OTHER, "RDMA: connect failed");
         goto destroy_iobuf;
     }
 
-    return VALKEY_OK;
+    return KV_OK;
 
 destroy_iobuf:
     rdmaDestroyIoBuf(ctx);
@@ -735,25 +735,25 @@ error:
     if (comp_channel)
         ibv_destroy_comp_channel(comp_channel);
 
-    return VALKEY_ERR;
+    return KV_ERR;
 }
 
-static int valkeyRdmaEstablished(valkeyContext *c, struct rdma_cm_id *cm_id) {
+static int kvRdmaEstablished(kvContext *c, struct rdma_cm_id *cm_id) {
     RdmaContext *ctx = c->privctx;
 
     /* it's time to tell redis we have already connected */
-    c->flags |= VALKEY_CONNECTED;
-    c->funcs = &valkeyContextRdmaFuncs;
+    c->flags |= KV_CONNECTED;
+    c->funcs = &kvContextRdmaFuncs;
     c->fd = ctx->comp_channel->fd;
 
     return connRdmaRegisterRx(c, cm_id);
 }
 
-static int valkeyRdmaCM(valkeyContext *c, long timeout) {
+static int kvRdmaCM(kvContext *c, long timeout) {
     RdmaContext *ctx = c->privctx;
     struct rdma_cm_event *event;
     char errorstr[128];
-    int ret = VALKEY_ERR;
+    int ret = KV_ERR;
 
     while (rdma_get_cm_event(ctx->cm_channel, &event) == 0) {
         switch (event->event) {
@@ -762,18 +762,18 @@ static int valkeyRdmaCM(valkeyContext *c, long timeout) {
                 timeout = 100; /* at most 100ms to resolve route */
             ret = rdma_resolve_route(event->id, timeout);
             if (ret) {
-                valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: route resolve failed on");
+                kvSetError(c, KV_ERR_OTHER, "RDMA: route resolve failed on");
             }
             break;
         case RDMA_CM_EVENT_ROUTE_RESOLVED:
-            ret = valkeyRdmaConnect(c, event->id);
+            ret = kvRdmaConnect(c, event->id);
             break;
         case RDMA_CM_EVENT_ESTABLISHED:
-            ret = valkeyRdmaEstablished(c, event->id);
+            ret = kvRdmaEstablished(c, event->id);
             break;
         case RDMA_CM_EVENT_TIMEWAIT_EXIT:
-            ret = VALKEY_ERR;
-            valkeySetError(c, VALKEY_ERR_TIMEOUT, "RDMA: connect timeout");
+            ret = KV_ERR;
+            kvSetError(c, KV_ERR_TIMEOUT, "RDMA: connect timeout");
             break;
         case RDMA_CM_EVENT_ADDR_ERROR:
         case RDMA_CM_EVENT_ROUTE_ERROR:
@@ -781,13 +781,13 @@ static int valkeyRdmaCM(valkeyContext *c, long timeout) {
         case RDMA_CM_EVENT_UNREACHABLE:
         case RDMA_CM_EVENT_REJECTED:
         case RDMA_CM_EVENT_DISCONNECTED:
-            c->flags &= ~VALKEY_CONNECTED;
+            c->flags &= ~KV_CONNECTED;
             break;
         case RDMA_CM_EVENT_ADDR_CHANGE:
         default:
             snprintf(errorstr, sizeof(errorstr), "RDMA: connect failed - %s", rdma_event_str(event->event));
-            valkeySetError(c, VALKEY_ERR_OTHER, errorstr);
-            ret = VALKEY_ERR;
+            kvSetError(c, KV_ERR_OTHER, errorstr);
+            ret = KV_ERR;
             break;
         }
 
@@ -797,7 +797,7 @@ static int valkeyRdmaCM(valkeyContext *c, long timeout) {
     return ret;
 }
 
-static int valkeyRdmaWaitConn(valkeyContext *c, long timeout) {
+static int kvRdmaWaitConn(kvContext *c, long timeout) {
     struct pollfd pfd;
     long now, end;
     RdmaContext *ctx = c->privctx;
@@ -815,22 +815,22 @@ static int valkeyRdmaWaitConn(valkeyContext *c, long timeout) {
         pfd.events = POLLIN;
         pfd.revents = 0;
         if (poll(&pfd, 1, end - now) < 0) {
-            return VALKEY_ERR;
+            return KV_ERR;
         }
 
-        if (valkeyRdmaCM(c, end - now) == VALKEY_ERR) {
-            return VALKEY_ERR;
+        if (kvRdmaCM(c, end - now) == KV_ERR) {
+            return KV_ERR;
         }
 
-        if (c->flags & VALKEY_CONNECTED) {
-            return VALKEY_OK;
+        if (c->flags & KV_CONNECTED) {
+            return KV_OK;
         }
     }
 
-    return VALKEY_ERR;
+    return KV_ERR;
 }
 
-static int valkeyContextConnectRdma(valkeyContext *c, const valkeyOptions *options) {
+static int kvContextConnectRdma(kvContext *c, const kvOptions *options) {
     const struct timeval *timeout = options->connect_timeout;
     const char *addr = options->endpoint.tcp.ip;
     const char *source_addr = options->endpoint.tcp.source_addr;
@@ -842,13 +842,13 @@ static int valkeyContextConnectRdma(valkeyContext *c, const valkeyOptions *optio
     RdmaContext *ctx = NULL;
     long start = vk_msec_now(), timed;
 
-    c->connection_type = VALKEY_CONN_RDMA;
+    c->connection_type = KV_CONN_RDMA;
     c->tcp.port = port;
-    c->flags &= ~VALKEY_CONNECTED;
+    c->flags &= ~KV_CONNECTED;
 
     if (port < 0 || port > UINT16_MAX) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: Port number must be between 0-65535");
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OTHER, "RDMA: Port number must be between 0-65535");
+        return KV_ERR;
     }
 
     if (c->tcp.host != addr) {
@@ -856,8 +856,8 @@ static int valkeyContextConnectRdma(valkeyContext *c, const valkeyOptions *optio
 
         c->tcp.host = vk_strdup(addr);
         if (c->tcp.host == NULL) {
-            valkeySetError(c, VALKEY_ERR_OOM, "RDMA: Out of memory");
-            return VALKEY_ERR;
+            kvSetError(c, KV_ERR_OOM, "RDMA: Out of memory");
+            return KV_ERR;
         }
     }
 
@@ -868,47 +868,47 @@ static int valkeyContextConnectRdma(valkeyContext *c, const valkeyOptions *optio
         vk_free(c->tcp.source_addr);
         c->tcp.source_addr = vk_strdup(source_addr);
         if (c->tcp.source_addr == NULL) {
-            valkeySetError(c, VALKEY_ERR_OOM, "RDMA: Out of memory");
-            return VALKEY_ERR;
+            kvSetError(c, KV_ERR_OOM, "RDMA: Out of memory");
+            return KV_ERR;
         }
     }
 
     if (timeout) {
-        if (valkeyContextUpdateConnectTimeout(c, timeout) == VALKEY_ERR) {
-            return VALKEY_ERR;
+        if (kvContextUpdateConnectTimeout(c, timeout) == KV_ERR) {
+            return KV_ERR;
         }
     } else {
         vk_free(c->connect_timeout);
         c->connect_timeout = NULL;
     }
 
-    if (valkeyConnectTimeoutMsec(c, &timeout_msec) != VALKEY_OK) {
-        return VALKEY_ERR;
+    if (kvConnectTimeoutMsec(c, &timeout_msec) != KV_OK) {
+        return KV_ERR;
     } else if (timeout_msec == -1) {
         timeout_msec = INT_MAX;
     }
 
     ctx = vk_calloc(sizeof(RdmaContext), 1);
     if (!ctx) {
-        valkeySetError(c, VALKEY_ERR_OOM, "Out of memory");
-        return VALKEY_ERR;
+        kvSetError(c, KV_ERR_OOM, "Out of memory");
+        return KV_ERR;
     }
 
     c->privctx = ctx;
 
     ctx->cm_channel = rdma_create_event_channel();
     if (!ctx->cm_channel) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: create event channel failed");
+        kvSetError(c, KV_ERR_OTHER, "RDMA: create event channel failed");
         goto error;
     }
 
     if (rdma_create_id(ctx->cm_channel, &ctx->cm_id, (void *)ctx, RDMA_PS_TCP)) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: create id failed");
+        kvSetError(c, KV_ERR_OTHER, "RDMA: create id failed");
         goto error;
     }
 
-    if ((valkeyRdmaSetFdBlocking(c, ctx->cm_channel->fd, 0) != VALKEY_OK)) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: set cm channel fd non-block failed");
+    if ((kvRdmaSetFdBlocking(c, ctx->cm_channel->fd, 0) != KV_OK)) {
+        kvSetError(c, KV_ERR_OTHER, "RDMA: set cm channel fd non-block failed");
         goto error;
     }
 
@@ -918,12 +918,12 @@ static int valkeyContextConnectRdma(valkeyContext *c, const valkeyOptions *optio
         hints.ai_flags = RAI_PASSIVE;
         hints.ai_port_space = RDMA_PS_TCP;
         if (rdma_getaddrinfo(addr, _port, &hints, &addrinfo)) {
-            valkeySetError(c, VALKEY_ERR_PROTOCOL, "RDMA: failed to getaddrinfo for local side");
+            kvSetError(c, KV_ERR_PROTOCOL, "RDMA: failed to getaddrinfo for local side");
             goto error;
         }
 
         if (rdma_bind_addr(ctx->cm_id, addrinfo->ai_src_addr)) {
-            valkeySetError(c, VALKEY_ERR_PROTOCOL, "RDMA: failed to bind local address");
+            kvSetError(c, KV_ERR_PROTOCOL, "RDMA: failed to bind local address");
             goto error;
         }
 
@@ -936,29 +936,29 @@ static int valkeyContextConnectRdma(valkeyContext *c, const valkeyOptions *optio
     snprintf(_port, sizeof(_port), "%d", port);
     hints.ai_port_space = RDMA_PS_TCP;
     if (rdma_getaddrinfo(addr, _port, &hints, &addrinfo)) {
-        valkeySetError(c, VALKEY_ERR_PROTOCOL, "RDMA: failed to getaddrinfo");
+        kvSetError(c, KV_ERR_PROTOCOL, "RDMA: failed to getaddrinfo");
         goto error;
     }
 
     timed = timeout_msec - (vk_msec_now() - start);
     if (rdma_resolve_addr(ctx->cm_id, NULL, (struct sockaddr *)addrinfo->ai_dst_addr, timed)) {
-        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: failed to resolve");
+        kvSetError(c, KV_ERR_OTHER, "RDMA: failed to resolve");
         goto error;
     }
 
     timed = vk_msec_now() - start;
     if (timed >= timeout_msec) {
-        valkeySetError(c, VALKEY_ERR_TIMEOUT, "RDMA: resolving timeout");
+        kvSetError(c, KV_ERR_TIMEOUT, "RDMA: resolving timeout");
         goto error;
     }
 
-    if ((valkeyRdmaWaitConn(c, timeout_msec - timed) == VALKEY_OK) && (c->flags & VALKEY_CONNECTED)) {
-        ret = VALKEY_OK;
+    if ((kvRdmaWaitConn(c, timeout_msec - timed) == KV_OK) && (c->flags & KV_CONNECTED)) {
+        ret = KV_OK;
         goto end;
     }
 
 error:
-    ret = VALKEY_ERR;
+    ret = KV_ERR;
     if (ctx) {
         if (ctx->cm_id) {
             rdma_destroy_id(ctx->cm_id);
@@ -980,24 +980,24 @@ end:
 }
 
 /* tv has already been updated into @c successfully, do nothing here */
-static int valkeyRdmaSetTimeout(VALKEY_UNUSED valkeyContext *c, VALKEY_UNUSED const struct timeval tv) {
-    return VALKEY_OK;
+static int kvRdmaSetTimeout(KV_UNUSED kvContext *c, KV_UNUSED const struct timeval tv) {
+    return KV_OK;
 }
 
-static valkeyContextFuncs valkeyContextRdmaFuncs = {
-    .connect = valkeyContextConnectRdma,
-    .close = valkeyRdmaClose,
-    .free_privctx = valkeyRdmaFree,
-    .async_read = valkeyRdmaAsyncRead,
-    .async_write = valkeyRdmaAsyncWrite,
-    .read = valkeyRdmaRead,
-    .write = valkeyRdmaWrite,
-    .set_timeout = valkeyRdmaSetTimeout};
+static kvContextFuncs kvContextRdmaFuncs = {
+    .connect = kvContextConnectRdma,
+    .close = kvRdmaClose,
+    .free_privctx = kvRdmaFree,
+    .async_read = kvRdmaAsyncRead,
+    .async_write = kvRdmaAsyncWrite,
+    .read = kvRdmaRead,
+    .write = kvRdmaWrite,
+    .set_timeout = kvRdmaSetTimeout};
 
-int valkeyInitiateRdma(void) {
-    valkeyContextRegisterFuncs(&valkeyContextRdmaFuncs, VALKEY_CONN_RDMA);
+int kvInitiateRdma(void) {
+    kvContextRegisterFuncs(&kvContextRdmaFuncs, KV_CONN_RDMA);
 
-    return VALKEY_OK;
+    return KV_OK;
 }
 
 #else /* __linux__ */
