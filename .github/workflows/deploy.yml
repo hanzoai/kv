@@ -20,39 +20,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch CI secrets from Hanzo KMS
-        id: kms
-        env:
-          KMS_CLIENT_ID: ${{ secrets.KMS_CLIENT_ID }}
-          KMS_CLIENT_SECRET: ${{ secrets.KMS_CLIENT_SECRET }}
-        run: |
-          set -euo pipefail
-          KMS_URL="${KMS_URL:-https://kms.hanzo.ai}"
-
-          ACCESS_TOKEN="$(
-            curl -fsS -X POST "${KMS_URL}/api/v1/auth/universal-auth/login" \
-              -H "Content-Type: application/json" \
-              -d "$(jq -nc --arg cid "$KMS_CLIENT_ID" --arg cs "$KMS_CLIENT_SECRET" \
-                    '{clientId: $cid, clientSecret: $cs}')" \
-            | jq -r '.accessToken'
-          )"
-
-          [ -n "${ACCESS_TOKEN}" ] && [ "${ACCESS_TOKEN}" != "null" ] || {
-            echo "::error::Failed to authenticate to Hanzo KMS"; exit 1; }
-
-          fetch_secret() {
-            curl -fsS "${KMS_URL}/api/v3/secrets/raw/${1}?workspaceSlug=gitops&environment=prod&secretPath=/ci&viewSecretValue=true&include_imports=true" \
-              -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-            | jq -r '.secret.secretValue'
-          }
-
-          for name in DOCKERHUB_USERNAME DOCKERHUB_TOKEN DIGITALOCEAN_ACCESS_TOKEN; do
-            val="$(fetch_secret "$name")"
-            [ -n "$val" ] && [ "$val" != "null" ] || { echo "::error::Missing KMS secret $name"; exit 1; }
-            echo "::add-mask::${val}"
-            echo "${name}=${val}" >> "$GITHUB_OUTPUT"
-          done
-
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -66,21 +33,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        continue-on-error: true
-        with:
-          registry: docker.io
-          username: ${{ steps.kms.outputs.DOCKERHUB_USERNAME }}
-          password: ${{ steps.kms.outputs.DOCKERHUB_TOKEN }}
-
       - name: Image metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: |
-            ghcr.io/hanzoai/kv
-            hanzoai/kv
+          images: ghcr.io/hanzoai/kv
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=9,enable={{is_default_branch}}
@@ -99,48 +56,3 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=kv
           cache-to: type=gha,mode=max,scope=kv
-
-  deploy-hanzo:
-    needs: build
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Fetch deploy secrets from Hanzo KMS
-        id: kms
-        env:
-          KMS_CLIENT_ID: ${{ secrets.KMS_CLIENT_ID }}
-          KMS_CLIENT_SECRET: ${{ secrets.KMS_CLIENT_SECRET }}
-        run: |
-          set -euo pipefail
-          KMS_URL="${KMS_URL:-https://kms.hanzo.ai}"
-
-          ACCESS_TOKEN="$(
-            curl -fsS -X POST "${KMS_URL}/api/v1/auth/universal-auth/login" \
-              -H "Content-Type: application/json" \
-              -d "$(jq -nc --arg cid "$KMS_CLIENT_ID" --arg cs "$KMS_CLIENT_SECRET" \
-                    '{clientId: $cid, clientSecret: $cs}')" \
-            | jq -r '.accessToken'
-          )"
-
-          DO_TOKEN="$(
-            curl -fsS "${KMS_URL}/api/v3/secrets/raw/DIGITALOCEAN_ACCESS_TOKEN?workspaceSlug=gitops&environment=prod&secretPath=/ci&viewSecretValue=true&include_imports=true" \
-              -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-            | jq -r '.secret.secretValue'
-          )"
-
-          echo "::add-mask::${DO_TOKEN}"
-          echo "do_token=${DO_TOKEN}" >> "$GITHUB_OUTPUT"
-
-      - name: Install doctl
-        uses: digitalocean/action-doctl@v2
-        with:
-          token: ${{ steps.kms.outputs.do_token }}
-
-      - name: Configure kubectl (hanzo-k8s)
-        run: doctl kubernetes cluster kubeconfig save hanzo-k8s
-
-      - name: Rolling update KV
-        run: |
-          kubectl -n hanzo set image statefulset/redis-master \
-            kv=ghcr.io/hanzoai/kv:latest
-          kubectl -n hanzo rollout status statefulset/redis-master --timeout=120s
