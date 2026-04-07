@@ -28,3 +28,4 @@ HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
 
 ENTRYPOINT ["kv-server"]
 CMD ["--bind", "0.0.0.0", "--dir", "/data", "--maxmemory-policy", "allkeys-lru", "--protected-mode", "no"]
+
