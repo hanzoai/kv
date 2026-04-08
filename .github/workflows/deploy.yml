@@ -2,7 +2,7 @@ name: Build and Deploy Hanzo KV
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev, test]
     tags: ['v*']
     paths:
       - 'src/**'
