@@ -1603,7 +1603,7 @@ jobs:
           repository: ${{ ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && env.GITHUB_REPOSITORY) || github.repository }}
           ref: ${{ ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && env.GITHUB_HEAD_REF) || github.ref }}
       - name: test
-        uses: cross-platform-actions/action@39a2a80642eca0947594ad03e4355dc3d28c617a # v0.32.0
+        uses: cross-platform-actions/action@492b0c80085400348c599edace11141a4ee73524 # v0.32.0
         with:
           operating_system: freebsd
           environment_variables: MAKE
