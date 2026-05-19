@@ -91,11 +91,7 @@ typedef struct {
 /**
  * Return the error message corresponding with the specified error code.
  */
-<<<<<<< HEAD
 LIBKV_API const char *kvTLSContextGetError(kvTLSContextError error);
-=======
-LIBVALKEY_API const char *valkeyTLSContextGetError(valkeyTLSContextError error);
->>>>>>> v9.0.4
 
 /**
  * Helper function to initialize the OpenSSL library.
@@ -104,11 +100,7 @@ LIBVALKEY_API const char *valkeyTLSContextGetError(valkeyTLSContextError error);
  * call this function only once, and only if OpenSSL is not directly initialized
  * elsewhere.
  */
-<<<<<<< HEAD
 LIBKV_API int kvInitOpenSSL(void);
-=======
-LIBVALKEY_API int valkeyInitOpenSSL(void);
->>>>>>> v9.0.4
 
 /**
  * Helper function to initialize an OpenSSL context that can be used
@@ -130,15 +122,9 @@ LIBVALKEY_API int valkeyInitOpenSSL(void);
  * If error is non-null, it will be populated in case the context creation fails
  * (returning a NULL).
  */
-<<<<<<< HEAD
 LIBKV_API kvTLSContext *kvCreateTLSContext(const char *cacert_filename, const char *capath,
                                                        const char *cert_filename, const char *private_key_filename,
                                                        const char *server_name, kvTLSContextError *error);
-=======
-LIBVALKEY_API valkeyTLSContext *valkeyCreateTLSContext(const char *cacert_filename, const char *capath,
-                                                       const char *cert_filename, const char *private_key_filename,
-                                                       const char *server_name, valkeyTLSContextError *error);
->>>>>>> v9.0.4
 
 /**
   * Helper function to initialize an OpenSSL context that can be used
@@ -149,22 +135,13 @@ LIBVALKEY_API valkeyTLSContext *valkeyCreateTLSContext(const char *cacert_filena
   * If error is non-null, it will be populated in case the context creation fails
   * (returning a NULL).
 */
-<<<<<<< HEAD
 LIBKV_API kvTLSContext *kvCreateTLSContextWithOptions(kvTLSOptions *options,
                                                                   kvTLSContextError *error);
-=======
-LIBVALKEY_API valkeyTLSContext *valkeyCreateTLSContextWithOptions(valkeyTLSOptions *options,
-                                                                  valkeyTLSContextError *error);
->>>>>>> v9.0.4
 
 /**
  * Free a previously created OpenSSL context.
  */
-<<<<<<< HEAD
 LIBKV_API void kvFreeTLSContext(kvTLSContext *kv_tls_ctx);
-=======
-LIBVALKEY_API void valkeyFreeTLSContext(valkeyTLSContext *valkey_tls_ctx);
->>>>>>> v9.0.4
 
 /**
  * Initiate TLS on an existing kvContext.
@@ -173,20 +150,12 @@ LIBVALKEY_API void valkeyFreeTLSContext(valkeyTLSContext *valkey_tls_ctx);
  * to directly interact with OpenSSL, and instead uses a kvTLSContext
  * previously created using kvCreateTLSContext().
  */
-<<<<<<< HEAD
 LIBKV_API int kvInitiateTLSWithContext(struct kvContext *c, kvTLSContext *kv_tls_ctx);
-=======
-LIBVALKEY_API int valkeyInitiateTLSWithContext(struct valkeyContext *c, valkeyTLSContext *valkey_tls_ctx);
->>>>>>> v9.0.4
 
 /**
  * Initiate TLS negotiation on a provided OpenSSL SSL object.
  */
-<<<<<<< HEAD
 LIBKV_API int kvInitiateTLS(struct kvContext *c, struct ssl_st *ssl);
-=======
-LIBVALKEY_API int valkeyInitiateTLS(struct valkeyContext *c, struct ssl_st *ssl);
->>>>>>> v9.0.4
 
 #ifdef __cplusplus
 }

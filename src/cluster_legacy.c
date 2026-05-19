@@ -2919,11 +2919,7 @@ int nodeUpdateAddressIfNeeded(clusterNode *node, clusterLink *link, clusterMsg *
 void clusterSetNodeAsPrimary(clusterNode *n) {
     if (clusterNodeIsPrimary(n)) return;
 
-<<<<<<< HEAD
     serverLog(LL_NOTICE, "Reconfiguring node %.40s (%s) as primary for shard %.40s", n->name, humanNodename(n), n->shard_id);
-=======
-    serverLog(LL_NOTICE, "Reconfiguring node %.40s (%s) as primary for shard %.40s", n->name, n->human_nodename, n->shard_id);
->>>>>>> v9.0.4
 
     if (n->replicaof) {
         clusterNodeRemoveReplica(n->replicaof, n);
@@ -2949,13 +2945,8 @@ static void clusterLogSlotRangeMigration(int first_slot,
               "Slot range [%d, %d] is migrated from node %.40s (%s) in shard %.40s"
               " to node %.40s (%s) in shard %.40s.",
               first_slot, last_slot,
-<<<<<<< HEAD
               source_node->name, humanNodename(source_node), source_node->shard_id,
               target_node->name, humanNodename(target_node), target_node->shard_id);
-=======
-              source_node->name, source_node->human_nodename, source_node->shard_id,
-              target_node->name, target_node->human_nodename, target_node->shard_id);
->>>>>>> v9.0.4
 }
 
 /* This function is called when we receive a primary configuration via a
@@ -4241,11 +4232,7 @@ int clusterProcessPacket(clusterLink *link) {
             serverAssert(nodeIsPrimary(sender));
 
             serverLog(LL_NOTICE, "Mismatch in topology information for sender node %.40s (%s) in shard %.40s", sender->name,
-<<<<<<< HEAD
                       humanNodename(sender), sender->shard_id);
-=======
-                      sender->human_nodename, sender->shard_id);
->>>>>>> v9.0.4
 
             /* 1) If the sender of the message is a primary, and we detected that
              *    the set of slots it claims changed, scan the slots to see if we
@@ -4368,12 +4355,8 @@ int clusterProcessPacket(clusterLink *link) {
         if (n->configEpoch >= reportedConfigEpoch) return 1; /* Nothing new. */
 
         serverLog(LL_NOTICE, "Processing UPDATE message received from %.40s (%s) in shard %s about node %.40s (%s) in shard %s. old configEpoch %llu, new configEpoch %llu",
-<<<<<<< HEAD
                   sender->name, humanNodename(sender), sender->shard_id,
                   n->name, humanNodename(n), n->shard_id,
-=======
-                  sender->name, sender->human_nodename, sender->shard_id, n->name, n->human_nodename, n->shard_id,
->>>>>>> v9.0.4
                   (unsigned long long)n->configEpoch, (unsigned long long)reportedConfigEpoch);
 
         /* If in our current config the node is a replica, set it as a primary. */
