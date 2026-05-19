@@ -51,7 +51,11 @@ void test_password_ok(void) {
     kvClusterContext *cc = kvClusterConnectWithOptions(&options);
     ASSERT_MSG(cc && cc->err == 0, cc ? cc->errstr : "OOM");
     assert(connect_success_counter == 1); // for CLUSTER SLOTS
+<<<<<<< HEAD
     load_kv_version(cc);
+=======
+    load_valkey_version(cc);
+>>>>>>> v9.0.4
     // Check that the initial slotmap update connection is reused.
     assert(connect_success_counter == 1);
 

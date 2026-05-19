@@ -221,6 +221,7 @@ start_server {tags {"modules acl"}} {
         assert_equal {OK} [r module unload subcommands]
     }
 }
+<<<<<<< HEAD
 
 start_server {tags {"modules check access for keys with prefix"}} {
     r module load $testmodule
@@ -268,6 +269,8 @@ start_server {tags {"modules check access for keys with prefix"}} {
     }
 }
 
+=======
+>>>>>>> v9.0.4
 start_server {tags {"modules acl"}} {
     test {test existing users to have access to module commands loaded on runtime} {
         r acl SETUSER j3 on >password -@all +@WRITE

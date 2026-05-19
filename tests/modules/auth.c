@@ -189,12 +189,21 @@ void AuthBlock_FreeData(KVModuleCtx *ctx, void *privdata) {
 int blocking_auth_cb(KVModuleCtx *ctx, KVModuleString *username, KVModuleString *password, KVModuleString **err) {
     KVMODULE_NOT_USED(err);
     /* Block the client from the Module. */
+<<<<<<< HEAD
     KVModuleBlockedClient *bc = KVModule_BlockClientOnAuth(ctx, AuthBlock_Reply, AuthBlock_FreeData);
     int ctx_flags = KVModule_GetContextFlags(ctx);
     if (ctx_flags & KVMODULE_CTX_FLAGS_MULTI || ctx_flags & KVMODULE_CTX_FLAGS_LUA) {
         /* Clean up by using KVModule_UnblockClient since we attempted blocking the client. */
         KVModule_UnblockClient(bc, NULL);
         return KVMODULE_AUTH_HANDLED;
+=======
+    ValkeyModuleBlockedClient *bc = ValkeyModule_BlockClientOnAuth(ctx, AuthBlock_Reply, AuthBlock_FreeData);
+    int ctx_flags = ValkeyModule_GetContextFlags(ctx);
+    if (ctx_flags & VALKEYMODULE_CTX_FLAGS_MULTI || ctx_flags & VALKEYMODULE_CTX_FLAGS_LUA) {
+        /* Clean up by using ValkeyModule_UnblockClient since we attempted blocking the client. */
+        ValkeyModule_UnblockClient(bc, NULL);
+        return VALKEYMODULE_AUTH_HANDLED;
+>>>>>>> v9.0.4
     }
     KVModule_BlockedClientMeasureTimeStart(bc);
     pthread_t tid;

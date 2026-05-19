@@ -1197,7 +1197,11 @@ size_t objectComputeSize(robj *key, robj *o, size_t sample_size, int dbid) {
 
     if (o->type == OBJ_STRING) {
         if (o->encoding == OBJ_ENCODING_RAW) {
+<<<<<<< HEAD
             asize += sdsAllocSize(objectGetVal(o));
+=======
+            asize += sdsAllocSize(o->ptr);
+>>>>>>> v9.0.4
         } else if (o->encoding != OBJ_ENCODING_INT && o->encoding != OBJ_ENCODING_EMBSTR) {
             serverPanic("Unknown string encoding");
         }
@@ -1212,13 +1216,21 @@ size_t objectComputeSize(robj *key, robj *o, size_t sample_size, int dbid) {
             } while ((node = node->next) && samples < sample_size);
             asize += (double)elesize / samples * ql->len;
         } else if (o->encoding == OBJ_ENCODING_LISTPACK) {
+<<<<<<< HEAD
             asize += zmalloc_size(objectGetVal(o));
+=======
+            asize += zmalloc_size(o->ptr);
+>>>>>>> v9.0.4
         } else {
             serverPanic("Unknown list encoding");
         }
     } else if (o->type == OBJ_SET) {
         if (o->encoding == OBJ_ENCODING_HASHTABLE) {
+<<<<<<< HEAD
             hashtable *ht = objectGetVal(o);
+=======
+            hashtable *ht = o->ptr;
+>>>>>>> v9.0.4
             asize += hashtableMemUsage(ht);
 
             hashtableIterator iter;
@@ -1232,14 +1244,21 @@ size_t objectComputeSize(robj *key, robj *o, size_t sample_size, int dbid) {
             hashtableCleanupIterator(&iter);
             if (samples) asize += (double)elesize / samples * hashtableSize(ht);
         } else if (o->encoding == OBJ_ENCODING_INTSET) {
+<<<<<<< HEAD
             asize += zmalloc_size(objectGetVal(o));
         } else if (o->encoding == OBJ_ENCODING_LISTPACK) {
             asize += zmalloc_size(objectGetVal(o));
+=======
+            asize += zmalloc_size(o->ptr);
+        } else if (o->encoding == OBJ_ENCODING_LISTPACK) {
+            asize += zmalloc_size(o->ptr);
+>>>>>>> v9.0.4
         } else {
             serverPanic("Unknown set encoding");
         }
     } else if (o->type == OBJ_ZSET) {
         if (o->encoding == OBJ_ENCODING_LISTPACK) {
+<<<<<<< HEAD
             asize += zmalloc_size(objectGetVal(o));
         } else if (o->encoding == OBJ_ENCODING_SKIPLIST) {
             hashtable *ht = ((zset *)objectGetVal(o))->ht;
@@ -1247,6 +1266,15 @@ size_t objectComputeSize(robj *key, robj *o, size_t sample_size, int dbid) {
             zskiplistNode *zheader = zslGetHeader(zsl);
             zskiplistNode *znode = zheader->level[0].forward;
             asize += sizeof(zset) + zslGetAllocSize() + hashtableMemUsage(ht);
+=======
+            asize += zmalloc_size(o->ptr);
+        } else if (o->encoding == OBJ_ENCODING_SKIPLIST) {
+            hashtable *ht = ((zset *)o->ptr)->ht;
+            zskiplist *zsl = ((zset *)o->ptr)->zsl;
+            zskiplistNode *znode = zsl->header->level[0].forward;
+            asize += sizeof(zset) + sizeof(zskiplist) +
+                     hashtableMemUsage(ht) + zmalloc_size(zsl->header);
+>>>>>>> v9.0.4
             while (znode != NULL && samples < sample_size) {
                 elesize += zmalloc_size(znode);
                 samples++;
@@ -1258,7 +1286,11 @@ size_t objectComputeSize(robj *key, robj *o, size_t sample_size, int dbid) {
         }
     } else if (o->type == OBJ_HASH) {
         if (o->encoding == OBJ_ENCODING_LISTPACK) {
+<<<<<<< HEAD
             asize += zmalloc_size(objectGetVal(o));
+=======
+            asize += zmalloc_size(o->ptr);
+>>>>>>> v9.0.4
         } else if (o->encoding == OBJ_ENCODING_HASHTABLE) {
             hashtable *ht = objectGetVal(o);
             hashtableIterator iter;
@@ -1278,7 +1310,11 @@ size_t objectComputeSize(robj *key, robj *o, size_t sample_size, int dbid) {
             serverPanic("Unknown hash encoding");
         }
     } else if (o->type == OBJ_STREAM) {
+<<<<<<< HEAD
         stream *s = objectGetVal(o);
+=======
+        stream *s = o->ptr;
+>>>>>>> v9.0.4
         asize += sizeof(*s);
         asize += raxAllocSize(s->rax);
 

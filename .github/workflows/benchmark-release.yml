@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 name: Compare KV Versions
+=======
+name: Benchmark Comparison (Dispatch)
+>>>>>>> v9.0.4
 
 on:
   workflow_dispatch:
@@ -15,11 +19,25 @@ on:
         description: "Issue ID to comment results on"
         required: true
         type: string
+<<<<<<< HEAD
       runs:
         description: "Number of benchmark runs per configuration"
         required: false
         type: number
         default: 1
+=======
+      config_file:
+        description: "Benchmark configuration to use"
+        required: false
+        type: choice
+        default: "pr_benchmark.json"
+        options:
+          - "pr_benchmark.json"
+
+concurrency:
+  group: valkey-benchmark
+  cancel-in-progress: false
+>>>>>>> v9.0.4
 
 defaults:
   run:
@@ -32,6 +50,7 @@ permissions:
 
 jobs:
   benchmark:
+<<<<<<< HEAD
     if: github.repository == 'kv-io/kv'
     strategy:
       matrix:
@@ -47,15 +66,22 @@ jobs:
       cancel-in-progress: false
     runs-on: ["self-hosted", "${{ matrix.machine }}"]
     timeout-minutes: 7200
+=======
+    runs-on: ${{ github.repository == 'valkey-io/valkey' && fromJSON('["self-hosted","ec2-ubuntu-24.04-benchmarking"]') || 'ubuntu-latest' }}
+>>>>>>> v9.0.4
     steps:
       - name: Validate inputs
         run: |
           echo "Version 1: ${{ github.event.inputs.version1 }}"
           echo "Version 2: ${{ github.event.inputs.version2 }}"
           echo "Issue ID: ${{ github.event.inputs.issue_id }}"
+<<<<<<< HEAD
           echo "Architecture: ${{ matrix.arch }}"
           echo "Config: ${{ matrix.config }}"
           echo "Runs: ${{ github.event.inputs.runs }}"
+=======
+          echo "Config file: ${{ github.event.inputs.config_file }}"
+>>>>>>> v9.0.4
 
           # Validate issue ID is numeric
           if ! [[ "${{ github.event.inputs.issue_id }}" =~ ^[0-9]+$ ]]; then
@@ -69,6 +95,7 @@ jobs:
             exit 1
           fi
 
+<<<<<<< HEAD
       - name: Checkout kv for latest benchmark.
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -88,6 +115,26 @@ jobs:
         with:
           repository: ${{ github.repository_owner }}/kv-perf-benchmark
           path: kv-perf-benchmark
+=======
+      - name: Checkout valkey for latest benchmark.
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ github.repository_owner }}/valkey
+          path: valkey_latest
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout valkey
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: valkey
+
+      - name: Checkout valkey-perf-benchmark
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ github.repository_owner }}/valkey-perf-benchmark
+          path: valkey-perf-benchmark
+>>>>>>> v9.0.4
           fetch-depth: 1
           persist-credentials: false
 
@@ -98,7 +145,11 @@ jobs:
           cache: "pip"
 
       - name: Install dependencies
+<<<<<<< HEAD
         working-directory: kv-perf-benchmark
+=======
+        working-directory: valkey-perf-benchmark
+>>>>>>> v9.0.4
         run: |
           sudo dnf groupinstall "Development Tools" -y
           sudo dnf install -y gcc gcc-c++ make \
@@ -108,14 +159,22 @@ jobs:
               libffi-devel
           pip install -r requirements.txt
 
+<<<<<<< HEAD
       - name: Build latest kv_latest
         working-directory: kv_latest
         run: |
           echo "Building latest kv-benchmark for latest benchmark executable..."
+=======
+      - name: Build latest valkey_latest
+        working-directory: valkey_latest
+        run: |
+          echo "Building latest valkey-benchmark for latest benchmark executable..."
+>>>>>>> v9.0.4
 
           # Clean any previous builds
           make distclean || true
 
+<<<<<<< HEAD
           # Build kv-benchmark with latest code
           make -j$(nproc)
 
@@ -129,10 +188,26 @@ jobs:
             ./src/kv-benchmark --version || echo "Version check completed"
           else
             echo "Failed to build kv-benchmark"
+=======
+          # Build valkey-benchmark with latest code
+          make -j$(nproc)
+
+          # Verify the binary was created
+          if [[ -f "src/valkey-benchmark" ]]; then
+            echo "✓ Successfully built latest valkey-benchmark"
+            ls -la src/valkey-benchmark
+
+            # Test the binary
+            echo "Testing valkey-benchmark binary..."
+            ./src/valkey-benchmark --version || echo "Version check completed"
+          else
+            echo "Failed to build valkey-benchmark"
+>>>>>>> v9.0.4
             exit 1
           fi
 
           # Store the absolute path for later use
+<<<<<<< HEAD
           KV_BENCHMARK_PATH="$(pwd)/src/kv-benchmark"
           echo "KV_BENCHMARK_PATH=$KV_BENCHMARK_PATH" >> $GITHUB_ENV
           echo "Latest kv-benchmark path: $KV_BENCHMARK_PATH"
@@ -172,11 +247,74 @@ jobs:
             --target-ip $TARGET_IP
             --results-dir "results"
             --runs ${{ github.event.inputs.runs }}
+=======
+          VALKEY_BENCHMARK_PATH="$(pwd)/src/valkey-benchmark"
+          echo "VALKEY_BENCHMARK_PATH=$VALKEY_BENCHMARK_PATH" >> $GITHUB_ENV
+          echo "Latest valkey-benchmark path: $VALKEY_BENCHMARK_PATH"
+
+      - name: Checkout valkey-perf-benchmark
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          repository: ${{ github.repository_owner }}/valkey-perf-benchmark
+          path: valkey-perf-benchmark
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Install dependencies
+        working-directory: valkey-perf-benchmark
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+          pip install -r requirements.txt
+
+      - name: Validate config file exists
+        run: |
+          CONFIG_PATH="valkey_latest/.github/benchmark_configs/${{ github.event.inputs.config_file }}"
+          if [[ ! -f "$CONFIG_PATH" ]]; then
+            echo "Error: Config file $CONFIG_PATH does not exist"
+            echo "Available config files:"
+            ls -la valkey_latest/.github/benchmark_configs/
+            exit 1
+          fi
+          echo "Using config file: $CONFIG_PATH"
+
+      - name: Run benchmarks
+        working-directory: valkey-perf-benchmark
+        run: |
+          CONFIG_FILE="../valkey_latest/.github/benchmark_configs/${{ github.event.inputs.config_file }}"
+
+          # Removes server/client CPU range args if running in private repo
+          if [[ "${{ github.repository }}" != "valkey-io/valkey" ]]; then
+            jq 'map(del(.server_cpu_range, .client_cpu_range))' "$CONFIG_FILE" > tmp.json && mv tmp.json "$CONFIG_FILE"
+          fi
+
+          # Verify our custom valkey-benchmark exists
+          if [[ ! -f "$VALKEY_BENCHMARK_PATH" ]]; then
+            echo "Custom valkey-benchmark not found at: $VALKEY_BENCHMARK_PATH"
+            exit 1
+          fi
+
+          echo "Using custom valkey-benchmark from: $VALKEY_BENCHMARK_PATH"
+
+          # Base benchmark arguments with custom valkey-benchmark path
+          BENCHMARK_ARGS=(
+            --commits ${{ github.event.inputs.version1 }} ${{ github.event.inputs.version2 }}
+            --results-dir "results"
+            --config "$CONFIG_FILE"
+            --valkey-benchmark-path "$VALKEY_BENCHMARK_PATH"
+>>>>>>> v9.0.4
           )
 
           echo "Running benchmarks with the following setup:"
           echo "- Version 1: ${{ github.event.inputs.version1 }}"
           echo "- Version 2: ${{ github.event.inputs.version2 }}"
+<<<<<<< HEAD
           echo "- Architecture: ${{ matrix.arch }}"
           echo "- Config: ${{ matrix.config }}"
           echo "- Using latest kv-benchmark: $KV_BENCHMARK_PATH"
@@ -187,6 +325,17 @@ jobs:
 
       - name: Compare results
         working-directory: kv-perf-benchmark
+=======
+          echo "- Config: ${{ github.event.inputs.config_file }}"
+          echo "- Using latest valkey-benchmark: $VALKEY_BENCHMARK_PATH"
+          echo "- This ensures both versions use the same (latest) benchmark tool for consistent results"
+
+          # Run benchmark with custom valkey-benchmark executable
+          python ./benchmark.py "${BENCHMARK_ARGS[@]}"
+
+      - name: Compare results
+        working-directory: valkey-perf-benchmark
+>>>>>>> v9.0.4
         run: |
           # Find the actual result directories (they might have different names than input)
           VERSION1_DIR=$(find ./results -maxdepth 1 -type d -name "*${{ github.event.inputs.version1 }}*" | head -1)
@@ -210,18 +359,26 @@ jobs:
           echo "Version 1 (${{ github.event.inputs.version1 }}): $VERSION1_DIR"
           echo "Version 2 (${{ github.event.inputs.version2 }}): $VERSION2_DIR"
 
+<<<<<<< HEAD
           # Generate RPS-focused comparison and graphs for GitHub comments
           python utils/compare_benchmark_results.py \
             --baseline "$VERSION1_DIR/metrics.json" \
             --new "$VERSION2_DIR/metrics.json" \
             --output ../comparison.md \
             --metrics rps
+=======
+          python utils/compare_benchmark_results.py \
+            "$VERSION1_DIR/metrics.json" \
+            "$VERSION2_DIR/metrics.json" \
+            ../comparison.md
+>>>>>>> v9.0.4
 
       - name: Upload artifacts
         if: always()
         continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
+<<<<<<< HEAD
           name: benchmark-results-${{ matrix.arch }}-${{ github.event.inputs.issue_id }}
           path: |
             ./kv-perf-benchmark/results/*
@@ -232,6 +389,18 @@ jobs:
         continue-on-error: true
         run: |
           pkill -f kv || echo "No kv processes found to kill"
+=======
+          name: benchmark-results-${{ github.event.inputs.issue_id }}
+          path: |
+            ./valkey-perf-benchmark/results/*/metrics.json
+            comparison.md
+
+      - name: Cleanup any running valkey processes and files
+        if: always()
+        continue-on-error: true
+        run: |
+          pkill -f valkey || echo "No valkey processes found to kill"
+>>>>>>> v9.0.4
           rm -rf *
 
   combine-results:
@@ -276,6 +445,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
+<<<<<<< HEAD
 
             // Read the combined report
             const body = fs.readFileSync('combined_report.md', 'utf8');
@@ -286,3 +456,44 @@ jobs:
               repo: context.repo.repo,
               body: body
             });
+=======
+            const body = fs.readFileSync('comparison.md', 'utf8');
+            const {owner, repo} = context.repo;
+            const version1 = '${{ github.event.inputs.version1 }}';
+            const version2 = '${{ github.event.inputs.version2 }}';
+            const configFile = '${{ github.event.inputs.config_file }}';
+            const runUrl = `https://github.com/${owner}/${repo}/actions/runs/${{ github.run_id }}`;
+
+            const header = `## Benchmark Comparison ${{ github.event.inputs.version1 }} vs ${{ github.event.inputs.version2 }}
+
+            **Versions Compared:**
+            - Version 1: \`${version1}\`
+            - Version 2: \`${version2}\`
+
+            **Config:** \`${configFile}\`
+            **Workflow Run:** [View Details](${runUrl})
+
+            ---
+            `;
+
+            await github.rest.issues.createComment({
+              issue_number: ${{ github.event.inputs.issue_id }},
+              owner,
+              repo,
+              body: header + body
+            });
+
+      - name: Cleanup any running valkey processes
+        if: always()
+        continue-on-error: true
+        run: |
+          pkill -f valkey
+          exit_code=$?
+          if [ $exit_code -eq 0 ]; then
+            echo "Killed running valkey processes"
+          elif [ $exit_code -eq 1 ]; then
+            echo "No valkey processes found to kill"
+          else
+            echo "Warning: pkill failed with exit code $exit_code"
+          fi
+>>>>>>> v9.0.4

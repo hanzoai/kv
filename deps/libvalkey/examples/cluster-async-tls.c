@@ -52,11 +52,19 @@ void disconnectCallback(const kvAsyncContext *ac, int status) {
 }
 
 int main(void) {
+<<<<<<< HEAD
     kvTLSContext *tls;
     kvTLSContextError tls_error;
 
     kvInitOpenSSL();
     tls = kvCreateTLSContext("ca.crt", NULL, "client.crt", "client.key",
+=======
+    valkeyTLSContext *tls;
+    valkeyTLSContextError tls_error;
+
+    valkeyInitOpenSSL();
+    tls = valkeyCreateTLSContext("ca.crt", NULL, "client.crt", "client.key",
+>>>>>>> v9.0.4
                                  NULL, &tls_error);
     if (!tls) {
         printf("TLS Context error: %s\n", kvTLSContextGetError(tls_error));

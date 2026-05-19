@@ -7,6 +7,7 @@
 // Forward declaration of the engine structure.
 typedef struct scriptingEngine scriptingEngine;
 
+<<<<<<< HEAD
 /* KVModule type aliases for scripting engine structs and types. */
 typedef struct KVModule KVModule;
 typedef KVModuleScriptingEngineCtx engineCtx;
@@ -20,6 +21,17 @@ typedef KVModuleScriptingEngineDebuggerCommand debuggerCommand;
 typedef KVModuleScriptingEngineDebuggerCommandParam debuggerCommandParam;
 typedef KVModuleScriptingEngineMethodsV3 engineMethodsV3;
 typedef KVModuleScriptingEngineMethods engineMethods;
+=======
+/* ValkeyModule type aliases for scripting engine structs and types. */
+typedef struct ValkeyModule ValkeyModule;
+typedef ValkeyModuleScriptingEngineCtx engineCtx;
+typedef ValkeyModuleScriptingEngineServerRuntimeCtx serverRuntimeCtx;
+typedef ValkeyModuleScriptingEngineCompiledFunction compiledFunction;
+typedef ValkeyModuleScriptingEngineSubsystemType subsystemType;
+typedef ValkeyModuleScriptingEngineMemoryInfo engineMemoryInfo;
+typedef ValkeyModuleScriptingEngineCallableLazyEnvReset callableLazyEnvReset;
+typedef ValkeyModuleScriptingEngineMethods engineMethods;
+>>>>>>> v9.0.4
 
 /*
  * Callback function used to iterate the list of engines registered in the

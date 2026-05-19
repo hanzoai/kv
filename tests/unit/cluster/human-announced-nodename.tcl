@@ -1,4 +1,5 @@
 # Check if cluster's view of human announced nodename is reported in logs
+<<<<<<< HEAD
 
 # Override cluster-node-timeout: shorten timeout to quickly trigger the failure message
 # Override loglevel: we need to use some debug level logs in assertions
@@ -34,6 +35,9 @@ start_cluster 4 0 {tags {external:skip cluster} overrides {cluster-node-timeout 
         resume_process [srv -1 pid]
     }
 
+=======
+start_cluster 4 0 {tags {external:skip cluster}} {
+>>>>>>> v9.0.4
     test "Set cluster human announced nodename and let it propagate" {
         for {set j 0} {$j < [llength $::servers]} {incr j} {
             R $j config set cluster-announce-hostname "host-$j.com"
@@ -48,6 +52,7 @@ start_cluster 4 0 {tags {external:skip cluster} overrides {cluster-node-timeout 
             fail "cluster hostnames were not propagated"
         }
 
+<<<<<<< HEAD
         # Ensure the human nodenames are visible in logs
         wait_for_log_messages 0 [list "*Sending ping packet to node * (nodename-1) *"] 0 1000 10
         wait_for_log_messages 0 [list "*Sending ping packet to node * (nodename-2) *"] 0 1000 10
@@ -55,6 +60,23 @@ start_cluster 4 0 {tags {external:skip cluster} overrides {cluster-node-timeout 
         wait_for_log_messages -1 [list "*Sending ping packet to node $RO_node_id (nodename-0) *"] 0 1000 10
         wait_for_log_messages -2 [list "*Sending ping packet to node $RO_node_id (nodename-0) *"] 0 1000 10
         wait_for_log_messages -3 [list "*Sending ping packet to node $RO_node_id (nodename-0) *"] 0 1000 10
+=======
+    test "Human nodenames are visible in log messages" {
+        # Pause instance 0, so everyone thinks it is dead
+        pause_process [srv 0 pid]
+        pause_process [srv -1 pid]
+
+        # We're going to use a message we will know will be sent, node unreachable,
+        # since it includes the other node gossiping.
+        wait_for_log_messages -2 {"*Node * (nodename-3) reported node * (nodename-0) as not reachable*"} 0 20 500
+        wait_for_log_messages -3 {"*Node * (nodename-2) reported node * (nodename-0) as not reachable*"} 0 20 500
+
+        wait_for_log_messages -2 {"*Node * (nodename-3) reported node * (nodename-1) as not reachable*"} 0 20 500
+        wait_for_log_messages -3 {"*Node * (nodename-2) reported node * (nodename-1) as not reachable*"} 0 20 500
+        
+        resume_process [srv 0 pid]
+        resume_process [srv -1 pid]
+>>>>>>> v9.0.4
     }
 }
 

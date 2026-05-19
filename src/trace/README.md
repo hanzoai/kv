@@ -84,6 +84,7 @@ Generally kv-server would not run in full utilization, the overhead is acceptabl
 
 | event                    | provider        |
 |--------------------------|-----------------|
+<<<<<<< HEAD
 | command_call             | kv_commands |
 | eventloop                | kv_server   |
 | eventloop_cron           | kv_server   |
@@ -119,3 +120,40 @@ Generally kv-server would not run in full utilization, the overhead is acceptabl
 | aof_fstat                | kv_aof      |
 | aof_rename               | kv_aof      |
 | aof_flush                | kv_aof      |
+=======
+| command_call             | valkey_commands |
+| eventloop                | valkey_server   |
+| eventloop_cron           | valkey_server   |
+| while_blocked_cron       | valkey_server   |
+| module_acquire_gil       | valkey_server   |
+| command_unblocking       | valkey_server   |
+| fast_command             | valkey_server   |
+| command                  | valkey_server   |
+| expire_del               | valkey_db       |
+| active_defrag_cycle      | valkey_db       |
+| eviction_del             | valkey_db       |
+| eviction_lazyfree        | valkey_db       |
+| eviction_cycle           | valkey_db       |
+| expire_cycle             | valkey_db       |
+| expire_cycle_fields      | valkey_db       |
+| expire_cycle_keys        | valkey_db       |
+| fork                     | valkey_cluster  |
+| cluster_config_open      | valkey_cluster  |
+| cluster_config_write     | valkey_cluster  |
+| cluster_config_fsync     | valkey_cluster  |
+| cluster_config_rename    | valkey_cluster  |
+| cluster_config_dir_fsync | valkey_cluster  |
+| cluster_config_close     | valkey_cluster  |
+| cluster_config_unlink    | valkey_cluster  |
+| fork                     | valkey_rdb      |
+| rdb_unlink_temp_file     | valkey_rdb      |
+| fork                     | valkey_aof      |
+| aof_write_pending_fsync  | valkey_aof      |
+| aof_write_active_child   | valkey_aof      |
+| aof_write_alone          | valkey_aof      |
+| aof_write                | valkey_aof      |
+| aof_fsync_always         | valkey_aof      |
+| aof_fstat                | valkey_aof      |
+| aof_rename               | valkey_aof      |
+| aof_flush                | valkey_aof      |
+>>>>>>> v9.0.4

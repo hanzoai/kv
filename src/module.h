@@ -193,7 +193,11 @@ moduleType *moduleTypeLookupModuleByNameIgnoreCase(const char *name);
 void moduleTypeNameByID(char *name, uint64_t moduleid);
 const char *moduleTypeModuleName(moduleType *mt);
 const char *moduleNameFromCommand(struct serverCommand *cmd);
+<<<<<<< HEAD
 KVModule *moduleFromCommand(struct serverCommand *cmd);
+=======
+ValkeyModule *moduleFromCommand(struct serverCommand *cmd);
+>>>>>>> v9.0.4
 void moduleCallCommandUnblockedHandler(client *c);
 int isModuleClientUnblocked(client *c);
 void unblockClientFromModule(client *c);

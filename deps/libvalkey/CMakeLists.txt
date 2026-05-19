@@ -62,9 +62,15 @@ if(NOT SDS_INCLUDE_DIR)
   set(SDS_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 endif()
 
+<<<<<<< HEAD
 ADD_LIBRARY(kv ${kv_sources})
 ADD_LIBRARY(kv::kv ALIAS kv)
 set_target_properties(kv PROPERTIES
+=======
+ADD_LIBRARY(valkey ${valkey_sources})
+ADD_LIBRARY(valkey::valkey ALIAS valkey)
+set_target_properties(valkey PROPERTIES
+>>>>>>> v9.0.4
   C_VISIBILITY_PRESET hidden
   WINDOWS_EXPORT_ALL_SYMBOLS TRUE
   SOVERSION "${VERSION_MAJOR}"
@@ -132,7 +138,11 @@ if (MSVC AND BUILD_SHARED_LIBS)
 endif()
 
 # Install public headers
+<<<<<<< HEAD
 install(DIRECTORY include/kv
+=======
+install(DIRECTORY include/valkey
+>>>>>>> v9.0.4
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         PATTERN "tls.h" EXCLUDE
         PATTERN "rdma.h" EXCLUDE)
@@ -191,7 +201,11 @@ IF(ENABLE_TLS)
         SET_PROPERTY(TARGET kv_tls PROPERTY LINK_FLAGS "-Wl,-undefined -Wl,dynamic_lookup")
     ENDIF()
 
+<<<<<<< HEAD
     set_target_properties(kv_tls PROPERTIES
+=======
+    set_target_properties(valkey_tls PROPERTIES
+>>>>>>> v9.0.4
       C_VISIBILITY_PRESET hidden
       WINDOWS_EXPORT_ALL_SYMBOLS TRUE
       SOVERSION "${VERSION_MAJOR}"
@@ -213,8 +227,13 @@ IF(ENABLE_TLS)
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
     # Install public header
+<<<<<<< HEAD
     install(FILES include/kv/tls.h
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/kv)
+=======
+    install(FILES include/valkey/tls.h
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/valkey)
+>>>>>>> v9.0.4
 
     if (MSVC AND BUILD_SHARED_LIBS)
         INSTALL(FILES $<TARGET_PDB_FILE:kv_tls>
@@ -263,12 +282,20 @@ if(ENABLE_RDMA)
             $<BUILD_INTERFACE:${SDS_INCLUDE_DIR}>
     )
 
+<<<<<<< HEAD
     set_target_properties(kv_rdma PROPERTIES
+=======
+    set_target_properties(valkey_rdma PROPERTIES
+>>>>>>> v9.0.4
       C_VISIBILITY_PRESET hidden
       WINDOWS_EXPORT_ALL_SYMBOLS TRUE
       SOVERSION "${VERSION_MAJOR}"
       VERSION "${VERSION}")
+<<<<<<< HEAD
     configure_file(kv_rdma.pc.in kv_rdma.pc @ONLY)
+=======
+    configure_file(valkey_rdma.pc.in valkey_rdma.pc @ONLY)
+>>>>>>> v9.0.4
 
     install(TARGETS kv_rdma
         EXPORT kv_rdma-targets
@@ -277,10 +304,17 @@ if(ENABLE_RDMA)
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
     # Install public header
+<<<<<<< HEAD
     install(FILES include/kv/rdma.h
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/kv)
 
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/kv_rdma.pc
+=======
+    install(FILES include/valkey/rdma.h
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/valkey)
+
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/valkey_rdma.pc
+>>>>>>> v9.0.4
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 
     export(EXPORT kv_rdma-targets
@@ -306,6 +340,7 @@ if(NOT DISABLE_TESTS)
   if(BUILD_SHARED_LIBS)
     # Test using a static library since symbols are not hidden then.
     # Use same source, include dirs and dependencies as the shared library.
+<<<<<<< HEAD
     add_library(kv_unittest STATIC ${kv_sources})
     get_target_property(include_directories kv::kv INCLUDE_DIRECTORIES)
     target_include_directories(kv_unittest PUBLIC ${include_directories})
@@ -319,6 +354,21 @@ if(NOT DISABLE_TESTS)
   else()
     # Target is an alias for the static library.
     add_library(kv_unittest ALIAS kv)
+=======
+    add_library(valkey_unittest STATIC ${valkey_sources})
+    get_target_property(include_directories valkey::valkey INCLUDE_DIRECTORIES)
+    target_include_directories(valkey_unittest PUBLIC ${include_directories})
+    get_target_property(link_libraries valkey::valkey LINK_LIBRARIES)
+    if(link_libraries)
+      target_link_libraries(valkey_unittest PUBLIC ${link_libraries})
+    endif()
+    # Create libvalkey_unittest.a in the tests directory.
+    set_target_properties(valkey_unittest PROPERTIES
+      ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tests")
+  else()
+    # Target is an alias for the static library.
+    add_library(valkey_unittest ALIAS valkey)
+>>>>>>> v9.0.4
   endif()
 
   # Make sure ctest prints the output when a test fails.

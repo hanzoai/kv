@@ -33,7 +33,11 @@
 
 #include "win32.h"
 
+<<<<<<< HEAD
 #include "kv.h"
+=======
+#include "valkey.h"
+>>>>>>> v9.0.4
 #include "visibility.h"
 
 #include <sds.h>
@@ -41,7 +45,11 @@
 #include <limits.h>
 #include <string.h>
 
+<<<<<<< HEAD
 LIBKV_API void kvSetError(kvContext *c, int type, const char *str);
+=======
+LIBVALKEY_API void valkeySetError(valkeyContext *c, int type, const char *str);
+>>>>>>> v9.0.4
 
 /* Helper function. Convert struct timeval to millisecond. */
 static inline int kvContextTimeoutMsec(const struct timeval *timeout, long *result) {
