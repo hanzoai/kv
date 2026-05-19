@@ -976,6 +976,7 @@ start_server {tags {"expire"}} {
             fail "key wasn't expired"
         }
     }
+<<<<<<< HEAD
 
     test {replicaKeysWithExpire memory leak verification and cleanup} {
         # This test verifies the memory leak issue and cleanup mechanism for replicaKeysWithExpire
@@ -1043,6 +1044,8 @@ start_server {tags {"expire"}} {
             assert_equal [$replica dbsize] 0
         }
     }
+=======
+>>>>>>> v9.0.4
 }
 
 start_server {tags {expire} overrides {hz 100}} {

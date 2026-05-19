@@ -1484,7 +1484,11 @@ static int luaNewIndexAllowList(lua_State *lua) {
         for (; *c; ++c) {
             if (strcmp(*c, variable_name) == 0) {
                 deprecated = 1;
+<<<<<<< HEAD:src/modules/lua/script_lua.c
                 allowed = rctx->lua_enable_insecure_api ? 1 : 0;
+=======
+                allowed = server.lua_enable_insecure_api ? 1 : 0;
+>>>>>>> v9.0.4:src/lua/script_lua.c
                 break;
             }
         }
@@ -1499,10 +1503,17 @@ static int luaNewIndexAllowList(lua_State *lua) {
             }
         }
         if (!*c && !deprecated) {
+<<<<<<< HEAD:src/modules/lua/script_lua.c
             KVModule_Log(rctx->module_ctx, "warning",
                              "A key '%s' was added to Lua globals which is neither on the globals allow list nor listed on the "
                              "deny list.",
                              variable_name);
+=======
+            serverLog(LL_WARNING,
+                      "A key '%s' was added to Lua globals which is neither on the globals allow list nor listed on the "
+                      "deny list.",
+                      variable_name);
+>>>>>>> v9.0.4:src/lua/script_lua.c
         }
     } else {
         lua_rawset(lua, -3);
@@ -1583,7 +1594,11 @@ void luaSetTableProtectionForBasicTypes(lua_State *lua) {
     }
 }
 
+<<<<<<< HEAD:src/modules/lua/script_lua.c
 void luaRegisterVersion(luaEngineCtx *ctx, lua_State *lua) {
+=======
+void luaRegisterVersion(lua_State *lua) {
+>>>>>>> v9.0.4:src/lua/script_lua.c
     /* For legacy compatibility reasons include Redis versions. */
     lua_pushstring(lua, "REDIS_VERSION_NUM");
     lua_pushnumber(lua, ctx->redis_version_num);
@@ -2043,6 +2058,10 @@ void luaCallFunction(KVModuleCtx *ctx,
                     "%s",
                     err_info.msg);
             }
+<<<<<<< HEAD:src/modules/lua/script_lua.c
+=======
+            addReplyErrorSdsExSafe(c, final_msg, err_info.ignore_err_stats_update ? ERR_REPLY_FLAG_NO_STATS_UPDATE : 0);
+>>>>>>> v9.0.4:src/lua/script_lua.c
             luaErrorInformationDiscard(&err_info);
         }
         lua_pop(lua, 1); /* Consume the Lua error */

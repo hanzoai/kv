@@ -91,7 +91,11 @@ macro (kv_build_and_install_bin target sources ld_flags libs link_name)
 
     if (USE_RDMA)
         # Add required libraries needed for RDMA
+<<<<<<< HEAD:cmake/Modules/KVSetup.cmake
         target_link_libraries(${target} kv::kv_rdma)
+=======
+        target_link_libraries(${target} valkey::valkey_rdma)
+>>>>>>> v9.0.4:cmake/Modules/ValkeySetup.cmake
     endif ()
 
     if (IS_FREEBSD)

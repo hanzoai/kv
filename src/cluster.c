@@ -200,7 +200,11 @@ void dumpCommand(client *c) {
 
 /* RESTORE key ttl serialized-value [REPLACE] [ABSTTL] [IDLETIME seconds] [FREQ frequency] */
 void restoreCommand(client *c) {
+<<<<<<< HEAD
     long long ttl, lfu_freq = -1, lru_idle = -1;
+=======
+    long long ttl, lfu_freq = -1, lru_idle = -1, lru_clock = -1;
+>>>>>>> v9.0.4
     uint16_t rdbver = 0;
     rio payload;
     int j, type, replace = 0, absttl = 0;
@@ -249,12 +253,20 @@ void restoreCommand(client *c) {
     }
 
     /* Verify RDB version and data checksum. */
+<<<<<<< HEAD
     if (verifyDumpPayload(objectGetVal(c->argv[3]), sdslen(objectGetVal(c->argv[3])), &rdbver) == C_ERR) {
+=======
+    if (verifyDumpPayload(c->argv[3]->ptr, sdslen(c->argv[3]->ptr), &rdbver) == C_ERR) {
+>>>>>>> v9.0.4
         addReplyError(c, "DUMP payload version or checksum are wrong");
         return;
     }
 
+<<<<<<< HEAD
     rioInitWithBuffer(&payload, objectGetVal(c->argv[3]));
+=======
+    rioInitWithBuffer(&payload, c->argv[3]->ptr);
+>>>>>>> v9.0.4
     type = rdbLoadObjectType(&payload);
     if (type == -1) {
         addReplyError(c, "Bad data format");
@@ -268,7 +280,11 @@ void restoreCommand(client *c) {
         return;
     }
 
+<<<<<<< HEAD
     obj = rdbLoadObject(type, &payload, objectGetVal(key), c->db->id, NULL);
+=======
+    obj = rdbLoadObject(type, &payload, key->ptr, c->db->id, NULL);
+>>>>>>> v9.0.4
     if (obj == NULL) {
         addReplyError(c, "Bad data format");
         return;

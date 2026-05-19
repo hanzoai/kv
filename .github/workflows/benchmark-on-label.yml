@@ -1,11 +1,19 @@
+<<<<<<< HEAD
 name: On-Demand Labeled Benchmark
+=======
+name: On-demand Benchmark
+>>>>>>> v9.0.4
 
 on:
   pull_request_target:
     types: [labeled]
 
 concurrency:
+<<<<<<< HEAD
   group: ec2-al-2023-pr-benchmarking-arm64
+=======
+  group: valkey-benchmark
+>>>>>>> v9.0.4
   cancel-in-progress: false
 
 defaults:
@@ -19,6 +27,7 @@ permissions:
 
 jobs:
   benchmark:
+<<<<<<< HEAD
     if: |
       github.event.action == 'labeled' && github.event.label.name == 'run-benchmark' &&
       github.repository == 'kv-io/kv'
@@ -30,10 +39,21 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: kv
+=======
+    runs-on: ${{ github.repository == 'valkey-io/valkey' && fromJSON('["self-hosted","ec2-ubuntu-24.04-benchmarking"]') || 'ubuntu-latest' }}
+    if: |
+      github.event.action == 'labeled' && github.event.label.name == 'run-benchmark'
+    steps:
+      - name: Checkout valkey
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: valkey
+>>>>>>> v9.0.4
           fetch-depth: 0
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           persist-credentials: false
 
+<<<<<<< HEAD
       - name: Checkout kv-perf-benchmark
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -51,6 +71,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+=======
+      - name: Checkout valkey-perf-benchmark
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ github.repository_owner }}/valkey-perf-benchmark
+          path: valkey-perf-benchmark
+          fetch-depth: 1
+          persist-credentials: false
+
+>>>>>>> v9.0.4
       - name: Set up Python
         uses: kishaningithub/setup-python-amazon-linux@a326cdc792983fe0fbd04c81d3d62b59b6123a6c # v1.1.0
         with:
@@ -58,6 +88,7 @@ jobs:
           cache: "pip"
 
       - name: Install dependencies
+<<<<<<< HEAD
         working-directory: kv-perf-benchmark
         run: |
           sudo dnf groupinstall "Development Tools" -y
@@ -101,12 +132,38 @@ jobs:
             --kv-path "../kv"
             --results-dir "results"
             --runs 5
+=======
+        working-directory: valkey-perf-benchmark
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+          pip install -r requirements.txt
+
+      - name: Run benchmarks
+        working-directory: valkey-perf-benchmark
+        run: |
+          CONFIG_FILE="../valkey/.github/benchmark_configs/pr_benchmark.json"
+
+          # Removes server/client CPU range args if running in private repo
+          if [[ "${{ github.repository }}" != "valkey-io/valkey" ]]; then
+            jq 'map(del(.server_cpu_range, .client_cpu_range))' "$CONFIG_FILE" > tmp.json && mv tmp.json "$CONFIG_FILE"
+          fi
+
+          # Base benchmark arguments
+          BENCHMARK_ARGS=(
+            --commits "${{ github.event.pull_request.merge_commit_sha }}"
+            --baseline "${{ github.event.pull_request.base.ref }}"
+            --results-dir "results"
+            --valkey-path "../valkey"
+            --config "$CONFIG_FILE"
+>>>>>>> v9.0.4
           )
 
           # Run benchmark
           python ./benchmark.py "${BENCHMARK_ARGS[@]}"
 
       - name: Compare results
+<<<<<<< HEAD
         working-directory: kv-perf-benchmark
         run: |
           python ./utils/compare_benchmark_results.py \
@@ -114,6 +171,14 @@ jobs:
             --new ./results/${{ github.event.pull_request.merge_commit_sha }}/metrics.json \
             --output ../comparison.md \
             --metrics rps
+=======
+        working-directory: valkey-perf-benchmark
+        run: |
+          python ./utils/compare_benchmark_results.py \
+            ./results/${{ github.event.pull_request.base.ref }}/metrics.json \
+            ./results/${{ github.event.pull_request.merge_commit_sha }}/metrics.json \
+            ../comparison.md
+>>>>>>> v9.0.4
 
       - name: Upload artifacts
         if: always()
@@ -122,8 +187,13 @@ jobs:
         with:
           name: benchmark-results
           path: |
+<<<<<<< HEAD
             ./kv-perf-benchmark/results/${{ github.event.pull_request.merge_commit_sha }}/metrics.json
             ./kv-perf-benchmark/results/${{ github.event.pull_request.base.ref }}/metrics.json
+=======
+            ./valkey-perf-benchmark/results/${{ github.event.pull_request.merge_commit_sha }}/metrics.json
+            ./valkey-perf-benchmark/results/${{ github.event.pull_request.base.ref }}/metrics.json
+>>>>>>> v9.0.4
             comparison.md
 
       - name: Comment PR with results
@@ -144,6 +214,7 @@ jobs:
               body: `**Benchmark ran on this commit:** ${link}\n\n${body}`
             });
 
+<<<<<<< HEAD
       - name: Cleanup any running kv processes
         if: always()
         continue-on-error: true
@@ -155,6 +226,18 @@ jobs:
             echo "Killed running kv processes"
           elif [ $exit_code -eq 1 ]; then
             echo "No kv processes found to kill"
+=======
+      - name: Cleanup any running valkey processes
+        if: always()
+        continue-on-error: true
+        run: |
+          pkill -f valkey
+          exit_code=$?
+          if [ $exit_code -eq 0 ]; then
+            echo "✓ Killed running valkey processes"
+          elif [ $exit_code -eq 1 ]; then
+            echo "No valkey processes found to kill"
+>>>>>>> v9.0.4
           else
             echo "Warning: pkill failed with exit code $exit_code"
           fi

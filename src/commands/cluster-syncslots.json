@@ -15,11 +15,14 @@
             "ADMIN",
             "STALE",
             "MAY_REPLICATE"
+<<<<<<< HEAD
         ],
         "acl_categories": [
             "ADMIN",
             "DANGEROUS",
             "SLOW"
+=======
+>>>>>>> v9.0.4
         ]
     }
 }

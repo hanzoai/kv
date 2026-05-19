@@ -100,7 +100,11 @@ static int kvPollTick(kvAsyncContext *ac, double timeout) {
          * handle it the same as writable. */
         if (writing && (pfd.revents & (POLLOUT | POLLERR))) {
             /* context Read callback may have caused context to be deleted, e.g.
+<<<<<<< HEAD
                by doing a kvAsyncDisconnect() */
+=======
+               by doing a valkeyAsyncDisconnect() */
+>>>>>>> v9.0.4
             if (!e->deleted) {
                 kvAsyncHandleWrite(ac);
                 handled |= KV_POLL_HANDLED_WRITE;

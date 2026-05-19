@@ -1,6 +1,12 @@
 proc test_memory_efficiency {range} {
     r flushall
+<<<<<<< HEAD
     set rd [kv_deferring_client]
+=======
+    set rd [valkey_deferring_client]
+    $rd client reply off
+    $rd flush
+>>>>>>> v9.0.4
     set base_mem [s used_memory]
     set written 0
     for {set j 0} {$j < 10000} {incr j} {
@@ -11,9 +17,9 @@ proc test_memory_efficiency {range} {
         incr written [string length $val]
         incr written 2 ;# A separator is the minimum to store key-value data.
     }
-    for {set j 0} {$j < 10000} {incr j} {
-        $rd read ; # Discard replies
-    }
+    $rd client reply on
+    $rd flush
+    $rd read ;# read the +OK from CLIENT REPLY ON
 
     set current_mem [s used_memory]
     set used [expr {$current_mem-$base_mem}]
@@ -246,7 +252,11 @@ run_solo {defrag} {
 
             perform_defrag_test $title populate {
                 # add a mass of string keys
+<<<<<<< HEAD
                 set rd [kv_deferring_client]
+=======
+                set rd [valkey_deferring_client]
+>>>>>>> v9.0.4
                 $rd client reply off
                 for {set j 0} {$j < $n} {incr j} {
                     $rd setrange $j 250 a
@@ -328,7 +338,11 @@ run_solo {defrag} {
             perform_defrag_test $title latency 200 populate {
                 # Populate memory with interleaving script-key pattern of same size
                 set dummy_script "--[string repeat x 450]\nreturn "
+<<<<<<< HEAD
                 set rd [kv_deferring_client]
+=======
+                set rd [valkey_deferring_client]
+>>>>>>> v9.0.4
                 $rd client reply off
                 for {set j 0} {$j < $n} {incr j} {
                     set val "$dummy_script[format "%06d" $j]"
@@ -354,7 +368,11 @@ run_solo {defrag} {
             set n 200000
 
             perform_defrag_test $title populate {
+<<<<<<< HEAD
                 set rd [kv_deferring_client]
+=======
+                set rd [valkey_deferring_client]
+>>>>>>> v9.0.4
                 $rd client reply off
                 set val [string repeat A 250]
                 set k 0
@@ -385,7 +403,11 @@ run_solo {defrag} {
             set n 200000
 
             perform_defrag_test $title latency 5 populate {
+<<<<<<< HEAD
                 set rd [kv_deferring_client]
+=======
+                set rd [valkey_deferring_client]
+>>>>>>> v9.0.4
                 $rd client reply off
                 set val [string repeat A 350]
                 set k 0
@@ -416,7 +438,11 @@ run_solo {defrag} {
             set n 200000
 
             perform_defrag_test $title populate {
+<<<<<<< HEAD
                 set rd [kv_deferring_client]
+=======
+                set rd [valkey_deferring_client]
+>>>>>>> v9.0.4
                 $rd client reply off
                 set val [string repeat A 300]
                 set k 0
@@ -446,7 +472,11 @@ run_solo {defrag} {
             set n 200000
 
             perform_defrag_test $title populate {
+<<<<<<< HEAD
                 set rd [kv_deferring_client]
+=======
+                set rd [valkey_deferring_client]
+>>>>>>> v9.0.4
                 $rd client reply off
                 set val [string repeat A 250]
                 set k 0
@@ -477,7 +507,11 @@ run_solo {defrag} {
             r config set stream-node-max-bytes 128
 
             perform_defrag_test $title populate {
+<<<<<<< HEAD
                 set rd [kv_deferring_client]
+=======
+                set rd [valkey_deferring_client]
+>>>>>>> v9.0.4
                 $rd client reply off
                 set val [string repeat A 50]
                 for {set j 0} {$j < $n} {incr j} {

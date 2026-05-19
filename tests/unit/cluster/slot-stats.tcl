@@ -476,7 +476,11 @@ start_cluster 1 1 {tags {external:skip cluster} overrides {cluster-slot-stats-en
         set slot [R 0 cluster keyslot $channel]
         set primary [Rn 0]
         set replica [Rn 1]
+<<<<<<< HEAD
         set replica_subscriber [kv_deferring_client -1]
+=======
+        set replica_subscriber [valkey_deferring_client -1]
+>>>>>>> v9.0.4
         $replica_subscriber SSUBSCRIBE $channel
         # *2\r\n$10\r\nssubscribe\r\n$7\r\nchannel\r\n --> 34 bytes.
         $primary SPUBLISH $channel hello

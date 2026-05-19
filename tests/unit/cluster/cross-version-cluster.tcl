@@ -17,9 +17,16 @@ tags {external:skip needs:other-server cluster singledb} {
             set primary_id [$primary cluster myid]
 
             start_server {config "minimal-cluster.conf" start-other-server 1 overrides {cluster-ping-interval 1000}} {
+<<<<<<< HEAD
                 set version [dict get [r hello] version]
                 if {![version_greater_or_equal $version 8.1.0]} {
                     skip "Requires KV 8.1 or above"
+=======
+                set res [dict get [r hello] version]
+                assert [regexp {([0-9]+)\.([0-9]+)\.[0-9]+} $res -> major minor]
+                if {($major < 8) || ($major == 8 && $minor < 1)} {
+                    skip "Requires Valkey 8.1 or above"
+>>>>>>> v9.0.4
                 }
                 r config set rdb-version-check relaxed
                 # Add a replica of the old version to the cluster

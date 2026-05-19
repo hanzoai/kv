@@ -1140,7 +1140,11 @@ start_server [list overrides [list "dir" $server_path "acl-pubsub-default" "allc
         r ACL SETUSER removed_channels on nopass +@all &test
         
         # Create a RESP3 client will attempt to close itself by removing it's channel permissions
+<<<<<<< HEAD
         set resp3 [kv_client]
+=======
+        set resp3 [valkey_client]
+>>>>>>> v9.0.4
         $resp3 HELLO 3
         $resp3 AUTH removed_channels blank
         $resp3 SUBSCRIBE test
@@ -1153,7 +1157,11 @@ start_server [list overrides [list "dir" $server_path "acl-pubsub-default" "allc
         r ACL setuser removed-user on >password +@all ~* &*
         r ACL save
         
+<<<<<<< HEAD
         set rd [kv_deferring_client]
+=======
+        set rd [valkey_deferring_client]
+>>>>>>> v9.0.4
         $rd AUTH removed-user password
         assert_equal [$rd read] "OK"
         

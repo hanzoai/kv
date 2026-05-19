@@ -78,8 +78,13 @@ void printReply(const kvReply *reply) {
     }
 }
 
+<<<<<<< HEAD
 void replyCallback(kvClusterAsyncContext *acc, void *r, void *privdata) {
     kvReply *reply = (kvReply *)r;
+=======
+void replyCallback(valkeyClusterAsyncContext *acc, void *r, void *privdata) {
+    valkeyReply *reply = (valkeyReply *)r;
+>>>>>>> v9.0.4
     intptr_t cmd_id = (intptr_t)privdata; /* ID for corresponding cmd */
 
     if (reply == NULL) {
@@ -274,7 +279,11 @@ int main(int argc, char **argv) {
     options.event_callback = eventCallback;
     options.max_retry = 1;
     if (blocking_initial_update) {
+<<<<<<< HEAD
         options.options = KV_OPT_BLOCKING_INITIAL_UPDATE;
+=======
+        options.options = VALKEY_OPT_BLOCKING_INITIAL_UPDATE;
+>>>>>>> v9.0.4
     }
     if (use_cluster_nodes) {
         options.options |= KV_OPT_USE_CLUSTER_NODES;

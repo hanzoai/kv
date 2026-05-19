@@ -34,10 +34,15 @@
 #define KV_CLUSTER_H
 
 #include "async.h"
+<<<<<<< HEAD
 #include "kv.h"
 #include "visibility.h"
 
 #define KVCLUSTER_SLOTS 16384
+=======
+#include "valkey.h"
+#include "visibility.h"
+>>>>>>> v9.0.4
 
 #define KV_ROLE_UNKNOWN 0
 #define KV_ROLE_PRIMARY 1
@@ -213,6 +218,7 @@ typedef struct {
 
 /* --- Synchronous API --- */
 
+<<<<<<< HEAD
 LIBKV_API kvClusterContext *kvClusterConnectWithOptions(const kvClusterOptions *options);
 LIBKV_API kvClusterContext *kvClusterConnect(const char *addrs);
 LIBKV_API kvClusterContext *kvClusterConnectWithTimeout(const char *addrs, const struct timeval tv);
@@ -220,6 +226,15 @@ LIBKV_API void kvClusterFree(kvClusterContext *cc);
 
 /* Options configurable in runtime. */
 LIBKV_API int kvClusterSetOptionTimeout(kvClusterContext *cc, const struct timeval tv);
+=======
+LIBVALKEY_API valkeyClusterContext *valkeyClusterConnectWithOptions(const valkeyClusterOptions *options);
+LIBVALKEY_API valkeyClusterContext *valkeyClusterConnect(const char *addrs);
+LIBVALKEY_API valkeyClusterContext *valkeyClusterConnectWithTimeout(const char *addrs, const struct timeval tv);
+LIBVALKEY_API void valkeyClusterFree(valkeyClusterContext *cc);
+
+/* Options configurable in runtime. */
+LIBVALKEY_API int valkeyClusterSetOptionTimeout(valkeyClusterContext *cc, const struct timeval tv);
+>>>>>>> v9.0.4
 
 /* Blocking
  * The following functions will block for a reply, or return NULL if there was
@@ -227,6 +242,7 @@ LIBKV_API int kvClusterSetOptionTimeout(kvClusterContext *cc, const struct timev
  */
 
 /* Variadic commands (like printf) */
+<<<<<<< HEAD
 LIBKV_API void *kvClusterCommand(kvClusterContext *cc, const char *format, ...);
 LIBKV_API void *kvClusterCommandToNode(kvClusterContext *cc,
                                                kvClusterNode *node, const char *format,
@@ -242,6 +258,23 @@ LIBKV_API void *kvClusterCommandArgv(kvClusterContext *cc, int argc,
                                              const char **argv, const size_t *argvlen);
 /* Send a KV protocol encoded string */
 LIBKV_API void *kvClusterFormattedCommand(kvClusterContext *cc, char *cmd,
+=======
+LIBVALKEY_API void *valkeyClusterCommand(valkeyClusterContext *cc, const char *format, ...);
+LIBVALKEY_API void *valkeyClusterCommandToNode(valkeyClusterContext *cc,
+                                               valkeyClusterNode *node, const char *format,
+                                               ...);
+/* Variadic using va_list */
+LIBVALKEY_API void *valkeyClustervCommand(valkeyClusterContext *cc, const char *format,
+                                          va_list ap);
+LIBVALKEY_API void *valkeyClustervCommandToNode(valkeyClusterContext *cc,
+                                                valkeyClusterNode *node, const char *format,
+                                                va_list ap);
+/* Using argc and argv */
+LIBVALKEY_API void *valkeyClusterCommandArgv(valkeyClusterContext *cc, int argc,
+                                             const char **argv, const size_t *argvlen);
+/* Send a Valkey protocol encoded string */
+LIBVALKEY_API void *valkeyClusterFormattedCommand(valkeyClusterContext *cc, char *cmd,
+>>>>>>> v9.0.4
                                                   int len);
 
 /* Pipelining
@@ -251,6 +284,7 @@ LIBKV_API void *kvClusterFormattedCommand(kvClusterContext *cc, char *cmd,
  */
 
 /* Variadic commands (like printf) */
+<<<<<<< HEAD
 LIBKV_API int kvClusterAppendCommand(kvClusterContext *cc, const char *format,
                                              ...);
 LIBKV_API int kvClusterAppendCommandToNode(kvClusterContext *cc,
@@ -276,9 +310,37 @@ LIBKV_API void kvClusterReset(kvClusterContext *cc);
 
 /* Update the slotmap by querying any node. */
 LIBKV_API int kvClusterUpdateSlotmap(kvClusterContext *cc);
+=======
+LIBVALKEY_API int valkeyClusterAppendCommand(valkeyClusterContext *cc, const char *format,
+                                             ...);
+LIBVALKEY_API int valkeyClusterAppendCommandToNode(valkeyClusterContext *cc,
+                                                   valkeyClusterNode *node,
+                                                   const char *format, ...);
+/* Variadic using va_list */
+LIBVALKEY_API int valkeyClustervAppendCommand(valkeyClusterContext *cc, const char *format,
+                                              va_list ap);
+LIBVALKEY_API int valkeyClustervAppendCommandToNode(valkeyClusterContext *cc,
+                                                    valkeyClusterNode *node,
+                                                    const char *format, va_list ap);
+/* Using argc and argv */
+LIBVALKEY_API int valkeyClusterAppendCommandArgv(valkeyClusterContext *cc, int argc,
+                                                 const char **argv, const size_t *argvlen);
+/* Use a Valkey protocol encoded string as command */
+LIBVALKEY_API int valkeyClusterAppendFormattedCommand(valkeyClusterContext *cc, char *cmd,
+                                                      int len);
+/* Flush output buffer and return first reply */
+LIBVALKEY_API int valkeyClusterGetReply(valkeyClusterContext *cc, void **reply);
+
+/* Reset context after a performed pipelining */
+LIBVALKEY_API void valkeyClusterReset(valkeyClusterContext *cc);
+
+/* Update the slotmap by querying any node. */
+LIBVALKEY_API int valkeyClusterUpdateSlotmap(valkeyClusterContext *cc);
+>>>>>>> v9.0.4
 
 /* Get the kvContext used for communication with a given node.
  * Connects or reconnects to the node if necessary. */
+<<<<<<< HEAD
 LIBKV_API kvContext *kvClusterGetKVContext(kvClusterContext *cc,
                                                            kvClusterNode *node);
 
@@ -306,10 +368,40 @@ LIBKV_API int kvClusterAsyncCommandArgv(kvClusterAsyncContext *acc,
 LIBKV_API int kvClusterAsyncCommandArgvToNode(kvClusterAsyncContext *acc,
                                                       kvClusterNode *node,
                                                       kvClusterCallbackFn *fn,
+=======
+LIBVALKEY_API valkeyContext *valkeyClusterGetValkeyContext(valkeyClusterContext *cc,
+                                                           valkeyClusterNode *node);
+
+/* --- Asynchronous API --- */
+
+LIBVALKEY_API valkeyClusterAsyncContext *valkeyClusterAsyncConnectWithOptions(const valkeyClusterOptions *options);
+LIBVALKEY_API void valkeyClusterAsyncDisconnect(valkeyClusterAsyncContext *acc);
+LIBVALKEY_API void valkeyClusterAsyncFree(valkeyClusterAsyncContext *acc);
+
+/* Commands */
+LIBVALKEY_API int valkeyClusterAsyncCommand(valkeyClusterAsyncContext *acc,
+                                            valkeyClusterCallbackFn *fn, void *privdata,
+                                            const char *format, ...);
+LIBVALKEY_API int valkeyClusterAsyncCommandToNode(valkeyClusterAsyncContext *acc,
+                                                  valkeyClusterNode *node,
+                                                  valkeyClusterCallbackFn *fn, void *privdata,
+                                                  const char *format, ...);
+LIBVALKEY_API int valkeyClustervAsyncCommand(valkeyClusterAsyncContext *acc,
+                                             valkeyClusterCallbackFn *fn, void *privdata,
+                                             const char *format, va_list ap);
+LIBVALKEY_API int valkeyClusterAsyncCommandArgv(valkeyClusterAsyncContext *acc,
+                                                valkeyClusterCallbackFn *fn, void *privdata,
+                                                int argc, const char **argv,
+                                                const size_t *argvlen);
+LIBVALKEY_API int valkeyClusterAsyncCommandArgvToNode(valkeyClusterAsyncContext *acc,
+                                                      valkeyClusterNode *node,
+                                                      valkeyClusterCallbackFn *fn,
+>>>>>>> v9.0.4
                                                       void *privdata, int argc,
                                                       const char **argv,
                                                       const size_t *argvlen);
 
+<<<<<<< HEAD
 /* Use a KV protocol encoded string as command */
 LIBKV_API int kvClusterAsyncFormattedCommand(kvClusterAsyncContext *acc,
                                                      kvClusterCallbackFn *fn,
@@ -317,11 +409,21 @@ LIBKV_API int kvClusterAsyncFormattedCommand(kvClusterAsyncContext *acc,
 LIBKV_API int kvClusterAsyncFormattedCommandToNode(kvClusterAsyncContext *acc,
                                                            kvClusterNode *node,
                                                            kvClusterCallbackFn *fn,
+=======
+/* Use a Valkey protocol encoded string as command */
+LIBVALKEY_API int valkeyClusterAsyncFormattedCommand(valkeyClusterAsyncContext *acc,
+                                                     valkeyClusterCallbackFn *fn,
+                                                     void *privdata, char *cmd, int len);
+LIBVALKEY_API int valkeyClusterAsyncFormattedCommandToNode(valkeyClusterAsyncContext *acc,
+                                                           valkeyClusterNode *node,
+                                                           valkeyClusterCallbackFn *fn,
+>>>>>>> v9.0.4
                                                            void *privdata, char *cmd,
                                                            int len);
 
 /* Get the kvAsyncContext used for communication with a given node.
  * Connects or reconnects to the node if necessary. */
+<<<<<<< HEAD
 LIBKV_API kvAsyncContext *kvClusterGetKVAsyncContext(kvClusterAsyncContext *acc,
                                                                      kvClusterNode *node);
 
@@ -333,6 +435,19 @@ LIBKV_API kvClusterNode *kvClusterNodeNext(kvClusterNodeIterator *iter);
 /* Helper functions */
 LIBKV_API unsigned int kvClusterGetSlotByKey(char *key);
 LIBKV_API kvClusterNode *kvClusterGetNodeByKey(kvClusterContext *cc,
+=======
+LIBVALKEY_API valkeyAsyncContext *valkeyClusterGetValkeyAsyncContext(valkeyClusterAsyncContext *acc,
+                                                                     valkeyClusterNode *node);
+
+/* Cluster node iterator functions */
+LIBVALKEY_API void valkeyClusterInitNodeIterator(valkeyClusterNodeIterator *iter,
+                                                 valkeyClusterContext *cc);
+LIBVALKEY_API valkeyClusterNode *valkeyClusterNodeNext(valkeyClusterNodeIterator *iter);
+
+/* Helper functions */
+LIBVALKEY_API unsigned int valkeyClusterGetSlotByKey(char *key);
+LIBVALKEY_API valkeyClusterNode *valkeyClusterGetNodeByKey(valkeyClusterContext *cc,
+>>>>>>> v9.0.4
                                                            char *key);
 
 #ifdef __cplusplus

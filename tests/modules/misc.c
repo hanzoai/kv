@@ -306,6 +306,7 @@ int test_clientinfo(KVModuleCtx *ctx, KVModuleString **argv, int argc)
 
     KVModule_ReplyWithArray(ctx, 10);
     char flags[512];
+<<<<<<< HEAD
     snprintf(flags, sizeof(flags) - 1, "%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s",
         ci.flags & KVMODULE_CLIENTINFO_FLAG_SSL ? "ssl" : "",
         ci.flags & KVMODULE_CLIENTINFO_FLAG_PUBSUB ? "pubsub" : "",
@@ -321,6 +322,16 @@ int test_clientinfo(KVModuleCtx *ctx, KVModuleString **argv, int argc)
         ci.flags & KVMODULE_CLIENTINFO_FLAG_AUTHENTICATED ? "authenticated" : "",
         ci.flags & KVMODULE_CLIENTINFO_FLAG_EVER_AUTHENTICATED ? "ever_authenticated" : "",
         ci.flags & KVMODULE_CLIENTINFO_FLAG_FAKE ? "fake" : "");
+=======
+    snprintf(flags, sizeof(flags) - 1, "%s:%s:%s:%s:%s:%s:%s",
+        ci.flags & VALKEYMODULE_CLIENTINFO_FLAG_SSL ? "ssl" : "",
+        ci.flags & VALKEYMODULE_CLIENTINFO_FLAG_PUBSUB ? "pubsub" : "",
+        ci.flags & VALKEYMODULE_CLIENTINFO_FLAG_BLOCKED ? "blocked" : "",
+        ci.flags & VALKEYMODULE_CLIENTINFO_FLAG_TRACKING ? "tracking" : "",
+        ci.flags & VALKEYMODULE_CLIENTINFO_FLAG_UNIXSOCKET ? "unixsocket" : "",
+        ci.flags & VALKEYMODULE_CLIENTINFO_FLAG_MULTI ? "multi" : "",
+        ci.flags & VALKEYMODULE_CLIENTINFO_FLAG_READONLY ? "readonly" : "");
+>>>>>>> v9.0.4
 
     KVModule_ReplyWithCString(ctx, "flags");
     KVModule_ReplyWithCString(ctx, flags);
