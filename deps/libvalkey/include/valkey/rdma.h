@@ -62,11 +62,7 @@ extern "C" {
         (opts)->endpoint.tcp.source_addr = source_addr_;                         \
     } while (0)
 
-<<<<<<< HEAD
 LIBKV_API int kvInitiateRdma(void);
-=======
-LIBVALKEY_API int valkeyInitiateRdma(void);
->>>>>>> v9.0.4
 
 #ifdef __cplusplus
 }

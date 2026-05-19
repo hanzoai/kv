@@ -35,7 +35,6 @@
 #ifndef KV_NET_H
 #define KV_NET_H
 
-<<<<<<< HEAD
 #include "kv.h"
 #include "visibility.h"
 
@@ -50,21 +49,5 @@ LIBKV_API int kvCheckConnectDone(kvContext *c, int *completed);
 
 LIBKV_API int kvSetTcpNoDelay(kvContext *c);
 LIBKV_API int kvContextSetTcpUserTimeout(kvContext *c, unsigned int timeout);
-=======
-#include "valkey.h"
-#include "visibility.h"
-
-LIBVALKEY_API void valkeyNetClose(valkeyContext *c);
-
-LIBVALKEY_API int valkeyHasMptcp(void);
-LIBVALKEY_API int valkeyCheckSocketError(valkeyContext *c);
-LIBVALKEY_API int valkeyTcpSetTimeout(valkeyContext *c, const struct timeval tv);
-LIBVALKEY_API int valkeyContextConnectTcp(valkeyContext *c, const valkeyOptions *options);
-LIBVALKEY_API int valkeyKeepAlive(valkeyContext *c, int interval);
-LIBVALKEY_API int valkeyCheckConnectDone(valkeyContext *c, int *completed);
-
-LIBVALKEY_API int valkeySetTcpNoDelay(valkeyContext *c);
-LIBVALKEY_API int valkeyContextSetTcpUserTimeout(valkeyContext *c, unsigned int timeout);
->>>>>>> v9.0.4
 
 #endif /* KV_NET_H */

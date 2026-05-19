@@ -1227,7 +1227,6 @@ start_server {tags {"scripting"}} {
     } {*Script attempted to access nonexistent global variable 'print'*}
 }
 
-<<<<<<< HEAD
 start_server {tags {"scripting external:skip large-memory"}} {
     test {EVAL - JSON string encoding a string larger than 2GB} {
         run_script {
@@ -1237,9 +1236,6 @@ start_server {tags {"scripting external:skip large-memory"}} {
     } {2359296002} ;# length includes two double quotes at both ends
 }
 
-=======
-# start a new server to test the large-memory tests
->>>>>>> v9.0.4
 start_server {tags {"scripting external:skip large-memory"}} {
     test {EVAL - Test long escape sequences for strings} {
         r eval {
@@ -1259,13 +1255,9 @@ start_server {tags {"scripting external:skip large-memory"}} {
             return #func()
         } 0
     } {1}
-<<<<<<< HEAD
 }
 
 start_server {tags {"scripting external:skip large-memory"}} {
-=======
-
->>>>>>> v9.0.4
     test {EVAL - Lua can parse string with too many new lines} {
         # Create a long string consisting only of newline characters. When Lua
         # fails to parse a string, it typically includes a snippet like
