@@ -1,13 +1,8 @@
 CC?=gcc
 CXX?=g++
 
-<<<<<<< HEAD
 STLIBNAME?=../lib/libkv.a
 TLS_STLIBNAME?=../lib/libkv_tls.a
-=======
-STLIBNAME?=../lib/libvalkey.a
-TLS_STLIBNAME?=../lib/libvalkey_tls.a
->>>>>>> v9.0.4
 INCLUDE_DIR?=../include
 
 WARNINGS=-Wall -Wextra

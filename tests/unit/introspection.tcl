@@ -438,15 +438,9 @@ start_server {tags {"introspection"}} {
 
     test {CLIENT LIST with multiple id filters} {
         # Create multiple clients
-<<<<<<< HEAD
         set c1 [kv_client]
         set c2 [kv_client]
         set c3 [kv_client]
-=======
-        set c1 [valkey_client]
-        set c2 [valkey_client]
-        set c3 [valkey_client]
->>>>>>> v9.0.4
 
         # Fetch their IDs
         set id1 [$c1 client id]
@@ -465,15 +459,9 @@ start_server {tags {"introspection"}} {
 
     test {CLIENT KILL with multiple id filters} {
         # Create multiple clients
-<<<<<<< HEAD
         set c1 [kv_client]
         set c2 [kv_client]
         set c3 [kv_client]
-=======
-        set c1 [valkey_client]
-        set c2 [valkey_client]
-        set c3 [valkey_client]
->>>>>>> v9.0.4
 
         # Fetch their IDs
         set id1 [$c1 client id]
@@ -1615,11 +1603,7 @@ start_server {tags {"introspection"}} {
 
 
     test {CLIENT LIST can filter by LIB-NAME} {
-<<<<<<< HEAD
         set c1 [kv_client]
-=======
-        set c1 [valkey_client]
->>>>>>> v9.0.4
         $c1 client setinfo lib-name test-lib
         r CLIENT SETINFO lib-name mylib
         set result [r client list lib-name test-lib lib-name mylib]
@@ -1629,11 +1613,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT LIST can filter by LIB-VER} {
-<<<<<<< HEAD
         set c1 [kv_client]
-=======
-        set c1 [valkey_client]
->>>>>>> v9.0.4
         $c1 client setinfo lib-ver 3.2.1
         r CLIENT SETINFO lib-ver 1.2.3
         set result [r client list lib-ver 3.2.1 lib-ver 1.2.3]
@@ -1643,11 +1623,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT LIST can filter by DB number} {
-<<<<<<< HEAD
         set c1 [kv_client]
-=======
-        set c1 [valkey_client]
->>>>>>> v9.0.4
         $c1 select 0
         r select 2
         set result [r client list db 0 db 2]
@@ -1702,11 +1678,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT LIST can filter by NOT-LIB-NAME} {
-<<<<<<< HEAD
         set c1 [kv_client]
-=======
-        set c1 [valkey_client]
->>>>>>> v9.0.4
         $c1 CLIENT SETINFO lib-name testlib
         r CLIENT SETINFO lib-name mylib
         set result [r client list not-lib-name testlib not-lib-name mylib]
@@ -1716,11 +1688,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT LIST can filter by NOT-LIB-VER} {
-<<<<<<< HEAD
         set c1 [kv_client]
-=======
-        set c1 [valkey_client]
->>>>>>> v9.0.4
         $c1 CLIENT SETINFO lib-ver 3.2.1
         r CLIENT SETINFO lib-ver 1.2.3
         set result [r client list not-lib-ver 3.2.1 not-lib-ver 1.2.3]
@@ -1730,11 +1698,7 @@ start_server {tags {"introspection"}} {
     }
 
     test {CLIENT LIST can filter by NOT-DB number} {
-<<<<<<< HEAD
         set c1 [kv_client]
-=======
-        set c1 [valkey_client]
->>>>>>> v9.0.4
         $c1 select 0
         r select 2
         set result [r client list not-db 0 not-db 2]

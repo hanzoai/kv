@@ -13,7 +13,6 @@ else()
 endif()
 
 add_executable(example-blocking blocking.c)
-<<<<<<< HEAD
 target_link_libraries(example-blocking kv::kv)
 
 add_executable(example-blocking-push blocking-push.c)
@@ -94,22 +93,6 @@ if(APPLE)
   find_library(CF CoreFoundation)
   add_executable(example-async-macosx async-macosx.c)
   target_link_libraries(example-async-macosx kv::kv ${CF})
-=======
-target_link_libraries(example-blocking valkey::valkey)
-
-add_executable(example-blocking-push blocking-push.c)
-target_link_libraries(example-blocking-push valkey::valkey)
-
-add_executable(example-cluster-simple cluster-simple.c)
-target_link_libraries(example-cluster-simple valkey::valkey)
-
-if(ENABLE_TLS)
-  add_executable(example-blocking-tls blocking-tls.c)
-  target_link_libraries(example-blocking-tls valkey::valkey valkey::valkey_tls)
-
-  add_executable(example-cluster-tls cluster-tls.c)
-  target_link_libraries(example-cluster-tls valkey::valkey valkey::valkey_tls)
->>>>>>> v9.0.4
 endif()
 
 # Examples using GLib
