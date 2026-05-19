@@ -629,7 +629,11 @@ int redis_check_rdb(char *rdbfilename, FILE *fp) {
     rdbver = atoi(buf + 6);
     if (rdbver < 1 ||
         (rdbver < RDB_FOREIGN_VERSION_MIN && !is_redis_magic) ||
+<<<<<<< HEAD:src/kv-check-rdb.c
         (rdbver > RDB_FOREIGN_VERSION_MAX && !is_kv_magic)) {
+=======
+        (rdbver > RDB_FOREIGN_VERSION_MAX && !is_valkey_magic)) {
+>>>>>>> v9.0.4:src/valkey-check-rdb.c
         rdbCheckError("Can't handle RDB format version %d", rdbver);
         goto err;
     } else if (rdbver > RDB_VERSION) {

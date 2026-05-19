@@ -10,6 +10,7 @@
 #include "functions.h"
 #include "module.h"
 #include "server.h"
+<<<<<<< HEAD
 #include "kvmodule.h"
 
 /* First ABI version */
@@ -20,6 +21,9 @@
 #define SCRIPTING_ENGINE_ABI_VERSION_3 3
 /* Version when debugger support was introduced */
 #define SCRIPTING_ENGINE_ABI_VERSION_4 4
+=======
+#include "valkeymodule.h"
+>>>>>>> v9.0.4
 
 /* Module context object cache size is set to 3 because at each moment there can
  * be at most 3 module contexts in use by the scripting engine.
@@ -48,9 +52,16 @@ typedef struct scriptingEngineImpl {
 
 typedef struct scriptingEngine {
     sds name;                                                 /* Name of the engine */
+<<<<<<< HEAD
     KVModule *module;                                     /* the module that implements the scripting engine */
     scriptingEngineImpl impl;                                 /* engine context and callbacks to interact with the engine */
     KVModuleCtx *module_ctx_cache[MODULE_CTX_CACHE_SIZE]; /* Cache of module context objects */
+=======
+    ValkeyModule *module;                                     /* the module that implements the scripting engine */
+    scriptingEngineImpl impl;                                 /* engine context and callbacks to interact with the engine */
+    client *client;                                           /* Client that is used to run commands */
+    ValkeyModuleCtx *module_ctx_cache[MODULE_CTX_CACHE_SIZE]; /* Cache of module context objects */
+>>>>>>> v9.0.4
 } scriptingEngine;
 
 
@@ -152,9 +163,17 @@ int scriptingEngineManagerRegister(const char *engine_name,
         .impl = {
             .ctx = engine_ctx,
         },
+<<<<<<< HEAD
+=======
+        .client = c,
+>>>>>>> v9.0.4
         .module_ctx_cache = {0},
     };
     scriptingEngineInitializeEngineMethods(e, engine_methods);
+
+    for (size_t i = 0; i < MODULE_CTX_CACHE_SIZE; i++) {
+        e->module_ctx_cache[i] = moduleAllocateContext();
+    }
 
     for (size_t i = 0; i < MODULE_CTX_CACHE_SIZE; i++) {
         e->module_ctx_cache[i] = moduleAllocateContext();
@@ -191,12 +210,16 @@ int scriptingEngineManagerUnregister(const char *engine_name) {
                                        mem_info.engine_memory_overhead;
 
     sdsfree(e->name);
+<<<<<<< HEAD
 
     /* We need to ensure that any pending async flush of eval scripts or
      * functions have completed before freeing the module context cache, which
      * may be used by the async jobs. */
     bioDrainWorker(BIO_LAZY_FREE);
 
+=======
+    freeClient(e->client);
+>>>>>>> v9.0.4
     for (size_t i = 0; i < MODULE_CTX_CACHE_SIZE; i++) {
         serverAssert(e->module_ctx_cache[i] != NULL);
         zfree(e->module_ctx_cache[i]);
@@ -249,25 +272,39 @@ void scriptingEngineManagerForEachEngine(engineIterCallback callback,
     dictReleaseIterator(iter);
 }
 
+<<<<<<< HEAD
 static KVModuleCtx *engineSetupModuleCtx(int module_ctx_cache_index,
                                              scriptingEngine *e,
                                              int add_script_execution_flag,
+=======
+static ValkeyModuleCtx *engineSetupModuleCtx(int module_ctx_cache_index,
+                                             scriptingEngine *e,
+>>>>>>> v9.0.4
                                              client *c) {
     serverAssert(e != NULL);
     if (e->module == NULL) return NULL;
 
+<<<<<<< HEAD
     KVModuleCtx *ctx = e->module_ctx_cache[module_ctx_cache_index];
     moduleScriptingEngineInitContext(ctx,
                                      e->module,
                                      add_script_execution_flag,
                                      c);
+=======
+    ValkeyModuleCtx *ctx = e->module_ctx_cache[module_ctx_cache_index];
+    moduleScriptingEngineInitContext(ctx, e->module, c);
+>>>>>>> v9.0.4
     return ctx;
 }
 
 static void engineTeardownModuleCtx(int module_ctx_cache_index, scriptingEngine *e) {
     serverAssert(e != NULL);
     if (e->module != NULL) {
+<<<<<<< HEAD
         KVModuleCtx *ctx = e->module_ctx_cache[module_ctx_cache_index];
+=======
+        ValkeyModuleCtx *ctx = e->module_ctx_cache[module_ctx_cache_index];
+>>>>>>> v9.0.4
         moduleFreeContext(ctx);
     }
 }
@@ -281,9 +318,15 @@ compiledFunction **scriptingEngineCallCompileCode(scriptingEngine *engine,
                                                   robj **err) {
     serverAssert(type == VMSE_EVAL || type == VMSE_FUNCTION);
     compiledFunction **functions = NULL;
+<<<<<<< HEAD
     KVModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, false, NULL);
 
     if (engine->impl.methods.version == SCRIPTING_ENGINE_ABI_VERSION_1) {
+=======
+    ValkeyModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, NULL);
+
+    if (engine->impl.methods.version == 1) {
+>>>>>>> v9.0.4
         functions = engine->impl.methods.compile_code_v1(
             module_ctx,
             engine->impl.ctx,
@@ -314,6 +357,7 @@ void scriptingEngineCallFreeFunction(scriptingEngine *engine,
                                      subsystemType type,
                                      compiledFunction *compiled_func) {
     serverAssert(type == VMSE_EVAL || type == VMSE_FUNCTION);
+<<<<<<< HEAD
     int is_async = isCalledFromAsyncThread();
 
     /* We need to acquire the module GIL when running from an async thread while
@@ -323,16 +367,22 @@ void scriptingEngineCallFreeFunction(scriptingEngine *engine,
     }
 
     KVModuleCtx *module_ctx = engineSetupModuleCtx(FREE_FUNCTION_MODULE_CTX_INDEX, engine, false, NULL);
+=======
+    ValkeyModuleCtx *module_ctx = engineSetupModuleCtx(FREE_FUNCTION_MODULE_CTX_INDEX, engine, NULL);
+>>>>>>> v9.0.4
     engine->impl.methods.free_function(
         module_ctx,
         engine->impl.ctx,
         type,
         compiled_func);
     engineTeardownModuleCtx(FREE_FUNCTION_MODULE_CTX_INDEX, engine);
+<<<<<<< HEAD
 
     if (is_async) {
         moduleReleaseGIL();
     }
+=======
+>>>>>>> v9.0.4
 }
 
 void scriptingEngineCallFunction(scriptingEngine *engine,
@@ -346,7 +396,11 @@ void scriptingEngineCallFunction(scriptingEngine *engine,
                                  size_t nargs) {
     serverAssert(type == VMSE_EVAL || type == VMSE_FUNCTION);
 
+<<<<<<< HEAD
     KVModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, true, caller);
+=======
+    ValkeyModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, caller);
+>>>>>>> v9.0.4
 
     engine->impl.methods.call_function(
         module_ctx,
@@ -364,7 +418,11 @@ void scriptingEngineCallFunction(scriptingEngine *engine,
 
 size_t scriptingEngineCallGetFunctionMemoryOverhead(scriptingEngine *engine,
                                                     compiledFunction *compiled_function) {
+<<<<<<< HEAD
     KVModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, false, NULL);
+=======
+    ValkeyModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, NULL);
+>>>>>>> v9.0.4
     size_t mem = engine->impl.methods.get_function_memory_overhead(
         module_ctx,
         compiled_function);
@@ -375,10 +433,17 @@ size_t scriptingEngineCallGetFunctionMemoryOverhead(scriptingEngine *engine,
 callableLazyEnvReset *scriptingEngineCallResetEnvFunc(scriptingEngine *engine,
                                                       subsystemType type,
                                                       int async) {
+<<<<<<< HEAD
     KVModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, false, NULL);
     callableLazyEnvReset *callback = NULL;
 
     if (engine->impl.methods.version < SCRIPTING_ENGINE_ABI_VERSION_3) {
+=======
+    ValkeyModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, NULL);
+    callableLazyEnvReset *callback = NULL;
+
+    if (engine->impl.methods.version <= 2) {
+>>>>>>> v9.0.4
         /* For backward compatibility with scripting engine modules that
          * implement version 1 or 2 of the scripting engine ABI, we call the
          * reset_eval_env_v1 function, which is only implemented for resetting
@@ -410,7 +475,11 @@ callableLazyEnvReset *scriptingEngineCallResetEnvFunc(scriptingEngine *engine,
 
 engineMemoryInfo scriptingEngineCallGetMemoryInfo(scriptingEngine *engine,
                                                   subsystemType type) {
+<<<<<<< HEAD
     KVModuleCtx *module_ctx = engineSetupModuleCtx(GET_MEMORY_MODULE_CTX_INDEX, engine, false, NULL);
+=======
+    ValkeyModuleCtx *module_ctx = engineSetupModuleCtx(GET_MEMORY_MODULE_CTX_INDEX, engine, NULL);
+>>>>>>> v9.0.4
     engineMemoryInfo mem_info = engine->impl.methods.get_memory_info(
         module_ctx,
         engine->impl.ctx,

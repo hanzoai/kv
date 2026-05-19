@@ -2612,14 +2612,22 @@ void VM_Yield(KVModuleCtx *ctx, int flags, const char *busy_reply) {
  * are affected by this option, allowing them to operate without
  * command validation check.
  *
+<<<<<<< HEAD
  * KVMODULE_OPTIONS_HANDLE_ATOMIC_SLOT_MIGRATION:
+=======
+ * VALKEYMODULE_OPTIONS_HANDLE_ATOMIC_SLOT_MIGRATION:
+>>>>>>> v9.0.4
  * When set, this option indicates that the module is capable of handling
  * atomic slot migration. If not set, the module is assumed to not be aware of
  * atomic slot migration and CLUSTER MIGRATESLOTS will return an error. Modules
  * should set this flag if they understand keys may be loaded during the
  * migration but before ownership is transferred.
  */
+<<<<<<< HEAD
 void VM_SetModuleOptions(KVModuleCtx *ctx, int options) {
+=======
+void VM_SetModuleOptions(ValkeyModuleCtx *ctx, int options) {
+>>>>>>> v9.0.4
     ctx->module->options = options;
 }
 
@@ -3840,6 +3848,7 @@ int modulePopulateClientInfoStructure(void *ci, client *client, int structver) {
     KVModuleClientInfoV1 *ci1 = ci;
     memset(ci1, 0, sizeof(*ci1));
     ci1->version = structver;
+<<<<<<< HEAD
     if (client->flag.multi) ci1->flags |= KVMODULE_CLIENTINFO_FLAG_MULTI;
     if (client->flag.pubsub) ci1->flags |= KVMODULE_CLIENTINFO_FLAG_PUBSUB;
     if (client->flag.unix_socket) ci1->flags |= KVMODULE_CLIENTINFO_FLAG_UNIXSOCKET;
@@ -3854,6 +3863,15 @@ int modulePopulateClientInfoStructure(void *ci, client *client, int structver) {
     if (client->flag.authenticated) ci1->flags |= KVMODULE_CLIENTINFO_FLAG_AUTHENTICATED;
     if (client->flag.ever_authenticated) ci1->flags |= KVMODULE_CLIENTINFO_FLAG_EVER_AUTHENTICATED;
     if (client->flag.fake) ci1->flags |= KVMODULE_CLIENTINFO_FLAG_FAKE;
+=======
+    if (client->flag.multi) ci1->flags |= VALKEYMODULE_CLIENTINFO_FLAG_MULTI;
+    if (client->flag.pubsub) ci1->flags |= VALKEYMODULE_CLIENTINFO_FLAG_PUBSUB;
+    if (client->flag.unix_socket) ci1->flags |= VALKEYMODULE_CLIENTINFO_FLAG_UNIXSOCKET;
+    if (client->flag.tracking) ci1->flags |= VALKEYMODULE_CLIENTINFO_FLAG_TRACKING;
+    if (client->flag.blocked) ci1->flags |= VALKEYMODULE_CLIENTINFO_FLAG_BLOCKED;
+    if (client->conn->type == connectionTypeTls()) ci1->flags |= VALKEYMODULE_CLIENTINFO_FLAG_SSL;
+    if (client->flag.readonly) ci1->flags |= VALKEYMODULE_CLIENTINFO_FLAG_READONLY;
+>>>>>>> v9.0.4
 
     int port;
     connAddrPeerName(client->conn, ci1->addr, sizeof(ci1->addr), &port);
@@ -3907,6 +3925,7 @@ int modulePopulateReplicationInfoStructure(void *ri, int structver) {
  *
  * With flags having the following meaning:
  *
+<<<<<<< HEAD
  *     KVMODULE_CLIENTINFO_FLAG_SSL          Client using SSL connection.
  *     KVMODULE_CLIENTINFO_FLAG_PUBSUB       Client in Pub/Sub mode.
  *     KVMODULE_CLIENTINFO_FLAG_BLOCKED      Client blocked in command.
@@ -3925,6 +3944,15 @@ int modulePopulateReplicationInfoStructure(void *ri, int structver) {
  *                                               Client has successfully been
  *                                               authenticated in its lifetime.
  *     KVMODULE_CLIENTINFO_FLAG_FAKE         Fake clients are internal to kv.
+=======
+ *     VALKEYMODULE_CLIENTINFO_FLAG_SSL          Client using SSL connection.
+ *     VALKEYMODULE_CLIENTINFO_FLAG_PUBSUB       Client in Pub/Sub mode.
+ *     VALKEYMODULE_CLIENTINFO_FLAG_BLOCKED      Client blocked in command.
+ *     VALKEYMODULE_CLIENTINFO_FLAG_TRACKING     Client with keys tracking on.
+ *     VALKEYMODULE_CLIENTINFO_FLAG_UNIXSOCKET   Client using unix domain socket.
+ *     VALKEYMODULE_CLIENTINFO_FLAG_MULTI        Client in MULTI state.
+ *     VALKEYMODULE_CLIENTINFO_FLAG_READONLY     Client in ReadOnly state.
+>>>>>>> v9.0.4
  *
  * Note: The flags KVMODULE_CLIENTINFO_FLAG_PRIMARY and below were added in KV 9.1.
  *
@@ -3945,8 +3973,13 @@ int VM_GetClientInfoById(void *ci, uint64_t id) {
         (server.executing_client && server.executing_client->id == id)
             ? server.executing_client
             : lookupClientByID(id);
+<<<<<<< HEAD
     if (client == NULL) return KVMODULE_ERR;
     if (ci == NULL) return KVMODULE_OK;
+=======
+    if (client == NULL) return VALKEYMODULE_ERR;
+    if (ci == NULL) return VALKEYMODULE_OK;
+>>>>>>> v9.0.4
 
     /* Fill the info structure if passed. */
     uint64_t structver = ((uint64_t *)ci)[0];
@@ -4075,12 +4108,21 @@ int VM_GetSelectedDb(KVModuleCtx *ctx) {
  *  * KVMODULE_CTX_FLAGS_RESP3: Indicate the that client attached to this
  *                                 context is using RESP3.
  *
+<<<<<<< HEAD
  *  * KVMODULE_CTX_FLAGS_SERVER_STARTUP: The instance is starting
  *
  *  * KVMODULE_CTX_FLAGS_SLOT_IMPORT_CLIENT: Indicate the that client attached to this
  *                                               context is the slot import client.
  *
  *  * KVMODULE_CTX_FLAGS_SLOT_EXPORT_CLIENT: Indicate the that client attached to this
+=======
+ *  * VALKEYMODULE_CTX_FLAGS_SERVER_STARTUP: The instance is starting
+ *
+ *  * VALKEYMODULE_CTX_FLAGS_SLOT_IMPORT_CLIENT: Indicate the that client attached to this
+ *                                               context is the slot import client.
+ *
+ *  * VALKEYMODULE_CTX_FLAGS_SLOT_EXPORT_CLIENT: Indicate the that client attached to this
+>>>>>>> v9.0.4
  *                                               context is the slot export client.
  */
 int VM_GetContextFlags(KVModuleCtx *ctx) {
@@ -4099,6 +4141,11 @@ int VM_GetContextFlags(KVModuleCtx *ctx) {
                 flags |= KVMODULE_CTX_FLAGS_SLOT_IMPORT_CLIENT;
             } else if (ctx->client->slot_migration_job) {
                 flags |= KVMODULE_CTX_FLAGS_SLOT_EXPORT_CLIENT;
+            }
+            if (ctx->client->slot_migration_job && isImportSlotMigrationJob(ctx->client->slot_migration_job)) {
+                flags |= VALKEYMODULE_CTX_FLAGS_SLOT_IMPORT_CLIENT;
+            } else if (ctx->client->slot_migration_job) {
+                flags |= VALKEYMODULE_CTX_FLAGS_SLOT_EXPORT_CLIENT;
             }
         }
 
@@ -5489,8 +5536,13 @@ int VM_HashSet(KVModuleKey *key, int flags, ...) {
 
         robj *argv[2] = {field, value};
         hashTypeTryConversion(key->value, argv, 0, 1);
+<<<<<<< HEAD
         int updated = hashTypeSet(key->value, objectGetVal(field), objectGetVal(value), EXPIRY_NONE, low_flags, NULL);
         count += (flags & KVMODULE_HASH_COUNT_ALL) ? 1 : updated;
+=======
+        int updated = hashTypeSet(key->value, field->ptr, value->ptr, EXPIRY_NONE, low_flags, NULL);
+        count += (flags & VALKEYMODULE_HASH_COUNT_ALL) ? 1 : updated;
+>>>>>>> v9.0.4
 
         /* If CFIELDS is active, SDS string ownership is now of hashTypeSet(),
          * however we still have to release the 'field' object shell. */
@@ -7046,10 +7098,17 @@ const char *moduleNameFromCommand(struct serverCommand *cmd) {
     return cp->module->name;
 }
 
+<<<<<<< HEAD
 KVModule *moduleFromCommand(struct serverCommand *cmd) {
     serverAssert(cmd->proc == KVModuleCommandDispatcher);
 
     KVModuleCommand *cp = cmd->module_cmd;
+=======
+ValkeyModule *moduleFromCommand(struct serverCommand *cmd) {
+    serverAssert(cmd->proc == ValkeyModuleCommandDispatcher);
+
+    ValkeyModuleCommand *cp = cmd->module_cmd;
+>>>>>>> v9.0.4
     return cp->module;
 }
 
@@ -7369,8 +7428,13 @@ int moduleVerifyAllAllowAtomicSlotMigrationOrReply(client *c) {
     dictEntry *de;
 
     while ((de = dictNext(di)) != NULL) {
+<<<<<<< HEAD
         struct KVModule *module = dictGetVal(de);
         if (!(module->options & KVMODULE_OPTIONS_HANDLE_ATOMIC_SLOT_MIGRATION)) {
+=======
+        struct ValkeyModule *module = dictGetVal(de);
+        if (!(module->options & VALKEYMODULE_OPTIONS_HANDLE_ATOMIC_SLOT_MIGRATION)) {
+>>>>>>> v9.0.4
             addReplyErrorFormat(c, "The module %s does not support atomic slot migrations. "
                                    "Please ensure all modules have declared support for "
                                    "atomic slot migration and try again",
@@ -8188,12 +8252,21 @@ KVModuleBlockedClient *moduleBlockClient(KVModuleCtx *ctx,
  *
  * The following is an example of how non-blocking module based authentication can be used:
  *
+<<<<<<< HEAD
  *      int auth_cb(KVModuleCtx *ctx, KVModuleString *username, KVModuleString *password, KVModuleString **err) {
  *          const char *user = KVModule_StringPtrLen(username, NULL);
  *          const char *pwd = KVModule_StringPtrLen(password, NULL);
  *          if (!strcmp(user,"foo") && !strcmp(pwd,"valid_password")) {
  *              KVModule_AuthenticateClientWithACLUser(ctx, "foo", 3, NULL, NULL, NULL);
  *              return KVMODULE_AUTH_HANDLED;
+=======
+ *      int auth_cb(ValkeyModuleCtx *ctx, ValkeyModuleString *username, ValkeyModuleString *password, ValkeyModuleString **err) {
+ *          const char *user = ValkeyModule_StringPtrLen(username, NULL);
+ *          const char *pwd = ValkeyModule_StringPtrLen(password, NULL);
+ *          if (!strcmp(user,"foo") && !strcmp(pwd,"valid_password")) {
+ *              ValkeyModule_AuthenticateClientWithACLUser(ctx, "foo", 3, NULL, NULL, NULL);
+ *              return VALKEYMODULE_AUTH_HANDLED;
+>>>>>>> v9.0.4
  *          }
  *
  *          else if (!strcmp(user,"foo") && !strcmp(pwd,"wrong_password")) {
@@ -8286,7 +8359,11 @@ static int attemptNextAuthCb(client *c, robj *username, robj *password, robj **e
  * Otherwise, we attempt the auth reply callback & the free priv data callback, update fields and
  * return the result of the reply callback. */
 static int attemptBlockedAuthReplyCallback(client *c, robj *username, robj *password, robj **err) {
+<<<<<<< HEAD
     int result = KVMODULE_AUTH_NOT_HANDLED;
+=======
+    int result = VALKEYMODULE_AUTH_NOT_HANDLED;
+>>>>>>> v9.0.4
     if (!c->module_data || !c->module_data->module_blocked_client) return result;
     KVModuleBlockedClient *bc = (KVModuleBlockedClient *)c->module_data->module_blocked_client;
     bc->client = c;
@@ -8330,7 +8407,11 @@ int checkModuleAuthentication(client *c, robj *username, robj *password, robj **
         return AUTH_BLOCKED;
     }
 
+<<<<<<< HEAD
     KVModuleAuthCtx *auth_ctx = c->module_data ? c->module_data->module_auth_ctx : NULL;
+=======
+    ValkeyModuleAuthCtx *auth_ctx = c->module_data ? c->module_data->module_auth_ctx : NULL;
+>>>>>>> v9.0.4
 
     if (c->module_data) c->module_data->module_auth_ctx = NULL;
     if (result == KVMODULE_AUTH_NOT_HANDLED) {
@@ -8349,7 +8430,11 @@ int checkModuleAuthentication(client *c, robj *username, robj *password, robj **
 
     const char *module_name = auth_ctx ? auth_ctx->module->name : NULL;
     moduleFireAuthenticationEvent(c->id,
+<<<<<<< HEAD
                                   objectGetVal(username),
+=======
+                                  username->ptr,
+>>>>>>> v9.0.4
                                   module_name,
                                   auth_result == AUTH_OK);
 
@@ -8360,6 +8445,7 @@ void moduleFireAuthenticationEvent(uint64_t client_id,
                                    const char *username,
                                    const char *module_name,
                                    int is_granted) {
+<<<<<<< HEAD
     KVModuleAuthenticationInfo info = KVMODULE_AUTHENTICATIONINFO_INITIALIZER_V1;
     info.client_id = client_id;
     info.username = username;
@@ -8367,6 +8453,15 @@ void moduleFireAuthenticationEvent(uint64_t client_id,
     info.result = is_granted ? KVMODULE_AUTH_RESULT_GRANTED
                              : KVMODULE_AUTH_RESULT_DENIED;
     moduleFireServerEvent(KVMODULE_EVENT_AUTHENTICATION_ATTEMPT, 0, &info);
+=======
+    ValkeyModuleAuthenticationInfo info = VALKEYMODULE_AUTHENTICATIONINFO_INITIALIZER_V1;
+    info.client_id = client_id;
+    info.username = username;
+    info.module_name = module_name;
+    info.result = is_granted ? VALKEYMODULE_AUTH_RESULT_GRANTED
+                             : VALKEYMODULE_AUTH_RESULT_DENIED;
+    moduleFireServerEvent(VALKEYMODULE_EVENT_AUTHENTICATION_ATTEMPT, 0, &info);
+>>>>>>> v9.0.4
 }
 
 /* This function is called from module.c in order to check if a module
@@ -8458,17 +8553,29 @@ KVModuleBlockedClient *VM_BlockClient(KVModuleCtx *ctx,
  * is returned similar to the VM_BlockClient API.
  * Note: Only use this API from the context of a module auth callback.
  *
+<<<<<<< HEAD
  * There are some cases where KVModule_BlockClientOnAuth() cannot be used:
+=======
+ * There are some cases where ValkeyModule_BlockClientOnAuth() cannot be used:
+>>>>>>> v9.0.4
  *
  * 1. If the client is not in the middle of module based authentication. This will not block the client
  *    but instead produce a specific error reply.
  *
  * For details on other return values and error codes, see the comment block for
+<<<<<<< HEAD
  * KVModule_BlockClient().
  * */
 KVModuleBlockedClient *VM_BlockClientOnAuth(KVModuleCtx *ctx,
                                                 KVModuleAuthCallback reply_callback,
                                                 void (*free_privdata)(KVModuleCtx *, void *)) {
+=======
+ * ValkeyModule_BlockClient().
+ * */
+ValkeyModuleBlockedClient *VM_BlockClientOnAuth(ValkeyModuleCtx *ctx,
+                                                ValkeyModuleAuthCallback reply_callback,
+                                                void (*free_privdata)(ValkeyModuleCtx *, void *)) {
+>>>>>>> v9.0.4
     if (!clientHasModuleAuthInProgress(ctx->client)) {
         addReplyError(ctx->client,
                       "Module blocking client on auth when not currently undergoing module authentication");
@@ -11291,6 +11398,13 @@ void moduleCallCommandFilters(client *c) {
     incrRefCount(pre_filter_command);
     const int pre_filter_argc = c->argc;
 
+<<<<<<< HEAD
+=======
+    robj *pre_filter_command = c->argv[0];
+    incrRefCount(pre_filter_command);
+    const int pre_filter_argc = c->argc;
+
+>>>>>>> v9.0.4
     while ((ln = listNext(&li))) {
         KVModuleCommandFilter *f = ln->value;
 
@@ -11826,6 +11940,7 @@ void ModuleForkDoneHandler(int exitcode, int bysignal) {
  * a data structure associated with it. We use MAX_UINT64 on purpose,
  * in order to pass the check in KVModule_SubscribeToServerEvent. */
 static uint64_t moduleEventVersions[] = {
+<<<<<<< HEAD
     KVMODULE_REPLICATIONINFO_VERSION,          /* KVMODULE_EVENT_REPLICATION_ROLE_CHANGED */
     -1,                                            /* KVMODULE_EVENT_PERSISTENCE */
     KVMODULE_FLUSHINFO_VERSION,                /* KVMODULE_EVENT_FLUSHDB */
@@ -11846,6 +11961,28 @@ static uint64_t moduleEventVersions[] = {
     KVMODULE_KEYINFO_VERSION,                  /* KVMODULE_EVENT_KEY */
     KVMODULE_AUTHENTICATION_INFO_VERSION,      /* KVMODULE_EVENT_AUTHENTICATION_ATTEMPT */
     KVMODULE_ATOMICSLOTMIGRATION_INFO_VERSION, /* KVMODULE_EVENT_ATOMIC_SLOT_MIGRATION */
+=======
+    VALKEYMODULE_REPLICATIONINFO_VERSION,          /* VALKEYMODULE_EVENT_REPLICATION_ROLE_CHANGED */
+    -1,                                            /* VALKEYMODULE_EVENT_PERSISTENCE */
+    VALKEYMODULE_FLUSHINFO_VERSION,                /* VALKEYMODULE_EVENT_FLUSHDB */
+    -1,                                            /* VALKEYMODULE_EVENT_LOADING */
+    VALKEYMODULE_CLIENTINFO_VERSION,               /* VALKEYMODULE_EVENT_CLIENT_CHANGE */
+    -1,                                            /* VALKEYMODULE_EVENT_SHUTDOWN */
+    -1,                                            /* VALKEYMODULE_EVENT_REPLICA_CHANGE */
+    -1,                                            /* VALKEYMODULE_EVENT_PRIMARY_LINK_CHANGE */
+    VALKEYMODULE_CRON_LOOP_VERSION,                /* VALKEYMODULE_EVENT_CRON_LOOP */
+    VALKEYMODULE_MODULE_CHANGE_VERSION,            /* VALKEYMODULE_EVENT_MODULE_CHANGE */
+    VALKEYMODULE_LOADING_PROGRESS_VERSION,         /* VALKEYMODULE_EVENT_LOADING_PROGRESS */
+    VALKEYMODULE_SWAPDBINFO_VERSION,               /* VALKEYMODULE_EVENT_SWAPDB */
+    -1,                                            /* VALKEYMODULE_EVENT_REPL_BACKUP */
+    -1,                                            /* VALKEYMODULE_EVENT_FORK_CHILD */
+    -1,                                            /* VALKEYMODULE_EVENT_REPL_ASYNC_LOAD */
+    -1,                                            /* VALKEYMODULE_EVENT_EVENTLOOP */
+    -1,                                            /* VALKEYMODULE_EVENT_CONFIG */
+    VALKEYMODULE_KEYINFO_VERSION,                  /* VALKEYMODULE_EVENT_KEY */
+    VALKEYMODULE_AUTHENTICATION_INFO_VERSION,      /* VALKEYMODULE_EVENT_AUTHENTICATION_ATTEMPT */
+    VALKEYMODULE_ATOMICSLOTMIGRATION_INFO_VERSION, /* VALKEYMODULE_EVENT_ATOMIC_SLOT_MIGRATION */
+>>>>>>> v9.0.4
 };
 
 /* Register to be notified, via a callback, when the specified server event
@@ -12106,7 +12243,11 @@ static uint64_t moduleEventVersions[] = {
  *     * `KVMODULE_SUBEVENT_EVENTLOOP_BEFORE_SLEEP`
  *     * `KVMODULE_SUBEVENT_EVENTLOOP_AFTER_SLEEP`
  *
+<<<<<<< HEAD
  * * KVModuleEvent_Config
+=======
+ * * ValkeyModuleEvent_Config
+>>>>>>> v9.0.4
  *
  *     Called when a configuration event happens
  *     The following sub events are available:
@@ -12120,7 +12261,11 @@ static uint64_t moduleEventVersions[] = {
  *                                    // name of each modified configuration item
  *         uint32_t num_changes;      // The number of elements in the config_names array
  *
+<<<<<<< HEAD
  * * KVModuleEvent_Key
+=======
+ * * ValkeyModuleEvent_Key
+>>>>>>> v9.0.4
  *
  *     Called when a key is removed from the keyspace. We can't modify any key in
  *     the event.
@@ -12136,11 +12281,19 @@ static uint64_t moduleEventVersions[] = {
  *
  *         KVModuleKey *key;    // Key name
  *
+<<<<<<< HEAD
  * * KVModuleEvent_AuthenticationAttempt
  *
  *     Called when an authentication attempt is made, either successful or not.
  *
  *     The data pointer can be casted to a KVModuleAuthenticationInfo
+=======
+ * * ValkeyModuleEvent_AuthenticationAttempt
+ *
+ *     Called when an authentication attempt is made, either successful or not.
+ *
+ *     The data pointer can be casted to a ValkeyModuleAuthenticationInfo
+>>>>>>> v9.0.4
  *     structure with the following fields:
  *
  *         uint64_t client_id;      // Client ID.
@@ -12148,17 +12301,26 @@ static uint64_t moduleEventVersions[] = {
  *         const char *module_name; // Name of the module that is handling the
  *                                  // authentication. It is NULL if the
  *                                  // authentication is handled by the core.
+<<<<<<< HEAD
  *         KVModuleAuthenticationResult result;   // Result of the authentication:
  *                                                    // KVMODULE_AUTH_RESULT_GRANTED or
  *                                                    // KVMODULE_AUTH_RESULT_DENIED
  *
  * * KVModuleEvent_AtomicSlotMigration
+=======
+ *         ValkeyModuleAuthenticationResult result;   // Result of the authentication:
+ *                                                    // VALKEYMODULE_AUTH_RESULT_GRANTED or
+ *                                                    // VALKEYMODULE_AUTH_RESULT_DENIED
+ *
+ * * ValkeyModuleEvent_AtomicSlotMigration
+>>>>>>> v9.0.4
  *
  *    Called when an atomic slot migration (CLUSTER MIGRATESLOTS) is started or
  *    ended in this node. This node may be a target or a source node, or the
  *    target or source might be this node's primary. The following sub events
  *    are available:
  *
+<<<<<<< HEAD
  *     * `KVMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_STARTED`
  *     * `KVMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_STARTED`
  *     * `KVMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_ABORTED`
@@ -12174,6 +12336,25 @@ static uint64_t moduleEventVersions[] = {
  *         uint32_t num_slot_ranges;           // Number of slot ranges in slot_ranges array
  *
  *    The KVModuleSlotRange structure has the following fields:
+=======
+ *     * `VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_STARTED`
+ *     * `VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_STARTED`
+ *     * `VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_ABORTED`
+ *     * `VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_ABORTED`
+ *     * `VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_COMPLETED`
+ *     * `VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_COMPLETED`
+ *
+ *    The data pointer can be casted to ValkeyModuleAtomicSlotMigrationInfo
+ *    structure with the following fields:
+ *
+ *         char *job_name;                     // Unique ID for the operation (40 chars)
+ *         ValkeyModuleSlotRange *slot_ranges; // Array of slot ranges involved in the operation
+ *         uint32_t num_slot_ranges;           // Number of slot ranges in slot_ranges array
+ *         char *source_node_id;               // Source node ID (40 chars)
+ *         char *target_node_id;               // Target node ID (40 chars)
+ *
+ *    The ValkeyModuleSlotRange structure has the following fields:
+>>>>>>> v9.0.4
  *
  *          int start; // First slot in this range, inclusive
  *          int end;   // Last slot in this range, inclusive
@@ -12187,7 +12368,11 @@ static uint64_t moduleEventVersions[] = {
  *    Importing keys will not be accessible to clients unless the slot migration
  *    is COMPLETED.
  *
+<<<<<<< HEAD
  * The function returns KVMODULE_OK if the module was successfully subscribed
+=======
+ * The function returns VALKEYMODULE_OK if the module was successfully subscribed
+>>>>>>> v9.0.4
  * for the specified event. If the API is called from a wrong context or unsupported event
  * is given then KVMODULE_ERR is returned. */
 int VM_SubscribeToServerEvent(KVModuleCtx *ctx, KVModuleEvent event, KVModuleEventCallback callback) {
@@ -12336,9 +12521,15 @@ void moduleFireServerEvent(uint64_t eid, int subid, void *data) {
                 selectDb(ctx.client, info->dbnum);
                 moduleInitKey(&key, &ctx, info->key, info->value, info->mode);
                 moduledata = &ki;
+<<<<<<< HEAD
             } else if (eid == KVMODULE_EVENT_AUTHENTICATION_ATTEMPT) {
                 moduledata = data;
             } else if (eid == KVMODULE_EVENT_ATOMIC_SLOT_MIGRATION) {
+=======
+            } else if (eid == VALKEYMODULE_EVENT_AUTHENTICATION_ATTEMPT) {
+                moduledata = data;
+            } else if (eid == VALKEYMODULE_EVENT_ATOMIC_SLOT_MIGRATION) {
+>>>>>>> v9.0.4
                 moduledata = data;
             }
 
@@ -13112,7 +13303,11 @@ sds genModulesInfoStringRenderModuleOptions(struct KVModule *module) {
         output = sdscat(output, "handle-repl-async-load|");
     if (module->options & KVMODULE_OPTION_NO_IMPLICIT_SIGNAL_MODIFIED)
         output = sdscat(output, "no-implicit-signal-modified|");
+<<<<<<< HEAD
     if (module->options & KVMODULE_OPTIONS_HANDLE_ATOMIC_SLOT_MIGRATION)
+=======
+    if (module->options & VALKEYMODULE_OPTIONS_HANDLE_ATOMIC_SLOT_MIGRATION)
+>>>>>>> v9.0.4
         output = sdscat(output, "handle-atomic-slot-migration|");
     output = sdstrim(output, "|");
     output = sdscat(output, "]");
@@ -13696,6 +13891,11 @@ int VM_RdbLoad(KVModuleCtx *ctx, KVModuleRdbStream *stream, int flags) {
     /* Kill existing slot migration fork as it is saving outdated data. Also killing it
      * will prevent COW memory issue. */
     if (server.child_type == CHILD_TYPE_SLOT_MIGRATION) killSlotMigrationChild();
+<<<<<<< HEAD
+=======
+
+    emptyData(-1, EMPTYDB_NO_FLAGS, NULL);
+>>>>>>> v9.0.4
 
     /* rdbLoad() can go back to the networking and process network events. If
      * VM_RdbLoad() is called inside a command callback, we don't want to

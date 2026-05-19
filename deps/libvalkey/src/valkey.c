@@ -234,7 +234,11 @@ static void *createDoubleObject(const kvReadTask *task, double value, char *str,
 
     /* The double reply also has the original protocol string representing a
      * double as a null terminated string. This way the caller does not need
+<<<<<<< HEAD
      * to format back for string conversion, especially since KV does efforts
+=======
+     * to format back for string conversion, especially since Valkey does efforts
+>>>>>>> v9.0.4
      * to make the string more human readable avoiding the classical double
      * decimal string conversion artifacts. */
     memcpy(r->str, str, len);

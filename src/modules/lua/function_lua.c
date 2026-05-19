@@ -53,6 +53,7 @@
 #define LIBRARY_API_NAME "__LIBRARY_API__"
 #define GLOBALS_API_NAME "__GLOBALS_API__"
 
+<<<<<<< HEAD:src/modules/lua/function_lua.c
 typedef uint64_t monotime;
 
 static monotime getMonotonicUs(void) {
@@ -73,6 +74,8 @@ static inline uint64_t elapsedMs(monotime start_time) {
     return elapsedUs(start_time) / 1000;
 }
 
+=======
+>>>>>>> v9.0.4:src/lua/function_lua.c
 typedef struct loadCtx {
     List *functions;
     monotime start_time;
@@ -195,9 +198,15 @@ done:
     return compiled_functions;
 }
 
+<<<<<<< HEAD:src/modules/lua/function_lua.c
 static void luaRegisterFunctionArgsInitialize(KVModuleScriptingEngineCompiledFunction *func,
                                               KVModuleString *name,
                                               KVModuleString *desc,
+=======
+static void luaRegisterFunctionArgsInitialize(compiledFunction *func,
+                                              robj *name,
+                                              robj *desc,
+>>>>>>> v9.0.4:src/lua/function_lua.c
                                               luaFunction *script,
                                               uint64_t flags) {
     *func = (KVModuleScriptingEngineCompiledFunction){
@@ -281,8 +290,13 @@ static KVModuleString *luaGetStringObject(lua_State *lua, int index) {
 static int luaRegisterFunctionReadNamedArgs(lua_State *lua,
                                             KVModuleScriptingEngineCompiledFunction *func) {
     char *err = NULL;
+<<<<<<< HEAD:src/modules/lua/function_lua.c
     KVModuleString *name = NULL;
     KVModuleString *desc = NULL;
+=======
+    robj *name = NULL;
+    robj *desc = NULL;
+>>>>>>> v9.0.4:src/lua/function_lua.c
     luaFunction *script = NULL;
     uint64_t flags = 0;
     if (!lua_istable(lua, 1)) {
@@ -318,7 +332,11 @@ static int luaRegisterFunctionReadNamedArgs(lua_State *lua,
             }
             int lua_function_ref = luaL_ref(lua, LUA_REGISTRYINDEX);
 
+<<<<<<< HEAD:src/modules/lua/function_lua.c
             script = KVModule_Alloc(sizeof(*script));
+=======
+            script = zmalloc(sizeof(*script));
+>>>>>>> v9.0.4:src/lua/function_lua.c
             script->lua = lua;
             script->function_ref = lua_function_ref;
             continue; /* value was already popped, so no need to pop it out. */
@@ -358,11 +376,19 @@ static int luaRegisterFunctionReadNamedArgs(lua_State *lua,
     return C_OK;
 
 error:
+<<<<<<< HEAD:src/modules/lua/function_lua.c
     if (name) KVModule_FreeString(NULL, name);
     if (desc) KVModule_FreeString(NULL, desc);
     if (script) {
         lua_unref(lua, script->function_ref);
         KVModule_Free(script);
+=======
+    if (name) decrRefCount(name);
+    if (desc) decrRefCount(desc);
+    if (script) {
+        lua_unref(lua, script->function_ref);
+        zfree(script);
+>>>>>>> v9.0.4:src/lua/function_lua.c
     }
     luaPushError(lua, err);
     return C_ERR;
@@ -371,9 +397,14 @@ error:
 static int luaRegisterFunctionReadPositionalArgs(lua_State *lua,
                                                  KVModuleScriptingEngineCompiledFunction *func) {
     char *err = NULL;
+<<<<<<< HEAD:src/modules/lua/function_lua.c
     KVModuleString *name = NULL;
     luaFunction *script = NULL;
 
+=======
+    robj *name = NULL;
+    luaFunction *script = NULL;
+>>>>>>> v9.0.4:src/lua/function_lua.c
     if (!(name = luaGetStringObject(lua, 1))) {
         err = "first argument to server.register_function must be a string";
         goto error;
@@ -386,7 +417,11 @@ static int luaRegisterFunctionReadPositionalArgs(lua_State *lua,
 
     int lua_function_ref = luaL_ref(lua, LUA_REGISTRYINDEX);
 
+<<<<<<< HEAD:src/modules/lua/function_lua.c
     script = KVModule_Alloc(sizeof(*script));
+=======
+    script = zmalloc(sizeof(*script));
+>>>>>>> v9.0.4:src/lua/function_lua.c
     script->lua = lua;
     script->function_ref = lua_function_ref;
 
@@ -479,5 +514,9 @@ void luaFunctionInitializeLuaState(luaEngineCtx *ctx, lua_State *lua) {
 void luaFunctionFreeFunction(lua_State *lua, void *function) {
     luaFunction *script = function;
     lua_unref(lua, script->function_ref);
+<<<<<<< HEAD:src/modules/lua/function_lua.c
     KVModule_Free(function);
+=======
+    zfree(function);
+>>>>>>> v9.0.4:src/lua/function_lua.c
 }

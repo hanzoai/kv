@@ -677,12 +677,21 @@ jobs:
           echo "test SAVE doesn't increase cache"
           CACHE0=$(grep -w file /sys/fs/cgroup/memory.stat | awk '{print $2}')
           echo "$CACHE0"
+<<<<<<< HEAD
           ./src/kv-server --daemonize yes --logfile /dev/null --dir /tmp/master --port 8080 --repl-diskless-sync no --pidfile /tmp/master/kv.pid --rdbcompression no --enable-debug-command yes
           sleep 1 # wait for server startup
           ./src/kv-cli -p 8080 debug populate 10000 k 102400
           ./src/kv-server --daemonize yes --logfile /dev/null --dir /tmp/slave --port 8081 --repl-diskless-load disabled --rdbcompression no
           sleep 1 # wait for server startup
           ./src/kv-cli -p 8080 save > /dev/null
+=======
+          ./src/valkey-server --daemonize yes --logfile /dev/null --dir /tmp/master --port 8080 --repl-diskless-sync no --pidfile /tmp/master/valkey.pid --rdbcompression no --enable-debug-command yes
+          sleep 1 # wait for server startup
+          ./src/valkey-cli -p 8080 debug populate 10000 k 102400
+          ./src/valkey-server --daemonize yes --logfile /dev/null --dir /tmp/slave --port 8081 --repl-diskless-load disabled --rdbcompression no
+          sleep 1 # wait for server startup
+          ./src/valkey-cli -p 8080 save > /dev/null
+>>>>>>> v9.0.4
           VMOUT=$(vmtouch -v /tmp/master/dump.rdb)
           echo $VMOUT
           grep -q " 0%" <<< $VMOUT
@@ -707,9 +716,15 @@ jobs:
           PID=$(cat /tmp/master/kv.pid)
           kill -15 $PID
           while [ -x /proc/${PID} ]; do sleep 1; done
+<<<<<<< HEAD
           ./src/kv-server --daemonize yes --logfile /dev/null --dir /tmp/master --port 8080
           sleep 1 # wait for server startup
           while [ $(./src/kv-cli -p 8080 info persistence | grep "loading:1") ]; do sleep 1; done;
+=======
+          ./src/valkey-server --daemonize yes --logfile /dev/null --dir /tmp/master --port 8080
+          sleep 1 # wait for server startup
+          while [ $(./src/valkey-cli -p 8080 info persistence | grep "loading:1") ]; do sleep 1; done;
+>>>>>>> v9.0.4
           sleep 1 # wait for the completion of cache reclaim bio
           VMOUT=$(vmtouch -v /tmp/master/dump.rdb)
           echo $VMOUT
@@ -960,7 +975,7 @@ jobs:
           echo "skiptests: ${{github.event.inputs.skiptests}}"
           echo "test_args: ${{github.event.inputs.test_args}}"
           echo "cluster_test_args: ${{github.event.inputs.cluster_test_args}}"
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: ${{ ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && env.GITHUB_REPOSITORY) || github.repository }}
           ref: ${{ ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && env.GITHUB_HEAD_REF) || github.ref }}
@@ -1233,6 +1248,7 @@ jobs:
       - name: Install EPEL
         if: matrix.install_epel
         run: dnf -y install epel-release
+<<<<<<< HEAD
       - name: Install libbacktrace
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -1245,6 +1261,12 @@ jobs:
           cd libbacktrace && ./configure && make && make install
       - name: make
         run: make -j SERVER_CFLAGS='-Werror' USE_LIBBACKTRACE=yes
+=======
+      - name: make
+        run: |
+          dnf -y install gcc make procps-ng which /usr/bin/kill /usr/bin/awk
+          make -j SERVER_CFLAGS='-Werror'
+>>>>>>> v9.0.4
       - name: testprep
         run: dnf -y install tcl tcltls
       - name: test
@@ -1596,8 +1618,13 @@ jobs:
       - name: prep
         if: github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call'
         run: |
+<<<<<<< HEAD
           echo "GITHUB_REPOSITORY=${{inputs.use_repo || github.event.inputs.use_repo}}" >> $GITHUB_ENV
           echo "GITHUB_HEAD_REF=${{inputs.use_git_ref || github.event.inputs.use_git_ref}}" >> $GITHUB_ENV
+=======
+          echo "GITHUB_REPOSITORY=${{github.event.inputs.use_repo}}" >> $GITHUB_ENV
+          echo "GITHUB_HEAD_REF=${{github.event.inputs.use_git_ref}}" >> $GITHUB_ENV
+>>>>>>> v9.0.4
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: ${{ ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && env.GITHUB_REPOSITORY) || github.repository }}

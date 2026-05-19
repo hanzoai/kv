@@ -1074,7 +1074,11 @@ static client createClient(char *cmd, int len, int seqlen, client from, int thre
         el = thread->el;
     }
     if (config.idlemode == 0) {
+<<<<<<< HEAD:src/kv-benchmark.c
         if (config.ct != KV_CONN_RDMA) {
+=======
+        if (config.ct != VALKEY_CONN_RDMA) {
+>>>>>>> v9.0.4:src/valkey-benchmark.c
             aeCreateFileEvent(el, c->context->fd, AE_WRITABLE, writeHandler, c);
         }
     } else
@@ -1296,7 +1300,11 @@ static void benchmarkSequence(const char *title, char *cmd, int len, int seqlen)
     config.start = mstime();
     if (!config.num_threads) {
 #ifdef USE_RDMA
+<<<<<<< HEAD:src/kv-benchmark.c
         if (config.idlemode == 0 && config.ct == KV_CONN_RDMA) {
+=======
+        if (config.idlemode == 0 && config.ct == VALKEY_CONN_RDMA) {
+>>>>>>> v9.0.4:src/valkey-benchmark.c
             issueFirstRequestForClients(config.el, 0, 1);
         }
 #endif
@@ -1348,7 +1356,11 @@ static void freeBenchmarkThreads(void) {
 static void *execBenchmarkThread(void *ptr) {
     benchmarkThread *thread = (benchmarkThread *)ptr;
 #ifdef USE_RDMA
+<<<<<<< HEAD:src/kv-benchmark.c
     if (config.idlemode == 0 && config.ct == KV_CONN_RDMA) {
+=======
+    if (config.idlemode == 0 && config.ct == VALKEY_CONN_RDMA) {
+>>>>>>> v9.0.4:src/valkey-benchmark.c
         issueFirstRequestForClients(thread->el, thread->index, config.num_threads);
     }
 #endif

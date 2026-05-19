@@ -115,6 +115,7 @@ start_server {overrides {save {900 1}} tags {"modules"}} {
         # Test basic sanity and SSL flag
         set info [r test.clientinfo]
         assert { [dict get $info db] == 9 }
+<<<<<<< HEAD
         
         set flags [parse_client_flags [dict get $info flags]]
         
@@ -127,19 +128,27 @@ start_server {overrides {save {900 1}} tags {"modules"}} {
         assert { "multi" ni $flags }
         assert { "tracking" ni $flags }
         assert { "readonly" ni $flags }
+=======
+        assert { [dict get $info flags] == "${ssl_flag}:::::" }
+>>>>>>> v9.0.4
 
         # Test MULTI flag
         r multi
         r test.clientinfo
         set info [lindex [r exec] 0]
+<<<<<<< HEAD
         set flags [parse_client_flags [dict get $info flags]]
         assert { "multi" in $flags }
         assert { "authenticated" in $flags }
         assert { "ever_authenticated" in $flags }
+=======
+        assert { [dict get $info flags] == "${ssl_flag}::::multi:" }
+>>>>>>> v9.0.4
 
         # Test TRACKING flag
         r client tracking on
         set info [r test.clientinfo]
+<<<<<<< HEAD
         set flags [parse_client_flags [dict get $info flags]]
         assert { "tracking" in $flags }
         assert { "multi" ni $flags }
@@ -163,6 +172,16 @@ start_server {overrides {save {900 1}} tags {"modules"}} {
         assert { "readonly" ni $flags }
         assert { "authenticated" in $flags }
         assert { "ever_authenticated" in $flags }
+=======
+        assert { [dict get $info flags] == "${ssl_flag}::tracking:::" }
+        r CLIENT TRACKING off
+        r readonly
+        set info [r test.clientinfo]
+        assert { [dict get $info flags] == "${ssl_flag}:::::readonly" }
+        r readwrite
+        set info [r test.clientinfo]
+        assert { [dict get $info flags] == "${ssl_flag}:::::" }
+>>>>>>> v9.0.4
     }
 
     test {tracking with rm_call sanity} {

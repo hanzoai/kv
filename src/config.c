@@ -37,7 +37,10 @@
 #include "module.h"
 #include "cluster_migrateslots.h"
 #include "eval.h"
+<<<<<<< HEAD
 #include "lrulfu.h"
+=======
+>>>>>>> v9.0.4
 
 #include <fcntl.h>
 #include <sys/stat.h>

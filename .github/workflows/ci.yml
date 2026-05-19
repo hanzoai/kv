@@ -23,6 +23,7 @@ jobs:
   test-ubuntu-latest:
     runs-on: ubuntu-latest
     steps:
+<<<<<<< HEAD
       - name: Install libbacktrace
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -36,6 +37,13 @@ jobs:
         # Fail build if there are warnings
         # build with TLS just for compilation coverage
         run: make -j4 all-with-unit-tests SERVER_CFLAGS='-Werror' BUILD_TLS=yes USE_FAST_FLOAT=yes USE_LIBBACKTRACE=yes
+=======
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: make
+        # Fail build if there are warnings
+        # build with TLS just for compilation coverage
+        run: make -j4 all-with-unit-tests SERVER_CFLAGS='-Werror' BUILD_TLS=yes USE_FAST_FLOAT=yes
+>>>>>>> v9.0.4
       - name: test
         run: |
           sudo apt-get install tcl8.6 tclx
@@ -58,6 +66,7 @@ jobs:
       fail-fast: false
       matrix:
         server:
+<<<<<<< HEAD
           - {version: "7.2.11", file: "kv-7.2.11-noble-x86_64.tar.gz"}
           - {version: "8.0.6", file: "kv-8.0.6-noble-x86_64.tar.gz"}
           - {version: "8.1.4", file: "kv-8.1.4-noble-x86_64.tar.gz"}
@@ -75,26 +84,51 @@ jobs:
         # Fail build if there are warnings
         # build with TLS just for compilation coverage
         run: make -j4 all-with-unit-tests SERVER_CFLAGS='-Werror' BUILD_TLS=yes USE_FAST_FLOAT=yes USE_LIBBACKTRACE=yes
+=======
+          - {version: "7.2.11", file: "valkey-7.2.11-noble-x86_64.tar.gz"}
+          - {version: "8.0.6", file: "valkey-8.0.6-noble-x86_64.tar.gz"}
+          - {version: "8.1.4", file: "valkey-8.1.4-noble-x86_64.tar.gz"}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: make
+        # Fail build if there are warnings
+        # build with TLS just for compilation coverage
+        run: make -j4 all-with-unit-tests SERVER_CFLAGS='-Werror' BUILD_TLS=yes USE_FAST_FLOAT=yes
+>>>>>>> v9.0.4
 
       - name: Install old server (${{ matrix.server.version }}) for compatibility testing
         run: |
           mkdir -p tests/tmp
           cd tests/tmp
+<<<<<<< HEAD
           wget https://download.kv.io/releases/${{ matrix.server.file }}
+=======
+          wget https://download.valkey.io/releases/${{ matrix.server.file }}
+>>>>>>> v9.0.4
           tar -xvf ${{ matrix.server.file }}
 
       - name: Run compatibility tests against ${{ matrix.server.version }}
         run: |
           sudo apt-get install -y tcl8.6 tclx
           ./runtest --verbose --tags "-slow needs:other-server" --dump-logs \
+<<<<<<< HEAD
             --other-server-path tests/tmp/kv-${{ matrix.server.version }}-noble-x86_64/bin/kv-server
+=======
+            --other-server-path tests/tmp/valkey-${{ matrix.server.version }}-noble-x86_64/bin/valkey-server
+>>>>>>> v9.0.4
 
       - name: Module API tests against ${{ matrix.server.version }}
         run: |
           CFLAGS='-Werror' ./runtest-moduleapi --tags needs:other-server --verbose --dump-logs \
+<<<<<<< HEAD
             --other-server-path tests/tmp/kv-${{ matrix.server.version }}-noble-x86_64/bin/kv-server
 
   test-ubuntu-latest-cmake-tls:
+=======
+            --other-server-path tests/tmp/valkey-${{ matrix.server.version }}-noble-x86_64/bin/valkey-server
+
+  test-ubuntu-latest-cmake:
+>>>>>>> v9.0.4
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -117,6 +151,7 @@ jobs:
   test-sanitizer-address:
     runs-on: ubuntu-latest
     steps:
+<<<<<<< HEAD
       - name: Install libbacktrace
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -126,6 +161,9 @@ jobs:
       - run: cd libbacktrace && ./configure && make && sudo make install
       - name: Checkout KV
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+=======
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+>>>>>>> v9.0.4
       - name: make
         # build with TLS module just for compilation coverage
         run: make -j4 all-with-unit-tests SANITIZER=address SERVER_CFLAGS='-Werror' BUILD_TLS=module USE_LIBBACKTRACE=yes
@@ -141,6 +179,7 @@ jobs:
   test-rdma:
     runs-on: ubuntu-latest
     steps:
+<<<<<<< HEAD
       - name: Install libbacktrace
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -150,6 +189,9 @@ jobs:
       - run: cd libbacktrace && ./configure && make && sudo make install
       - name: Checkout KV
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+=======
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+>>>>>>> v9.0.4
       - name: prepare-development-libraries
         run: sudo apt-get install librdmacm-dev libibverbs-dev
       - name: make-rdma-module
@@ -193,6 +235,7 @@ jobs:
     runs-on: ubuntu-latest
     container: debian:bullseye
     steps:
+<<<<<<< HEAD
       - name: Install libbacktrace
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -200,6 +243,10 @@ jobs:
           ref: b9e40069c0b47a722286b94eb5231f7f05c08713
           path: libbacktrace
       - name: Build libbacktrace
+=======
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: make
+>>>>>>> v9.0.4
         run: |
           apt-get update && apt-get install -y build-essential
           cd libbacktrace && ./configure && make && make install
@@ -211,6 +258,7 @@ jobs:
   build-macos-latest:
     runs-on: macos-latest
     steps:
+<<<<<<< HEAD
       - name: Install libbacktrace
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -220,6 +268,9 @@ jobs:
       - run: cd libbacktrace && ./configure && make && sudo make install
       - name: Checkout KV
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+=======
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+>>>>>>> v9.0.4
       - name: make
         # Build with additional upcoming features
         run: make -j3 all-with-unit-tests SERVER_CFLAGS='-Werror' USE_FAST_FLOAT=yes USE_LIBBACKTRACE=yes
@@ -227,6 +278,7 @@ jobs:
   build-32bit:
     runs-on: ubuntu-latest
     steps:
+<<<<<<< HEAD
       - name: Install libbacktrace
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -240,6 +292,9 @@ jobs:
           cd libbacktrace && ./configure CFLAGS="-m32" --prefix=/usr/local/libbacktrace32 && make && sudo make install
       - name: Checkout KV
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+=======
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+>>>>>>> v9.0.4
       - name: make
         # Fast float requires C++ 32-bit libraries to compile on 64-bit ubuntu
         # machine i.e. "-cross" suffixed version. Cross-compiling c++ to 32-bit
@@ -254,6 +309,7 @@ jobs:
   build-libc-malloc:
     runs-on: ubuntu-latest
     steps:
+<<<<<<< HEAD
       - name: Install libbacktrace
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -263,6 +319,9 @@ jobs:
       - run: cd libbacktrace && ./configure && make && sudo make install
       - name: Checkout KV
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+=======
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+>>>>>>> v9.0.4
       - name: make
         run: make -j4 SERVER_CFLAGS='-Werror' MALLOC=libc USE_FAST_FLOAT=yes USE_LIBBACKTRACE=yes
 
@@ -270,6 +329,7 @@ jobs:
     runs-on: ubuntu-latest
     container: almalinux:8
     steps:
+<<<<<<< HEAD
       - name: Install libbacktrace
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -277,6 +337,11 @@ jobs:
           ref: b9e40069c0b47a722286b94eb5231f7f05c08713
           path: libbacktrace
       - name: Build libbacktrace
+=======
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: make
+>>>>>>> v9.0.4
         run: |
           dnf -y install epel-release gcc gcc-c++ make procps-ng which
           cd libbacktrace && ./configure && make && make install

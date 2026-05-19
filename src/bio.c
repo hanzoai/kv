@@ -85,7 +85,13 @@ static unsigned int bio_job_to_worker[] = {
 typedef struct {
     const char *const bio_worker_title;
     pthread_t bio_thread_id;
+<<<<<<< HEAD
     mutexQueue *bio_jobs;
+=======
+    pthread_mutex_t bio_mutex;
+    pthread_cond_t bio_newjob_cond;
+    list *bio_jobs;
+>>>>>>> v9.0.4
 } bio_worker_data;
 
 static bio_worker_data bio_workers[] = {
@@ -93,7 +99,10 @@ static bio_worker_data bio_workers[] = {
     {"bio_aof"},
     {"bio_lazy_free"},
     {"bio_rdb_save"},
+<<<<<<< HEAD
     {"bio_tls_reload"}, /* only used when BUILD_TLS=yes */
+=======
+>>>>>>> v9.0.4
 };
 static const bio_worker_data *const bio_worker_end = bio_workers + (sizeof bio_workers / sizeof *bio_workers);
 
@@ -104,7 +113,11 @@ static size_t bioWorkerNum(const bio_worker_data *const bwd) {
     return (size_t)(bwd - bio_workers);
 }
 
+<<<<<<< HEAD
 static _Atomic unsigned long bio_jobs_counter[BIO_NUM_OPS] = {0};
+=======
+static unsigned long bio_jobs_counter[BIO_NUM_OPS] = {0};
+>>>>>>> v9.0.4
 static _Thread_local size_t bio_worker_num = 0;
 
 /* This structure represents a background Job. It is only used locally to this
@@ -155,7 +168,13 @@ void bioInit(void) {
 
     /* Initialization of state vars and objects */
     for (bio_worker_data *bwd = bio_workers; bwd != bio_worker_end; ++bwd) {
+<<<<<<< HEAD
         bwd->bio_jobs = mutexQueueCreate();
+=======
+        pthread_mutex_init(&bwd->bio_mutex, NULL);
+        pthread_cond_init(&bwd->bio_newjob_cond, NULL);
+        bwd->bio_jobs = listCreate();
+>>>>>>> v9.0.4
     }
 
     /* Set the stack size as by default it may be small in some system */
@@ -180,8 +199,16 @@ void bioInit(void) {
 void bioSubmitJob(int type, bio_job *job) {
     job->header.type = type;
     bio_worker_data *const bwd = &bio_workers[bio_job_to_worker[type]];
+<<<<<<< HEAD
     mutexQueueAdd(bwd->bio_jobs, job);
     atomic_fetch_add(&bio_jobs_counter[type], 1);
+=======
+    pthread_mutex_lock(&bwd->bio_mutex);
+    listAddNodeTail(bwd->bio_jobs, job);
+    bio_jobs_counter[type]++;
+    pthread_cond_signal(&bwd->bio_newjob_cond);
+    pthread_mutex_unlock(&bwd->bio_mutex);
+>>>>>>> v9.0.4
 }
 
 void bioCreateLazyFreeJob(lazy_free_fn free_fn, int arg_count, ...) {
@@ -241,14 +268,25 @@ void bioCreateTlsReloadJob(void) {
 
 void *bioProcessBackgroundJobs(void *arg) {
     bio_worker_data *const bwd = arg;
+<<<<<<< HEAD
     sigset_t sigset;
 
     kv_set_thread_title(bwd->bio_worker_title);
+=======
+    bio_job *job;
+    sigset_t sigset;
+
+    valkey_set_thread_title(bwd->bio_worker_title);
+>>>>>>> v9.0.4
 
     serverSetCpuAffinity(server.bio_cpulist);
 
     makeThreadKillable();
 
+<<<<<<< HEAD
+=======
+    pthread_mutex_lock(&bwd->bio_mutex);
+>>>>>>> v9.0.4
     /* Block SIGALRM so we are sure that only the main thread will
      * receive the watchdog signal. */
     sigemptyset(&sigset);
@@ -260,9 +298,25 @@ void *bioProcessBackgroundJobs(void *arg) {
     bio_worker_num = bioWorkerNum(bwd);
 
     while (1) {
+<<<<<<< HEAD
         /* Keep the job in the queue until it's fully processed so cancellation
          * won't leave an untracked in-flight allocation. */
         bio_job *job = mutexQueuePeek(bwd->bio_jobs, true);
+=======
+        listNode *ln;
+
+        /* The loop always starts with the lock hold. */
+        if (listLength(bwd->bio_jobs) == 0) {
+            pthread_cond_wait(&bwd->bio_newjob_cond, &bwd->bio_mutex);
+            continue;
+        }
+        /* Get the job from the queue. */
+        ln = listFirst(bwd->bio_jobs);
+        job = ln->value;
+        /* It is now possible to unlock the background system as we know have
+         * a stand alone job structure to process.*/
+        pthread_mutex_unlock(&bwd->bio_mutex);
+>>>>>>> v9.0.4
 
         /* Process the job accordingly to its type. */
         int job_type = job->header.type;
@@ -316,12 +370,23 @@ void *bioProcessBackgroundJobs(void *arg) {
         void *removed_job = mutexQueuePop(bwd->bio_jobs, false);
         serverAssert(removed_job == job);
         zfree(job);
+<<<<<<< HEAD
         atomic_fetch_sub(&bio_jobs_counter[job_type], 1);
+=======
+
+        /* Lock again before reiterating the loop, if there are no longer
+         * jobs to process we'll block again in pthread_cond_wait(). */
+        pthread_mutex_lock(&bwd->bio_mutex);
+        listDelNode(bwd->bio_jobs, ln);
+        bio_jobs_counter[job_type]--;
+        pthread_cond_signal(&bwd->bio_newjob_cond);
+>>>>>>> v9.0.4
     }
 }
 
 /* Return the number of pending jobs of the specified type. */
 unsigned long bioPendingJobsOfType(int type) {
+<<<<<<< HEAD
     return atomic_load(&bio_jobs_counter[type]);
 }
 
@@ -330,6 +395,26 @@ void bioDrainWorker(int type) {
     while (bioPendingJobsOfType(type) > 0) {
         usleep(100);
     }
+=======
+    bio_worker_data *const bwd = &bio_workers[bio_job_to_worker[type]];
+
+    pthread_mutex_lock(&bwd->bio_mutex);
+    unsigned long val = bio_jobs_counter[type];
+    pthread_mutex_unlock(&bwd->bio_mutex);
+
+    return val;
+}
+
+/* Wait for the job queue of the worker for jobs of specified type to become empty. */
+void bioDrainWorker(int job_type) {
+    bio_worker_data *const bwd = &bio_workers[bio_job_to_worker[job_type]];
+
+    pthread_mutex_lock(&bwd->bio_mutex);
+    while (listLength(bwd->bio_jobs) > 0) {
+        pthread_cond_wait(&bwd->bio_newjob_cond, &bwd->bio_mutex);
+    }
+    pthread_mutex_unlock(&bwd->bio_mutex);
+>>>>>>> v9.0.4
 }
 
 /* Kill the running bio threads in an unclean way. This function should be

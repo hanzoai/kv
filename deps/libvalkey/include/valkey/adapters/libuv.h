@@ -152,7 +152,11 @@ static void kvLibuvSetTimeout(void *privdata, struct timeval tv) {
     }
     // updates the timeout if the timer has already started
     // or start the timer
+<<<<<<< HEAD
     uv_timer_start(&p->timer, kvLibuvTimeout, millisec, 0);
+=======
+    uv_timer_start(&p->timer, valkeyLibuvTimeout, millisec, 0);
+>>>>>>> v9.0.4
 }
 
 static void kvLibuvCleanup(void *privdata) {

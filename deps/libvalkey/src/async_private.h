@@ -29,8 +29,13 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+<<<<<<< HEAD
 #ifndef KV_ASYNC_PRIVATE_H
 #define KV_ASYNC_PRIVATE_H
+=======
+#ifndef VALKEY_ASYNC_PRIVATE_H
+#define VALKEY_ASYNC_PRIVATE_H
+>>>>>>> v9.0.4
 #include "visibility.h"
 
 #define _EL_ADD_READ(ctx)                      \
@@ -78,8 +83,14 @@ static inline void refreshTimeout(kvAsyncContext *ctx) {
     }
 }
 
+<<<<<<< HEAD
 /* Visible although private since required by libkv_tls.so */
 LIBKV_API void kvAsyncDisconnectInternal(kvAsyncContext *ac);
 LIBKV_API void kvProcessCallbacks(kvAsyncContext *ac);
+=======
+/* Visible although private since required by libvalkey_tls.so */
+LIBVALKEY_API void valkeyAsyncDisconnectInternal(valkeyAsyncContext *ac);
+LIBVALKEY_API void valkeyProcessCallbacks(valkeyAsyncContext *ac);
+>>>>>>> v9.0.4
 
 #endif /* KV_ASYNC_PRIVATE_H */

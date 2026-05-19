@@ -953,6 +953,20 @@ void addReplyError(client *c, const char *err) {
 
 /* Add error reply to the given client.
  * Supported flags:
+ * ERR_REPLY_FLAG_NO_STATS_UPDATE - indicate not to perform any error stats updates
+ * As a side effect the SDS string is freed. */
+void addReplyErrorSdsExSafe(client *c, sds err, int flags) {
+    /* Trim any newlines at the end (ones will be added by addReplyErrorLength) */
+    err = sdstrim(err, "\r\n");
+    /* Make sure there are no newlines in the middle of the string, otherwise
+     * invalid protocol is emitted. */
+    err = sdsmapchars(err, "\r\n", "  ", 2);
+    addReplyErrorSdsEx(c, err, flags);
+}
+
+/* Add error reply to the given client.
+ * See addReplyErrorLength for expectations from the input string.
+ * Supported flags:
  * * ERR_REPLY_FLAG_NO_STATS_UPDATE - indicate not to perform any error stats updates */
 void addReplyErrorSdsEx(client *c, sds err, int flags) {
     addReplyErrorLength(c, err, sdslen(err));
@@ -1422,7 +1436,11 @@ void addReplyBulk(client *c, robj *obj) {
          * We determine per-reply if tracking is enabled by checking the config in the main thread. */
         if (server.commandlog[COMMANDLOG_TYPE_LARGE_REPLY].threshold != -1) {
             serverAssert(obj->encoding == OBJ_ENCODING_RAW);
+<<<<<<< HEAD
             size_t str_len = sdslen(objectGetVal(obj));
+=======
+            size_t str_len = sdslen(obj->ptr);
+>>>>>>> v9.0.4
             uint32_t num_len = digits10(str_len);
             /* RESP encodes bulk strings as $<length>\r\n<data>\r\n */
             c->net_output_bytes_curr_cmd += (num_len + 3); /* $<length>\r\n */
@@ -3097,12 +3115,14 @@ parseResult handleParseResults(client *c) {
         /* in case the client's query was an empty line we will ignore it and proceed to process the rest of the buffer
          * if any */
         resetClient(c);
+        c->reqtype = 0;
         return PARSE_OK;
     }
 
     if (c->read_flags & READ_FLAGS_PARSING_NEGATIVE_MBULK_LEN) {
         /* Multibulk processing could see a <= 0 length. */
         resetClient(c);
+        c->reqtype = 0;
         return PARSE_OK;
     }
 
@@ -3551,11 +3571,14 @@ static int parseMultibulk(client *c,
 
         /* Buffer should also contain \n */
         if (newline - (c->querybuf + c->qb_pos) > (ssize_t)(sdslen(c->querybuf) - c->qb_pos - 2)) return 0;
+<<<<<<< HEAD
 
         /* Check that what follows \r is a real \n */
         if (unlikely(newline[1] != '\n')) {
             return READ_FLAGS_ERROR_INVALID_CRLF;
         }
+=======
+>>>>>>> v9.0.4
 
         /* We know for sure there is a whole line since newline != NULL,
          * so go ahead and find out the multi bulk length. */
@@ -3634,11 +3657,14 @@ static int parseMultibulk(client *c,
 
             if (c->querybuf[c->qb_pos] != '$') {
                 return READ_FLAGS_ERROR_MBULK_UNEXPECTED_CHARACTER;
+<<<<<<< HEAD
             }
 
             /* Check that what follows \r is a real \n */
             if (unlikely(newline[1] != '\n')) {
                 return READ_FLAGS_ERROR_INVALID_CRLF;
+=======
+>>>>>>> v9.0.4
             }
 
             size_t bulklen_slen = newline - (c->querybuf + c->qb_pos + 1);
@@ -3694,12 +3720,15 @@ static int parseMultibulk(client *c,
                 *argv_len = min(*argv_len < INT_MAX / 2 ? (*argv_len) * 2 : INT_MAX,
                                 *argc + c->multibulklen);
                 *argv = zrealloc(*argv, sizeof(robj *) * (*argv_len));
+<<<<<<< HEAD
             }
 
             /* Check that what follows argv is a real \r\n */
             if (unlikely(c->querybuf[c->qb_pos + c->bulklen] != '\r' ||
                          c->querybuf[c->qb_pos + c->bulklen + 1] != '\n')) {
                 return READ_FLAGS_ERROR_INVALID_CRLF;
+=======
+>>>>>>> v9.0.4
             }
 
             /* Optimization: if a non-replicated client's buffer contains JUST our bulk element
@@ -3972,14 +4001,22 @@ static int addKeysToIncrFindBatch(client *c,
         int kvstore_idx = 0;
         if (server.cluster_enabled) {
             robj *first_key = argv[result.keys[0].pos];
+<<<<<<< HEAD
             kvstore_idx = keyHashSlot(objectGetVal(first_key), sdslen(objectGetVal(first_key)));
+=======
+            kvstore_idx = keyHashSlot(first_key->ptr, sdslen(first_key->ptr));
+>>>>>>> v9.0.4
         }
         hashtable *ht = kvstoreGetHashtable(c->db->keys, kvstore_idx);
         if (ht != NULL) {
             for (int i = 0; i < numkeys && num < max; i++) {
                 hashtableIncrementalFindState *incr_state = &incr_states[num++];
                 robj *keyobj = argv[result.keys[i].pos];
+<<<<<<< HEAD
                 hashtableIncrementalFindInit(incr_state, ht, objectGetVal(keyobj));
+=======
+                hashtableIncrementalFindInit(incr_state, ht, keyobj->ptr);
+>>>>>>> v9.0.4
             }
         }
     }
@@ -4048,7 +4085,11 @@ static void prefetchCommandQueueKeys(client *c) {
             /* TODO? Prefetch all types and encodings except OBJ_ENCODING_EMBSTR
              * and OBJ_ENCODING_INT. */
             if (val->encoding == OBJ_ENCODING_RAW && val->type == OBJ_STRING) {
+<<<<<<< HEAD
                 kv_prefetch(objectGetVal(val));
+=======
+                valkey_prefetch(val->ptr);
+>>>>>>> v9.0.4
             }
         }
     }
@@ -4667,23 +4708,39 @@ static int parseClientFiltersOrReply(client *c, int index, clientFilter *filter)
 
             filter->idle = idle_time;
             index += 2;
+<<<<<<< HEAD
         } else if (!strcasecmp(objectGetVal(c->argv[index]), "flags") && moreargs) {
+=======
+        } else if (!strcasecmp(c->argv[index]->ptr, "flags") && moreargs) {
+>>>>>>> v9.0.4
             if (filter->flags) {
                 sdsfree(filter->flags);
                 filter->flags = NULL;
             }
+<<<<<<< HEAD
             filter->flags = sdsnew(objectGetVal(c->argv[index + 1]));
+=======
+            filter->flags = sdsnew(c->argv[index + 1]->ptr);
+>>>>>>> v9.0.4
             if (validateClientFlagFilter(filter->flags) == C_ERR) {
                 addReplyErrorFormat(c, "Unknown flags found in the provided filter: %s", filter->flags);
                 return C_ERR;
             }
             index += 2;
+<<<<<<< HEAD
         } else if (!strcasecmp(objectGetVal(c->argv[index]), "not-flags") && moreargs) {
+=======
+        } else if (!strcasecmp(c->argv[index]->ptr, "not-flags") && moreargs) {
+>>>>>>> v9.0.4
             if (filter->not_flags) {
                 sdsfree(filter->not_flags);
                 filter->not_flags = NULL;
             }
+<<<<<<< HEAD
             filter->not_flags = sdsnew(objectGetVal(c->argv[index + 1]));
+=======
+            filter->not_flags = sdsnew(c->argv[index + 1]->ptr);
+>>>>>>> v9.0.4
             if (validateClientFlagFilter(filter->not_flags) == C_ERR) {
                 addReplyErrorFormat(c, "Unknown flags found in the NOT-FLAGS filter: %s", filter->not_flags);
                 return C_ERR;
@@ -4695,7 +4752,11 @@ static int parseClientFiltersOrReply(client *c, int index, clientFilter *filter)
         } else if (!strcasecmp(objectGetVal(c->argv[index]), "not-name") && moreargs) {
             filter->not_name = objectGetVal(c->argv[index + 1]);
             index += 2;
+<<<<<<< HEAD
         } else if (!strcasecmp(objectGetVal(c->argv[index]), "lib-name") && moreargs) {
+=======
+        } else if (!strcasecmp(c->argv[index]->ptr, "lib-name") && moreargs) {
+>>>>>>> v9.0.4
             if (filter->lib_name) {
                 decrRefCount(filter->lib_name);
                 filter->lib_name = NULL;
@@ -4703,7 +4764,11 @@ static int parseClientFiltersOrReply(client *c, int index, clientFilter *filter)
             filter->lib_name = c->argv[index + 1];
             incrRefCount(filter->lib_name);
             index += 2;
+<<<<<<< HEAD
         } else if (!strcasecmp(objectGetVal(c->argv[index]), "not-lib-name") && moreargs) {
+=======
+        } else if (!strcasecmp(c->argv[index]->ptr, "not-lib-name") && moreargs) {
+>>>>>>> v9.0.4
             if (filter->not_lib_name) {
                 decrRefCount(filter->not_lib_name);
                 filter->not_lib_name = NULL;
@@ -4711,7 +4776,11 @@ static int parseClientFiltersOrReply(client *c, int index, clientFilter *filter)
             filter->not_lib_name = c->argv[index + 1];
             incrRefCount(filter->not_lib_name);
             index += 2;
+<<<<<<< HEAD
         } else if (!strcasecmp(objectGetVal(c->argv[index]), "lib-ver") && moreargs) {
+=======
+        } else if (!strcasecmp(c->argv[index]->ptr, "lib-ver") && moreargs) {
+>>>>>>> v9.0.4
             if (filter->lib_ver) {
                 decrRefCount(filter->lib_ver);
                 filter->lib_ver = NULL;
@@ -4719,7 +4788,11 @@ static int parseClientFiltersOrReply(client *c, int index, clientFilter *filter)
             filter->lib_ver = c->argv[index + 1];
             incrRefCount(filter->lib_ver);
             index += 2;
+<<<<<<< HEAD
         } else if (!strcasecmp(objectGetVal(c->argv[index]), "not-lib-ver") && moreargs) {
+=======
+        } else if (!strcasecmp(c->argv[index]->ptr, "not-lib-ver") && moreargs) {
+>>>>>>> v9.0.4
             if (filter->not_lib_ver) {
                 decrRefCount(filter->not_lib_ver);
                 filter->not_lib_ver = NULL;
@@ -4749,41 +4822,71 @@ static int parseClientFiltersOrReply(client *c, int index, clientFilter *filter)
             }
             filter->not_db_number = not_db_id;
             index += 2;
+<<<<<<< HEAD
         } else if (!strcasecmp(objectGetVal(c->argv[index]), "capa") && moreargs) {
+=======
+        } else if (!strcasecmp(c->argv[index]->ptr, "capa") && moreargs) {
+>>>>>>> v9.0.4
             if (filter->capa) {
                 sdsfree(filter->capa);
                 filter->capa = NULL;
             }
+<<<<<<< HEAD
             filter->capa = sdsnew(objectGetVal(c->argv[index + 1]));
+=======
+            filter->capa = sdsnew(c->argv[index + 1]->ptr);
+>>>>>>> v9.0.4
             if (validateClientCapaFilter(filter->capa) == C_ERR) {
                 addReplyErrorFormat(c, "Unknown capa found in the provided filter: %s", filter->capa);
                 return C_ERR;
             }
             index += 2;
+<<<<<<< HEAD
         } else if (!strcasecmp(objectGetVal(c->argv[index]), "not-capa") && moreargs) {
+=======
+        } else if (!strcasecmp(c->argv[index]->ptr, "not-capa") && moreargs) {
+>>>>>>> v9.0.4
             if (filter->not_capa) {
                 sdsfree(filter->not_capa);
                 filter->not_capa = NULL;
             }
+<<<<<<< HEAD
             filter->not_capa = sdsnew(objectGetVal(c->argv[index + 1]));
+=======
+            filter->not_capa = sdsnew(c->argv[index + 1]->ptr);
+>>>>>>> v9.0.4
             if (validateClientCapaFilter(filter->not_capa) == C_ERR) {
                 addReplyErrorFormat(c, "Unknown capa found in the NOT-CAPA filter: %s", filter->not_capa);
                 return C_ERR;
             }
             index += 2;
+<<<<<<< HEAD
         } else if (!strcasecmp(objectGetVal(c->argv[index]), "ip") && moreargs) {
+=======
+        } else if (!strcasecmp(c->argv[index]->ptr, "ip") && moreargs) {
+>>>>>>> v9.0.4
             if (filter->ip) {
                 sdsfree(filter->ip);
                 filter->ip = NULL;
             }
+<<<<<<< HEAD
             filter->ip = sdsnew(objectGetVal(c->argv[index + 1]));
             index += 2;
         } else if (!strcasecmp(objectGetVal(c->argv[index]), "not-ip") && moreargs) {
+=======
+            filter->ip = sdsnew(c->argv[index + 1]->ptr);
+            index += 2;
+        } else if (!strcasecmp(c->argv[index]->ptr, "not-ip") && moreargs) {
+>>>>>>> v9.0.4
             if (filter->not_ip) {
                 sdsfree(filter->not_ip);
                 filter->not_ip = NULL;
             }
+<<<<<<< HEAD
             filter->not_ip = sdsnew(objectGetVal(c->argv[index + 1]));
+=======
+            filter->not_ip = sdsnew(c->argv[index + 1]->ptr);
+>>>>>>> v9.0.4
             index += 2;
         } else {
             addReplyErrorObject(c, shared.syntaxerr);

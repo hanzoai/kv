@@ -80,7 +80,11 @@ test "SENTINEL SIMULATE-FAILURE HELP list supported flags" {
 
 test "Basic failover works if the primary is down" {
     # Explicitly forbid the FAILOVER command to ensure backward compatibility with
+<<<<<<< HEAD
     # ACLs that were documented for KV < 9.0
+=======
+    # ACLs that were documented for Valkey < 9.0
+>>>>>>> v9.0.4
     configure_sentinel_user_acl $::user $::password 0
 
     set old_port [RPort $master_id]

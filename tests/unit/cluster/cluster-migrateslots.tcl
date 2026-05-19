@@ -1420,7 +1420,11 @@ start_cluster 3 3 {tags {logreqres:skip external:skip cluster} overrides {cluste
         assert_does_not_resync {
             # Start with a BLPOP that will block for the duration of the migration,
             # BLPOP is expected to block since the list does not exist yet
+<<<<<<< HEAD
             set blpop_client [kv_deferring_client_by_addr [srv 0 host] [srv 0 port]]
+=======
+            set blpop_client [valkey_deferring_client_by_addr [srv 0 host] [srv 0 port]]
+>>>>>>> v9.0.4
             $blpop_client BLPOP $0_slot_tag:mylist 0
             $blpop_client flush
             wait_for_blocked_clients_count 1 100 10 0
@@ -1435,12 +1439,20 @@ start_cluster 3 3 {tags {logreqres:skip external:skip cluster} overrides {cluste
             assert_match "write" [s -0 paused_actions]
 
             # While we are blocked, execute a SET on another client
+<<<<<<< HEAD
             set set_client [kv_deferring_client_by_addr [srv 0 host] [srv 0 port]]
+=======
+            set set_client [valkey_deferring_client_by_addr [srv 0 host] [srv 0 port]]
+>>>>>>> v9.0.4
             $set_client SET $0_slot_tag:test_key test_value
             $set_client flush
 
             # Also execute a SET that can be served after the migration
+<<<<<<< HEAD
             set set_client_2 [kv_deferring_client_by_addr [srv 0 host] [srv 0 port]]
+=======
+            set set_client_2 [valkey_deferring_client_by_addr [srv 0 host] [srv 0 port]]
+>>>>>>> v9.0.4
             $set_client_2 SET $1_slot_tag:test_key test_value
             $set_client_2 flush
 
@@ -2432,6 +2444,7 @@ start_cluster 3 3 {tags {logreqres:skip external:skip cluster aofrw} overrides {
         assert_match "OK" [R 2 FLUSHDB SYNC]
     }
 }
+<<<<<<< HEAD
 
 start_cluster 3 0 {tags {logreqres:skip external:skip cluster} overrides {cluster-require-full-coverage no slot-migration-max-failover-repl-bytes 0}} {
     test "Slot migration remaining_repl_size on the source node" {
@@ -2472,3 +2485,5 @@ start_cluster 3 0 {tags {logreqres:skip external:skip cluster} overrides {cluste
         assert_equal [dict get $import_migration remaining_repl_size] 0
     }
 }
+=======
+>>>>>>> v9.0.4

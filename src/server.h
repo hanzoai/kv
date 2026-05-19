@@ -112,7 +112,11 @@ typedef struct serverObject robj;
 #include "crc64.h"
 
 struct hdr_histogram;
+<<<<<<< HEAD
 struct KVModule;
+=======
+struct ValkeyModule;
+>>>>>>> v9.0.4
 
 
 /* helpers */
@@ -1468,7 +1472,11 @@ struct sharedObjectsStruct {
         *loadingerr_variants[2], *slowevalerr_variants[2], *slowscripterr_variants[2], *slowmoduleerr_variants[2],
         *bgsaveerr_variants[2],
         *execaborterr, *noautherr, *noreplicaserr, *busykeyerr, *oomerr, *plus, *messagebulk, *pmessagebulk,
+<<<<<<< HEAD
         *subscribebulk, *unsubscribebulk, *psubscribebulk, *punsubscribebulk, *del, *unlink, *rpop, *lpop, *lpush, *zadd,
+=======
+        *subscribebulk, *unsubscribebulk, *psubscribebulk, *punsubscribebulk, *del, *unlink, *rpop, *lpop, *lpush,
+>>>>>>> v9.0.4
         *rpoplpush, *lmove, *blmove, *zpopmin, *zpopmax, *emptyscan, *multi, *exec, *left, *right, *hset, *hsetex, *hdel, *hpexpireat, *hpersist, *srem,
         *xgroup, *xclaim, *script, *replconf, *eval, *cluster, *syncslots, *persist, *set, *pexpireat, *pexpire, *time, *pxat, *absttl,
         *retrycount, *force, *justid, *entriesread, *lastid, *ping, *setid, *keepttl, *load, *createconsumer, *getack,
@@ -2870,7 +2878,10 @@ void dictVanillaFree(void *val);
 #define READ_FLAGS_NO_KEYS (1 << 19)
 #define READ_FLAGS_CROSSSLOT (1 << 20)
 #define READ_FLAGS_PREFETCHED (1 << 21)
+<<<<<<< HEAD
 #define READ_FLAGS_ERROR_INVALID_CRLF (1 << 22)
+=======
+>>>>>>> v9.0.4
 
 /* Write flags for various write errors and states */
 #define WRITE_FLAGS_WRITE_ERROR (1 << 0)
@@ -2926,6 +2937,7 @@ void addReplyOrErrorObject(client *c, robj *reply);
 void afterErrorReply(client *c, const char *s, size_t len, int flags);
 void addReplyErrorFormatInternal(client *c, int flags, const char *fmt, va_list ap);
 void addReplyErrorSdsEx(client *c, sds err, int flags);
+void addReplyErrorSdsExSafe(client *c, sds err, int flags);
 void addReplyErrorSds(client *c, sds err);
 void addReplyErrorSdsSafe(client *c, sds err);
 void addReplyError(client *c, const char *err);
@@ -3280,7 +3292,11 @@ int isMutuallyExclusiveChildType(int type);
 extern rax *Users;
 extern user *DefaultUser;
 void ACLInit(void);
+<<<<<<< HEAD
 int ACLModuleHasCommandRules(const struct KVModule *module, sds *rule_out);
+=======
+int ACLModuleHasCommandRules(const struct ValkeyModule *module, sds *rule_out);
+>>>>>>> v9.0.4
 /* Return values for ACLCheckAllPerm(). */
 #define ACL_OK 0                    /* Permission granted */
 #define ACL_DENIED_DB 1             /* Database access denied */

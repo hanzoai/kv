@@ -24,8 +24,13 @@ jobs:
           version: 1.0
       - name: Install KV for non-cluster tests
         run: |
+<<<<<<< HEAD
           git clone --depth 1 --branch ${{ matrix.kv-version }} https://github.com/kv-io/kv.git
           cd kv && BUILD_TLS=yes make install
+=======
+          git clone --depth 1 --branch ${{ matrix.valkey-version }} https://github.com/valkey-io/valkey.git
+          cd valkey && BUILD_TLS=yes make install
+>>>>>>> v9.0.4
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - name: Create build folder
         run: cmake -E make_directory build

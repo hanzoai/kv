@@ -63,9 +63,15 @@ vk_static_assert(KV_OPT_USE_CLUSTER_NODES > KV_OPT_LAST_SA_OPTION);
 // standard KV errors
 #define KV_ERR_CLUSTER_TOO_MANY_RETRIES 100
 
+<<<<<<< HEAD
 #define KV_COMMAND_CLUSTER_NODES "CLUSTER NODES"
 #define KV_COMMAND_CLUSTER_SLOTS "CLUSTER SLOTS"
 #define KV_COMMAND_ASKING "ASKING"
+=======
+#define VALKEY_COMMAND_CLUSTER_NODES "CLUSTER NODES"
+#define VALKEY_COMMAND_CLUSTER_SLOTS "CLUSTER SLOTS"
+#define VALKEY_COMMAND_ASKING "ASKING"
+>>>>>>> v9.0.4
 
 #define CLUSTER_DEFAULT_MAX_RETRY_COUNT 5
 #define NO_RETRY -1
@@ -207,10 +213,17 @@ static inline void kvClusterClearError(kvClusterContext *cc) {
     cc->errstr[0] = '\0';
 }
 
+<<<<<<< HEAD
 static replyErrorType getReplyErrorType(kvReply *reply) {
     assert(reply);
 
     if (reply->type != KV_REPLY_ERROR)
+=======
+static replyErrorType getReplyErrorType(valkeyReply *reply) {
+    assert(reply);
+
+    if (reply->type != VALKEY_REPLY_ERROR)
+>>>>>>> v9.0.4
         return CLUSTER_NO_ERROR;
     if (memcmp(reply->str, "MOVED", 5) == 0)
         return CLUSTER_ERR_MOVED;
@@ -791,9 +804,15 @@ static int parse_cluster_nodes_line(kvClusterContext *cc, kvContext *c, char *li
 
     /* Find the required port separator. */
     if ((p = strrchr(addr, ':')) == NULL) {
+<<<<<<< HEAD
         kvClusterSetError(cc, KV_ERR_OTHER, "Invalid node address");
         freeKVClusterNode(node);
         return KV_ERR;
+=======
+        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "Invalid node address");
+        freeValkeyClusterNode(node);
+        return VALKEY_ERR;
+>>>>>>> v9.0.4
     }
 
     /* Get the port (skip the found port separator). */
@@ -1028,7 +1047,11 @@ static int clusterUpdateRouteHandleReply(kvClusterContext *cc,
     return updateNodesAndSlotmap(cc, nodes);
 }
 
+<<<<<<< HEAD
 /* Update known cluster nodes with a new collection of kvClusterNodes.
+=======
+/* Update known cluster nodes with a new collection of valkeyClusterNodes.
+>>>>>>> v9.0.4
  * Will also update the slot-to-node lookup table for the new nodes. */
 static int updateNodesAndSlotmap(kvClusterContext *cc, dict *nodes) {
     if (nodes == NULL) {
@@ -1120,12 +1143,20 @@ error:
     return KV_ERR;
 }
 
+<<<<<<< HEAD
 int kvClusterUpdateSlotmap(kvClusterContext *cc) {
+=======
+int valkeyClusterUpdateSlotmap(valkeyClusterContext *cc) {
+>>>>>>> v9.0.4
     if (cc == NULL) {
         return KV_ERR;
     }
 
+<<<<<<< HEAD
     kvClusterNode *node;
+=======
+    valkeyClusterNode *node;
+>>>>>>> v9.0.4
     dictEntry *de;
 
     dictIterator di;
@@ -1135,6 +1166,7 @@ int kvClusterUpdateSlotmap(kvClusterContext *cc) {
         node = dictGetVal(de);
 
         /* Use existing connection or (re)connect to the node. */
+<<<<<<< HEAD
         kvContext *c = kvClusterGetKVContext(cc, node);
         if (c == NULL)
             continue;
@@ -1149,6 +1181,22 @@ int kvClusterUpdateSlotmap(kvClusterContext *cc) {
     }
 
     return KV_ERR;
+=======
+        valkeyContext *c = valkeyClusterGetValkeyContext(cc, node);
+        if (c == NULL)
+            continue;
+        if (clusterUpdateRouteSendCommand(cc, c) != VALKEY_OK ||
+            clusterUpdateRouteHandleReply(cc, c) != VALKEY_OK) {
+            valkeyFree(node->con);
+            node->con = NULL;
+            continue;
+        }
+        valkeyClusterClearError(cc);
+        return VALKEY_OK;
+    }
+
+    return VALKEY_ERR;
+>>>>>>> v9.0.4
 }
 
 static int kvClusterContextInit(kvClusterContext *cc,
@@ -1297,9 +1345,15 @@ static int kvClusterSetOptionAddNode(kvClusterContext *cc, const char *addr) {
         /* Find the last occurrence of the port separator since
          * IPv6 addresses can contain ':' */
         if ((p = strrchr(addr, ':')) == NULL) {
+<<<<<<< HEAD
             kvClusterSetError(cc, KV_ERR_OTHER,
                                   "server address is incorrect, port separator missing.");
             return KV_ERR;
+=======
+            valkeyClusterSetError(cc, VALKEY_ERR_OTHER,
+                                  "server address is incorrect, port separator missing.");
+            return VALKEY_ERR;
+>>>>>>> v9.0.4
         }
         // p includes separator
 
@@ -1750,7 +1804,11 @@ static kvClusterNode *getNodeFromRedirectReply(kvClusterContext *cc,
     /* Find the last occurrence of the port separator since
      * IPv6 addresses can contain ':' */
     if ((p = strrchr(addr, ':')) == NULL) {
+<<<<<<< HEAD
         kvClusterSetError(cc, KV_ERR_OTHER, "Invalid address in redirect");
+=======
+        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "Invalid address in redirect");
+>>>>>>> v9.0.4
         return NULL;
     }
     /* Get the port (skip the found port separator). */
@@ -1836,9 +1894,15 @@ oom:
 static void *kv_cluster_command_execute(kvClusterContext *cc,
                                             struct cmd *command) {
     void *reply = NULL;
+<<<<<<< HEAD
     kvClusterNode *node;
     kvContext *c = NULL;
     kvContext *c_updating_route = NULL;
+=======
+    valkeyClusterNode *node;
+    valkeyContext *c = NULL;
+    valkeyContext *c_updating_route = NULL;
+>>>>>>> v9.0.4
 
 retry:
 
@@ -2738,14 +2802,24 @@ static int kvClusterAsyncConnect(kvClusterAsyncContext *acc) {
         dictInitIterator(&di, acc->cc.nodes);
         dictEntry *de;
         while ((de = dictNext(&di)) != NULL) {
+<<<<<<< HEAD
             kvClusterNode *node = dictGetVal(de);
             if (node->con) {
                 kvFree(node->con);
+=======
+            valkeyClusterNode *node = dictGetVal(de);
+            if (node->con) {
+                valkeyFree(node->con);
+>>>>>>> v9.0.4
                 node->con = NULL;
             }
         }
 
+<<<<<<< HEAD
         return KV_OK;
+=======
+        return VALKEY_OK;
+>>>>>>> v9.0.4
     }
     /* Use non-blocking initial slotmap update. */
     return updateSlotMapAsync(acc, NULL /*any node*/);
@@ -2898,10 +2972,17 @@ static void kvClusterAsyncCallback(kvAsyncContext *ac, void *r,
     int ret;
     kvReply *reply = r;
     cluster_async_data *cad = privdata;
+<<<<<<< HEAD
     kvClusterAsyncContext *acc;
     kvClusterContext *cc;
     kvAsyncContext *ac_retry = NULL;
     kvClusterNode *node;
+=======
+    valkeyClusterAsyncContext *acc;
+    valkeyClusterContext *cc;
+    valkeyAsyncContext *ac_retry = NULL;
+    valkeyClusterNode *node;
+>>>>>>> v9.0.4
     struct cmd *command;
 
     if (cad == NULL) {

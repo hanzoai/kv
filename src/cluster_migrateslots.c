@@ -343,9 +343,15 @@ cleanup:
 }
 
 void fireModuleSlotMigrationEvent(slotMigrationJob *job, int subevent) {
+<<<<<<< HEAD
     KVModuleAtomicSlotMigrationInfo info = KVMODULE_ATOMICSLOTMIGRATIONINFO_INITIALIZER_V1;
     info.num_slot_ranges = job->slot_ranges->len;
     info.slot_ranges = zmalloc(sizeof(KVModuleSlotRange) * info.num_slot_ranges);
+=======
+    ValkeyModuleAtomicSlotMigrationInfo info = VALKEYMODULE_ATOMICSLOTMIGRATIONINFO_INITIALIZER_V1;
+    info.num_slot_ranges = job->slot_ranges->len;
+    info.slot_ranges = zmalloc(sizeof(ValkeyModuleSlotRange) * info.num_slot_ranges);
+>>>>>>> v9.0.4
     for (uint32_t i = 0; i < info.num_slot_ranges; i++) {
         listNode *ln = listIndex(job->slot_ranges, i);
         slotRange *range = (slotRange *)ln->value;
@@ -353,13 +359,21 @@ void fireModuleSlotMigrationEvent(slotMigrationJob *job, int subevent) {
         info.slot_ranges[i].end = range->end_slot;
     }
     memcpy(info.job_name, job->name, CLUSTER_NAMELEN);
+<<<<<<< HEAD
     moduleFireServerEvent(KVMODULE_EVENT_ATOMIC_SLOT_MIGRATION, subevent, &info);
+=======
+    moduleFireServerEvent(VALKEYMODULE_EVENT_ATOMIC_SLOT_MIGRATION, subevent, &info);
+>>>>>>> v9.0.4
     zfree(info.slot_ranges);
 }
 
 /* Save the active slot imports to the RDB file. The import job name and the
  * slot ranges are saved. */
+<<<<<<< HEAD
 int clusterRDBSaveSlotImports(rio *rdb, int rdbver) {
+=======
+int clusterRDBSaveSlotImports(rio *rdb) {
+>>>>>>> v9.0.4
     if (!server.cluster_enabled) return C_OK;
     if (listLength(server.cluster->slot_migration_jobs) == 0) return C_OK;
     listNode *ln;
@@ -371,10 +385,13 @@ int clusterRDBSaveSlotImports(rio *rdb, int rdbver) {
         slotMigrationJob *job = ln->value;
         if (isSlotMigrationJobFinished(job)) continue;
         if (job->type == SLOT_MIGRATION_EXPORT) continue;
+<<<<<<< HEAD
         if (rdbver < 80) {
             serverLog(LL_WARNING, "Can't store slot migrations in RDB version %d", rdbver);
             return C_ERR;
         }
+=======
+>>>>>>> v9.0.4
         if (rdbSaveType(rdb, RDB_OPCODE_SLOT_IMPORT) < 0) return C_ERR;
         if (rdbSaveRawString(rdb, (unsigned char *)job->name, CLUSTER_NAMELEN) < 0) return C_ERR;
         if (rdbSaveLen(rdb, listLength(job->slot_ranges)) < 0) return C_ERR;
@@ -406,7 +423,11 @@ int clusterRDBLoadSlotImport(rio *rdb) {
         slot_range->end_slot = end_slot;
         listAddNodeTail(slot_ranges, slot_range);
     }
+<<<<<<< HEAD
     slotMigrationJob *new_import = createSlotImportJob(NULL, NULL, objectGetVal(job_name), slot_ranges);
+=======
+    slotMigrationJob *new_import = createSlotImportJob(NULL, NULL, job_name->ptr, slot_ranges);
+>>>>>>> v9.0.4
     listAddNodeTail(server.cluster->slot_migration_jobs, new_import);
     decrRefCount(job_name);
     return C_OK;
@@ -542,7 +563,12 @@ void clusterCommandSyncSlotsEstablish(client *c) {
         return;
     }
 
+<<<<<<< HEAD
     /* Order agnostic. */
+=======
+    /* Order agnostic. We skip unknown key/value pairs forwards
+     * compatibility. */
+>>>>>>> v9.0.4
     bool is_tracking_only = c->flag.primary || c->id == CLIENT_ID_AOF;
     int i = 3;
     while (i < c->argc) {
@@ -560,7 +586,11 @@ void clusterCommandSyncSlotsEstablish(client *c) {
                 i += 2;
                 continue;
             }
+<<<<<<< HEAD
             source_node_name = objectGetVal(c->argv[i + 1]);
+=======
+            source_node_name = c->argv[i + 1]->ptr;
+>>>>>>> v9.0.4
             source_node = clusterLookupNode(source_node_name, CLUSTER_NAMELEN);
             i += 2;
 
@@ -628,7 +658,11 @@ void clusterCommandSyncSlotsEstablish(client *c) {
     }
 
     slotMigrationJob *job = createSlotImportJob(c, source_node, name, slot_ranges);
+<<<<<<< HEAD
     fireModuleSlotMigrationEvent(job, KVMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_STARTED);
+=======
+    fireModuleSlotMigrationEvent(job, VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_STARTED);
+>>>>>>> v9.0.4
     listAddNodeHead(server.cluster->slot_migration_jobs, job);
 
     clusterDoBeforeSleep(CLUSTER_TODO_HANDLE_SLOT_MIGRATION);
@@ -726,11 +760,16 @@ void clusterCommandSyncSlotsFinish(client *c) {
     char *message = NULL;
     int i = 3;
     while (i < c->argc) {
+<<<<<<< HEAD
         if (!strcasecmp(objectGetVal(c->argv[i]), "state")) {
+=======
+        if (!strcasecmp(c->argv[i]->ptr, "state")) {
+>>>>>>> v9.0.4
             if (state || i + 1 >= c->argc) {
                 addReplyErrorObject(c, shared.syntaxerr);
                 return;
             }
+<<<<<<< HEAD
             state = objectGetVal(c->argv[i + 1]);
             i += 2;
             continue;
@@ -746,11 +785,32 @@ void clusterCommandSyncSlotsFinish(client *c) {
             continue;
         }
         if (!strcasecmp(objectGetVal(c->argv[i]), "message")) {
+=======
+            state = c->argv[i + 1]->ptr;
+            i += 2;
+            continue;
+        }
+        if (!strcasecmp(c->argv[i]->ptr, "name")) {
+            if (name || i + 1 >= c->argc ||
+                sdslen(c->argv[i + 1]->ptr) != CLUSTER_NAMELEN) {
+                addReplyErrorObject(c, shared.syntaxerr);
+                return;
+            }
+            name = c->argv[i + 1]->ptr;
+            i += 2;
+            continue;
+        }
+        if (!strcasecmp(c->argv[i]->ptr, "message")) {
+>>>>>>> v9.0.4
             if (message || i + 1 >= c->argc) {
                 addReplyErrorObject(c, shared.syntaxerr);
                 return;
             }
+<<<<<<< HEAD
             message = objectGetVal(c->argv[i + 1]);
+=======
+            message = c->argv[i + 1]->ptr;
+>>>>>>> v9.0.4
             i += 2;
             continue;
         }
@@ -1217,6 +1277,10 @@ void clusterCommandMigrateSlots(client *c) {
             addReplyError(c, "Target node can not be this node.");
             goto cleanup;
         }
+        if (target_node == server.cluster->myself) {
+            addReplyError(c, "Target node can not be this node.");
+            goto cleanup;
+        }
         curr_index++;
 
         slotMigrationJob *job = createSlotExportJob(target_node, slot_ranges);
@@ -1237,7 +1301,11 @@ void clusterCommandMigrateSlots(client *c) {
                   "Slot migration initiated through CLUSTER MIGRATESLOTS "
                   "command: %s (user request from '%s')",
                   job->description, client_info);
+<<<<<<< HEAD
         fireModuleSlotMigrationEvent(job, KVMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_STARTED);
+=======
+        fireModuleSlotMigrationEvent(job, VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_STARTED);
+>>>>>>> v9.0.4
         proceedWithSlotMigration(job);
     }
     listSetFreeMethod(new_slot_migrations, NULL);
@@ -1620,7 +1688,11 @@ int slotExportJobBeginSnapshotToTargetSocket(slotMigrationJob *job) {
          * get a write error and exit. */
         close(server.slot_migration_pipe_read);
 
+<<<<<<< HEAD
         serverSetProcTitle("kv-slot-migration-to-target");
+=======
+        serverSetProcTitle("valkey-slot-migration-to-target");
+>>>>>>> v9.0.4
         serverSetCpuAffinity(server.bgsave_cpulist);
 
         int retval = childSnapshotForSyncSlot(&aof, job);
@@ -2343,6 +2415,7 @@ void finishSlotMigrationJob(slotMigrationJob *job,
 
     if (job->type == SLOT_MIGRATION_EXPORT) {
         if (state == SLOT_MIGRATION_JOB_SUCCESS) {
+<<<<<<< HEAD
             fireModuleSlotMigrationEvent(job, KVMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_COMPLETED);
         } else {
             fireModuleSlotMigrationEvent(job, KVMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_ABORTED);
@@ -2352,6 +2425,17 @@ void finishSlotMigrationJob(slotMigrationJob *job,
             fireModuleSlotMigrationEvent(job, KVMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_COMPLETED);
         } else {
             fireModuleSlotMigrationEvent(job, KVMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_ABORTED);
+=======
+            fireModuleSlotMigrationEvent(job, VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_COMPLETED);
+        } else {
+            fireModuleSlotMigrationEvent(job, VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_ABORTED);
+        }
+    } else {
+        if (state == SLOT_MIGRATION_JOB_SUCCESS) {
+            fireModuleSlotMigrationEvent(job, VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_COMPLETED);
+        } else {
+            fireModuleSlotMigrationEvent(job, VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_ABORTED);
+>>>>>>> v9.0.4
         }
     }
 }
@@ -2388,7 +2472,11 @@ void clusterCommandGetSlotMigrations(client *c) {
     listRewind(server.cluster->slot_migration_jobs, &li);
     while ((ln = listNext(&li)) != NULL) {
         slotMigrationJob *job = ln->value;
+<<<<<<< HEAD
         addReplyMapLen(c, job->is_tracking_only ? 10 : 12);
+=======
+        addReplyMapLen(c, job->is_tracking_only ? 9 : 11);
+>>>>>>> v9.0.4
         addReplyBulkCString(c, "name");
         addReplyBulkCBuffer(c, job->name, CLUSTER_NAMELEN);
         addReplyBulkCString(c, "operation");
@@ -2415,12 +2503,15 @@ void clusterCommandGetSlotMigrations(client *c) {
         addReplyBulkCString(c, job->status_msg ? job->status_msg : "");
         addReplyBulkCString(c, "cow_size");
         addReplyLongLong(c, (long long)job->stat_cow_bytes);
+<<<<<<< HEAD
         addReplyBulkCString(c, "remaining_repl_size");
         if (job->type == SLOT_MIGRATION_EXPORT && job->client) {
             addReplyLongLong(c, (long long)job->client->reply_bytes);
         } else {
             addReplyLongLong(c, 0);
         }
+=======
+>>>>>>> v9.0.4
     }
 }
 
@@ -2570,12 +2661,20 @@ void clusterCommandSyncSlotsCapa(client *c) {
  * with slot import. */
 void clusterCommandSyncSlots(client *c) {
     /* Commands used by primary and replica */
+<<<<<<< HEAD
     if (!strcasecmp(objectGetVal(c->argv[2]), "establish")) {
+=======
+    if (!strcasecmp(c->argv[2]->ptr, "establish")) {
+>>>>>>> v9.0.4
         /* CLUSTER SYNCSLOTS ESTABLISH <args> */
         clusterCommandSyncSlotsEstablish(c);
         return;
     }
+<<<<<<< HEAD
     if (!strcasecmp(objectGetVal(c->argv[2]), "finish")) {
+=======
+    if (!strcasecmp(c->argv[2]->ptr, "finish")) {
+>>>>>>> v9.0.4
         /* CLUSTER SYNCSLOTS FINISH <args> */
         clusterCommandSyncSlotsFinish(c);
         return;
@@ -2583,37 +2682,65 @@ void clusterCommandSyncSlots(client *c) {
 
     /* Commands only used by primary (ignored on replica) */
     if (c->flag.primary) return;
+<<<<<<< HEAD
     if (!strcasecmp(objectGetVal(c->argv[2]), "snapshot-eof")) {
+=======
+    if (!strcasecmp(c->argv[2]->ptr, "snapshot-eof")) {
+>>>>>>> v9.0.4
         /* CLUSTER SYNCSLOTS SNAPSHOT-EOF */
         clusterCommandSyncSlotsSnapshotEof(c);
         return;
     }
+<<<<<<< HEAD
     if (!strcasecmp(objectGetVal(c->argv[2]), "request-pause")) {
+=======
+    if (!strcasecmp(c->argv[2]->ptr, "request-pause")) {
+>>>>>>> v9.0.4
         /* CLUSTER SYNCSLOTS REQUEST-PAUSE */
         clusterCommandSyncSlotsRequestPause(c);
         return;
     }
+<<<<<<< HEAD
     if (!strcasecmp(objectGetVal(c->argv[2]), "paused")) {
+=======
+    if (!strcasecmp(c->argv[2]->ptr, "paused")) {
+>>>>>>> v9.0.4
         /* CLUSTER SYNCSLOTS PAUSED */
         clusterCommandSyncSlotsPaused(c);
         return;
     }
+<<<<<<< HEAD
     if (!strcasecmp(objectGetVal(c->argv[2]), "request-failover")) {
+=======
+    if (!strcasecmp(c->argv[2]->ptr, "request-failover")) {
+>>>>>>> v9.0.4
         /* CLUSTER SYNCSLOTS REQUEST-FAILOVER */
         clusterCommandSyncSlotsRequestFailover(c);
         return;
     }
+<<<<<<< HEAD
     if (!strcasecmp(objectGetVal(c->argv[2]), "failover-granted")) {
+=======
+    if (!strcasecmp(c->argv[2]->ptr, "failover-granted")) {
+>>>>>>> v9.0.4
         /* CLUSTER SYNCSLOTS FAILOVER-GRANTED */
         clusterCommandSyncSlotsFailoverGranted(c);
         return;
     }
+<<<<<<< HEAD
     if (!strcasecmp(objectGetVal(c->argv[2]), "ack")) {
+=======
+    if (!strcasecmp(c->argv[2]->ptr, "ack")) {
+>>>>>>> v9.0.4
         /* CLUSTER SYNCSLOTS ACK */
         clusterCommandSyncSlotsAck(c);
         return;
     }
+<<<<<<< HEAD
     if (!strcasecmp(objectGetVal(c->argv[2]), "capa")) {
+=======
+    if (!strcasecmp(c->argv[2]->ptr, "capa")) {
+>>>>>>> v9.0.4
         /* CLUSTER SYNCSLOTS CAPA <field> [<field>...] */
         clusterCommandSyncSlotsCapa(c);
         return;
