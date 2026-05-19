@@ -327,7 +327,11 @@ void test_alloc_failure_handling(void) {
 
         /* Test ASK reply handling without OOM */
         prepare_allocation_test(cc, 45);
+<<<<<<< HEAD
         reply = kvClusterCommand(cc, "GET foo");
+=======
+        reply = valkeyClusterCommand(cc, "GET foo");
+>>>>>>> v9.0.4
         CHECK_REPLY_STR(cc, reply, "one");
         freeReplyObject(reply);
 
@@ -356,7 +360,11 @@ void test_alloc_failure_handling(void) {
 
         /* Test MOVED reply handling without OOM */
         prepare_allocation_test(cc, 32);
+<<<<<<< HEAD
         reply = kvClusterCommand(cc, "GET foo");
+=======
+        reply = valkeyClusterCommand(cc, "GET foo");
+>>>>>>> v9.0.4
         CHECK_REPLY_STR(cc, reply, "one");
         freeReplyObject(reply);
 

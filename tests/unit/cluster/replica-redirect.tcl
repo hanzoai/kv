@@ -5,17 +5,29 @@ start_cluster 1 1 {tags {external:skip cluster}} {
 
     test {blocked clients behavior during failover} {
         # A client blocking on the primary
+<<<<<<< HEAD
         set rd0 [kv_deferring_client 0]
         $rd0 BLPOP mylist 0
 
         # A READONLY client blocking on the primary
         set rd0_ro [kv_deferring_client 0]
+=======
+        set rd0 [valkey_deferring_client 0]
+        $rd0 BLPOP mylist 0
+
+        # A READONLY client blocking on the primary
+        set rd0_ro [valkey_deferring_client 0]
+>>>>>>> v9.0.4
         $rd0_ro READONLY
         assert_equal OK [$rd0_ro read]
         $rd0_ro XREAD BLOCK 0 STREAMS mystream 0-0
 
         # A READONLY client blocking on the replica
+<<<<<<< HEAD
         set rd1 [kv_deferring_client -1]
+=======
+        set rd1 [valkey_deferring_client -1]
+>>>>>>> v9.0.4
         $rd1 READONLY
         assert_equal OK [$rd1 read]
         $rd1 XREAD BLOCK 0 STREAMS k 0-0

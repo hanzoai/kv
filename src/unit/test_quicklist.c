@@ -2213,7 +2213,11 @@ int test_quicklistCompressAndDecompressQuicklistListpackNode(int argc, char **ar
 
     if (!(flags & UNIT_TEST_LARGE_MEMORY)) return 0;
 
+<<<<<<< HEAD
 #ifdef KV_ADDRESS_SANITIZER
+=======
+#ifdef VALKEY_ADDRESS_SANITIZER
+>>>>>>> v9.0.4
     /* Skip this test under sanitizers to avoid OOM in github actions */
     return 0;
 #endif

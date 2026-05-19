@@ -631,6 +631,7 @@ start_server {tags {"hashexpire"}} {
     test {HSETEX PX - mismatched field/value count} {
          assert_error {ERR numfields should be greater than 0 and match the provided number of fields} {r HSETEX myhash PX 100 FIELDS 1 field1 val1 extra}
     } 
+<<<<<<< HEAD
 
     ## NX/XX key-level tests
 
@@ -668,6 +669,8 @@ start_server {tags {"hashexpire"}} {
         assert_equal 0 [r HEXISTS myhash f1]
         assert_equal 0 [r HEXISTS myhash f2]
     }
+=======
+>>>>>>> v9.0.4
 
     ## FNX/FXX
 
@@ -731,6 +734,7 @@ start_server {tags {"hashexpire"}} {
         assert_equal 0 [r EXISTS myhash]
     }
 
+<<<<<<< HEAD
     ## NX/XX + FNX/FXX combinations
 
     # NX + FNX — only set if key does not exist AND fields do not exist
@@ -790,28 +794,40 @@ start_server {tags {"hashexpire"}} {
         assert_equal 0 [r HEXISTS myhash f3]
     }
 
+=======
+>>>>>>> v9.0.4
     test {HSETEX is not replicating validation arguments} {
         r flushall
         set repl [attach_to_replication_stream]
         set exp [get_longer_then_long_expire_value PXAT]
 
+<<<<<<< HEAD
         r HSETEX myhash NX PXAT $exp FIELDS 1 f1 v1
         r HSETEX myhash XX PXAT $exp FIELDS 1 f1 v1
         r HSETEX myhash FNX PXAT $exp FIELDS 1 f2 v2
         r HSETEX myhash FXX PXAT $exp FIELDS 1 f2 v2
         r HSETEX myhash2 nx PXAT $exp FIELDS 1 f1 v1
         r HSETEX myhash2 xx PXAT $exp FIELDS 1 f1 v1
+=======
+        r HSETEX myhash FNX PXAT $exp FIELDS 1 f2 v2
+        r HSETEX myhash FXX PXAT $exp FIELDS 1 f2 v2
+>>>>>>> v9.0.4
         r HSETEX myhash2 fnx PXAT $exp FIELDS 1 f2 v2
         r HSETEX myhash2 fxx PXAT $exp FIELDS 1 f2 v2
 
         assert_replication_stream $repl [subst {
             {select *}
+<<<<<<< HEAD
             {hsetex myhash PXAT $exp FIELDS 1 f1 v1}
             {hsetex myhash PXAT $exp FIELDS 1 f1 v1}
             {hsetex myhash PXAT $exp FIELDS 1 f2 v2}
             {hsetex myhash PXAT $exp FIELDS 1 f2 v2}
             {hsetex myhash2 PXAT $exp FIELDS 1 f1 v1}
             {hsetex myhash2 PXAT $exp FIELDS 1 f1 v1}
+=======
+            {hsetex myhash PXAT $exp FIELDS 1 f2 v2}
+            {hsetex myhash PXAT $exp FIELDS 1 f2 v2}
+>>>>>>> v9.0.4
             {hsetex myhash2 PXAT $exp FIELDS 1 f2 v2}
             {hsetex myhash2 PXAT $exp FIELDS 1 f2 v2}
         }]
@@ -4543,8 +4559,13 @@ start_server {tags {"hashexpire external:skip"}} {
                 foreach instance [list $primary $replica] {
                     $instance config set notify-keyspace-events KEA
                 }
+<<<<<<< HEAD
                 set primary_ksn [kv_deferring_client -1]
                 set replica_ksn [kv_deferring_client $replica_host $replica_port]
+=======
+                set primary_ksn [valkey_deferring_client -1]
+                set replica_ksn [valkey_deferring_client $replica_host $replica_port]
+>>>>>>> v9.0.4
                 foreach rd [list $primary_ksn $replica_ksn] {
                     assert_equal {1} [psubscribe $rd __keyevent@*]
                 }
@@ -4607,8 +4628,13 @@ start_server {tags {"hashexpire external:skip"}} {
             foreach instance [list $primary $replica] {
                 $instance config set notify-keyspace-events KEA
             }
+<<<<<<< HEAD
             set primary_ksn [kv_deferring_client -1]
             set replica_ksn [kv_deferring_client $replica_host $replica_port]
+=======
+            set primary_ksn [valkey_deferring_client -1]
+            set replica_ksn [valkey_deferring_client $replica_host $replica_port]
+>>>>>>> v9.0.4
             foreach rd [list $primary_ksn $replica_ksn] {
                 assert_equal {1} [psubscribe $rd __keyevent@*]
             }
@@ -4645,8 +4671,13 @@ start_server {tags {"hashexpire external:skip"}} {
             foreach instance [list $primary $replica] {
                 $instance config set notify-keyspace-events KEA
             }
+<<<<<<< HEAD
             set primary_ksn [kv_deferring_client -1]
             set replica_ksn [kv_deferring_client $replica_host $replica_port]
+=======
+            set primary_ksn [valkey_deferring_client -1]
+            set replica_ksn [valkey_deferring_client $replica_host $replica_port]
+>>>>>>> v9.0.4
             foreach rd [list $primary_ksn $replica_ksn] {
                 assert_equal {1} [psubscribe $rd __keyevent@*]
             }

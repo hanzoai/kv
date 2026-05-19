@@ -1368,7 +1368,10 @@ static void hashtablePauseRehashing(hashtable *ht) {
 /* Resumes incremental rehashing, after pausing it. */
 static void hashtableResumeRehashing(hashtable *ht) {
     ht->pause_rehash--;
+<<<<<<< HEAD
     assert(ht->pause_rehash >= 0);
+=======
+>>>>>>> v9.0.4
     hashtableResumeAutoShrink(ht);
 }
 

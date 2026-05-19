@@ -10,6 +10,7 @@ The KV project is led by a Technical Steering Committee, whose responsibilities 
 ## Get started
 
 * Have a question? Ask it on
+<<<<<<< HEAD
   [GitHub Discussions](https://github.com/hanzoai/kv/discussions)
   or [KV's Discord](https://discord.gg/zbcPa5umUB)
   or [KV's Matrix](https://matrix.to/#/#kv:matrix.org)
@@ -18,6 +19,16 @@ The KV project is led by a Technical Steering Committee, whose responsibilities 
 * Suggest a new feature? [Post your detailed feature request here](https://github.com/hanzoai/kv/issues/new?template=feature_request.md&title=%5BNEW%5D)
 * Report a test failure? [Report it here](https://github.com/hanzoai/kv/issues/new?template=test-failure.md)
 * Want to help with documentation? [Move on to kv-doc](https://github.com/hanzoai/kv-doc)
+=======
+  [GitHub Discussions](https://github.com/valkey-io/valkey/discussions)
+  or [Valkey's Discord](https://discord.gg/zbcPa5umUB)
+  or [Valkey's Matrix](https://matrix.to/#/#valkey:matrix.org)
+* Found a bug? [Report it here](https://github.com/valkey-io/valkey/issues/new?template=bug_report.md&title=%5BBUG%5D)
+* Valkey crashed? [Submit a crash report here](https://github.com/valkey-io/valkey/issues/new?template=crash_report.md&title=%5BCRASH%5D+%3Cshort+description%3E)
+* Suggest a new feature? [Post your detailed feature request here](https://github.com/valkey-io/valkey/issues/new?template=feature_request.md&title=%5BNEW%5D)
+* Report a test failure? [Report it here](https://github.com/valkey-io/valkey/issues/new?template=test-failure.md)
+* Want to help with documentation? [Move on to valkey-doc](https://github.com/valkey-io/valkey-doc)
+>>>>>>> v9.0.4
 * Report a vulnerability? See [SECURITY.md](SECURITY.md)
 
 ## Developer Certificate of Origin

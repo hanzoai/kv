@@ -4860,7 +4860,11 @@ int sentinelSendReplicaOf(sentinelKVInstance *ri, const sentinelAddr *addr) {
     ri->link->pending_commands++;
 
     if (ri->monitored_instance_failover_state == SENTINEL_MONITORED_INSTANCE_FAILOVER) {
+<<<<<<< HEAD
         retval = kvAsyncCommand(ri->link->cc, sentinelDiscardReplyCallback, ri, "%s ABORT",
+=======
+        retval = valkeyAsyncCommand(ri->link->cc, sentinelDiscardReplyCallback, ri, "%s ABORT",
+>>>>>>> v9.0.4
                                     sentinelInstanceMapCommand(ri, "FAILOVER"));
         if (retval == C_ERR) return retval;
         ri->link->pending_commands++;

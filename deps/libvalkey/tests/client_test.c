@@ -1034,7 +1034,11 @@ static void test_allocator_injection(void) {
     kvResetAllocators();
 }
 
+<<<<<<< HEAD
 #define KV_BAD_DOMAIN "nonexistent.example.com"
+=======
+#define VALKEY_BAD_DOMAIN "nonexistent.example.com"
+>>>>>>> v9.0.4
 static void test_blocking_connection_errors(void) {
     struct addrinfo hints = {.ai_family = AF_INET};
     struct addrinfo *ai_tmp = NULL;
@@ -1091,9 +1095,15 @@ static void test_blocking_connection_errors(void) {
     kvFree(c);
 
     test("Returns error when the unix_sock socket path doesn't accept connections: ");
+<<<<<<< HEAD
     c = kvConnectUnix((char *)"/tmp/nonexistent.sock");
     test_cond(c->err == KV_ERR_IO); /* Don't care about the message... */
     kvFree(c);
+=======
+    c = valkeyConnectUnix((char *)"/tmp/nonexistent.sock");
+    test_cond(c->err == VALKEY_ERR_IO); /* Don't care about the message... */
+    valkeyFree(c);
+>>>>>>> v9.0.4
 #endif
 }
 

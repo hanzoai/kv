@@ -389,7 +389,11 @@ static long scanLaterList(robj *ob, unsigned long *cursor, monotime endtime) {
         /* Check time limit after processing each node */
         if (getMonotonicUs() > endtime) {
             if (quicklistBookmarkCreate(&ql, "_AD", node)) {
+<<<<<<< HEAD
                 objectSetVal(ob, ql); /* bookmark creation may have re-allocated the quicklist */
+=======
+                ob->ptr = ql; /* bookmark creation may have re-allocated the quicklist */
+>>>>>>> v9.0.4
                 (*cursor)++;
                 return 1;
             }

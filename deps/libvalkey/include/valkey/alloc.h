@@ -28,8 +28,13 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+<<<<<<< HEAD
 #ifndef KV_ALLOC_H
 #define KV_ALLOC_H
+=======
+#ifndef VALKEY_ALLOC_H
+#define VALKEY_ALLOC_H
+>>>>>>> v9.0.4
 #include "visibility.h"
 
 #include <stddef.h> /* for size_t */
@@ -48,6 +53,7 @@ typedef struct kvAllocFuncs {
     void (*freeFn)(void *);
 } kvAllocFuncs;
 
+<<<<<<< HEAD
 LIBKV_API kvAllocFuncs kvSetAllocators(kvAllocFuncs *fns);
 LIBKV_API void kvResetAllocators(void);
 
@@ -55,6 +61,15 @@ LIBKV_API void kvResetAllocators(void);
 
 /* kv' configured allocator function pointer struct */
 LIBKV_API extern kvAllocFuncs kvAllocFns;
+=======
+LIBVALKEY_API valkeyAllocFuncs valkeySetAllocators(valkeyAllocFuncs *fns);
+LIBVALKEY_API void valkeyResetAllocators(void);
+
+#ifndef _WIN32
+
+/* valkey' configured allocator function pointer struct */
+LIBVALKEY_API extern valkeyAllocFuncs valkeyAllocFns;
+>>>>>>> v9.0.4
 
 static inline void *vk_malloc(size_t size) {
     return kvAllocFns.mallocFn(size);
@@ -82,11 +97,19 @@ static inline void vk_free(void *ptr) {
 
 #else
 
+<<<<<<< HEAD
 LIBKV_API void *vk_malloc(size_t size);
 LIBKV_API void *vk_calloc(size_t nmemb, size_t size);
 LIBKV_API void *vk_realloc(void *ptr, size_t size);
 LIBKV_API char *vk_strdup(const char *str);
 LIBKV_API void vk_free(void *ptr);
+=======
+LIBVALKEY_API void *vk_malloc(size_t size);
+LIBVALKEY_API void *vk_calloc(size_t nmemb, size_t size);
+LIBVALKEY_API void *vk_realloc(void *ptr, size_t size);
+LIBVALKEY_API char *vk_strdup(const char *str);
+LIBVALKEY_API void vk_free(void *ptr);
+>>>>>>> v9.0.4
 
 #endif
 

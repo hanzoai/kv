@@ -478,7 +478,11 @@ start_server {tags {"modules"}} {
         assert_equal $result "OK"
     }
 
+<<<<<<< HEAD
     test {Load scripting engine in version before function env reset} {
+=======
+    test {Load scripting engine in older version} {
+>>>>>>> v9.0.4
         r module load $testmodule 2
         r function load $HELLO_PROGRAM
         set result [r fcall foo 0 123]
@@ -486,6 +490,7 @@ start_server {tags {"modules"}} {
         set result [r function flush async]
         assert_equal $result {OK}
         assert_error {ERR Function not found} {r fcall foo 0 123}
+<<<<<<< HEAD
         set result [r module unload helloengine]
         assert_equal $result "OK"
     }
@@ -498,5 +503,7 @@ start_server {tags {"modules"}} {
         assert_error {ERR The scripting engine 'HELLO' does not support interactive script debugging} {r script debug sync hello}
         set result [r module unload helloengine]
         assert_equal $result "OK"
+=======
+>>>>>>> v9.0.4
     }
 }

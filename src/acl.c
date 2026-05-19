@@ -733,7 +733,11 @@ static int ACLSetSelectorCategory(aclSelector *selector, const char *category, i
  * If rule_out is not NULL, it will be set to a duplicate of the first matching
  * rule.
  * Returns 1 if any rules are found, 0 otherwise. */
+<<<<<<< HEAD
 int ACLModuleHasCommandRules(const struct KVModule *module, sds *rule_out) {
+=======
+int ACLModuleHasCommandRules(const struct ValkeyModule *module, sds *rule_out) {
+>>>>>>> v9.0.4
     raxIterator ri;
     raxStart(&ri, Users);
     raxSeek(&ri, "^", NULL, 0);
@@ -1635,7 +1639,11 @@ static int checkPasswordBasedAuth(client *c, robj *username, robj *password) {
     }
 
     moduleFireAuthenticationEvent(c->id,
+<<<<<<< HEAD
                                   objectGetVal(username),
+=======
+                                  username->ptr,
+>>>>>>> v9.0.4
                                   NULL,
                                   result == AUTH_OK);
 
