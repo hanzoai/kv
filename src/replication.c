@@ -4164,12 +4164,8 @@ void syncWithPrimary(connection *conn) {
      * but there is nothing technically wrong with a full resync which
      * could happen in edge cases. */
     if (server.failover_state == FAILOVER_IN_PROGRESS) {
-<<<<<<< HEAD
         if (psync_result == PSYNC_CONTINUE || psync_result == PSYNC_FULLRESYNC ||
             psync_result == PSYNC_FULLRESYNC_DUAL_CHANNEL) {
-=======
-        if (psync_result == PSYNC_CONTINUE || psync_result == PSYNC_FULLRESYNC) {
->>>>>>> v9.0.4
             clearFailoverState(true);
         } else {
             abortFailover("Failover target rejected psync request");
@@ -4572,11 +4568,7 @@ void replicaofCommand(client *c) {
         }
         /* There was no previous primary or the user specified a different one,
          * we can continue. */
-<<<<<<< HEAD
         replicationSetPrimary(objectGetVal(c->argv[1]), port, 0, true);
-=======
-        replicationSetPrimary(c->argv[1]->ptr, port, 0, true);
->>>>>>> v9.0.4
         sds client = catClientInfoShortString(sdsempty(), c, server.hide_user_data_from_log);
         serverLog(LL_NOTICE, "REPLICAOF %s:%d enabled (user request from '%s')", server.primary_host,
                   server.primary_port, client);

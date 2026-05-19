@@ -1506,11 +1506,7 @@ int rdbSaveRio(int req, int rdbver, rio *rdb, int *error, int rdbflags, rdbSaveI
     if (!(req & REPLICA_REQ_RDB_EXCLUDE_DATA)) {
         /* RDB slot import info is encoded in a required opcode since exposing
          * importing slots is a consistency problem. */
-<<<<<<< HEAD
         if (clusterRDBSaveSlotImports(rdb, rdbver) == C_ERR) goto werr;
-=======
-        if (clusterRDBSaveSlotImports(rdb) == C_ERR) goto werr;
->>>>>>> v9.0.4
         for (j = 0; j < server.dbnum; j++) {
             if (rdbSaveDb(rdb, j, rdbflags, rdbver, &key_counter) == -1) goto werr;
         }
@@ -3148,11 +3144,7 @@ int rdbLoadRioWithLoadingCtx(rio *rdb, int rdbflags, rdbSaveInfo *rsi, rdbLoadin
         return RDB_INCOMPATIBLE;
     }
     rdbver = atoi(buf + 6);
-<<<<<<< HEAD
     if (!rdbIsVersionAccepted(rdbver, is_kv_magic, is_redis_magic)) {
-=======
-    if (!rdbIsVersionAccepted(rdbver, is_valkey_magic, is_redis_magic)) {
->>>>>>> v9.0.4
         serverLog(LL_WARNING, "Can't handle RDB format version %d", rdbver);
         return RDB_INCOMPATIBLE;
     }
@@ -3186,11 +3178,7 @@ int rdbLoadRioWithLoadingCtx(rio *rdb, int rdbflags, rdbSaveInfo *rsi, rdbLoadin
         if (is_redis_magic && type >= RDB_FOREIGN_TYPE_MIN && type <= RDB_FOREIGN_TYPE_MAX) {
             serverLog(LL_WARNING, "Can't handle foreign type or opcode %d in RDB with version %d",
                       type, rdbver);
-<<<<<<< HEAD
             return RDB_FAILED;
-=======
-            return C_ERR;
->>>>>>> v9.0.4
         }
 
         /* Handle special types. */
@@ -3321,11 +3309,7 @@ int rdbLoadRioWithLoadingCtx(rio *rdb, int rdbflags, rdbSaveInfo *rsi, rdbLoadin
                  * In case of relaxed rdb downgrade, trailing unknown data will simply be ignored.
                  * The verification only verifies we read the fields known to exist when we first introduced the slot-info AUX field,
                  * which are the slot number, number of keys in slot and the number of volatile keys. */
-<<<<<<< HEAD
                 if (sscanf(objectGetVal(auxval), "%i,%lu,%lu,%lu",
-=======
-                if (sscanf(auxval->ptr, "%i,%lu,%lu,%lu",
->>>>>>> v9.0.4
                            &slot_id, &slot_size, &expires_slot_size,
                            &keys_with_volatile_items_slot_size) < 3) {
                     decrRefCount(auxkey);
@@ -3478,11 +3462,7 @@ int rdbLoadRioWithLoadingCtx(rio *rdb, int rdbflags, rdbSaveInfo *rsi, rdbLoadin
             } else if (error == RDB_LOAD_ERR_UNKNOWN_TYPE) {
                 sdsfree(key);
                 serverLog(LL_WARNING, "Unknown type or opcode when loading DB. Unrecoverable error, aborting now.");
-<<<<<<< HEAD
                 return RDB_FAILED;
-=======
-                return C_ERR;
->>>>>>> v9.0.4
             } else {
                 sdsfree(key);
                 goto eoferr;
@@ -3722,11 +3702,7 @@ void killRDBChild(void) {
 
 /* Spawn an RDB child that writes the RDB to the sockets of the replicas
  * that are currently in REPLICA_STATE_WAIT_BGSAVE_START state. */
-<<<<<<< HEAD
 int rdbSaveToReplicasSockets(int req, int rdbver, rdbSaveInfo *rsi) {
-=======
-int rdbSaveToReplicasSockets(int req, rdbSaveInfo *rsi) {
->>>>>>> v9.0.4
     listNode *ln;
     listIter li;
     pid_t childpid;
@@ -3822,21 +3798,13 @@ int rdbSaveToReplicasSockets(int req, rdbSaveInfo *rsi) {
         if (strstr(server.exec_argv[0], "redis-server") != NULL) {
             serverSetProcTitle("redis-rdb-to-slaves");
         } else {
-<<<<<<< HEAD
             serverSetProcTitle("kv-rdb-to-replicas");
-=======
-            serverSetProcTitle("valkey-rdb-to-replicas");
->>>>>>> v9.0.4
         }
         serverSetCpuAffinity(server.bgsave_cpulist);
 
         if (skip_rdb_checksum) rdb.flags |= RIO_FLAG_SKIP_RDB_CHECKSUM;
 
-<<<<<<< HEAD
         retval = rdbSaveRioWithEOFMark(req, rdbver, &rdb, NULL, rsi);
-=======
-        retval = rdbSaveRioWithEOFMark(req, &rdb, NULL, rsi);
->>>>>>> v9.0.4
         if (retval == C_OK && rioFlush(&rdb) == 0) retval = C_ERR;
 
         if (retval == C_OK) {
