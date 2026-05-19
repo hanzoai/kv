@@ -1944,8 +1944,11 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     if (server.aof_fsync != AOF_FSYNC_ALWAYS) {
         int io_responses_after = processIOThreadsReadDone();
         if (io_responses_after > 0) {
+<<<<<<< HEAD
             server.el_iteration_active = true;
 
+=======
+>>>>>>> v9.0.4
             /* Any responses that failed to enqueue to IO threads need to be handled now */
             handleClientsWithPendingWrites();
         }
@@ -2198,7 +2201,10 @@ void createSharedObjects(void) {
     shared.eval = createSharedString("EVAL");
     shared.cluster = createSharedString("CLUSTER");
     shared.syncslots = createSharedString("SYNCSLOTS");
+<<<<<<< HEAD
     shared.zadd = createSharedString("ZADD");
+=======
+>>>>>>> v9.0.4
 
     /* Shared command argument */
     shared.left = createSharedString("left");

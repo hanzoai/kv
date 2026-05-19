@@ -29,8 +29,13 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+<<<<<<< HEAD
 #ifndef KV_READ_H
 #define KV_READ_H
+=======
+#ifndef VALKEY_READ_H
+#define VALKEY_READ_H
+>>>>>>> v9.0.4
 #include "visibility.h"
 
 #include <stdio.h> /* for size_t */
@@ -114,10 +119,17 @@ typedef struct kvReader {
 } kvReader;
 
 /* Public API for the protocol parser. */
+<<<<<<< HEAD
 LIBKV_API kvReader *kvReaderCreateWithFunctions(kvReplyObjectFunctions *fn);
 LIBKV_API void kvReaderFree(kvReader *r);
 LIBKV_API int kvReaderFeed(kvReader *r, const char *buf, size_t len);
 LIBKV_API int kvReaderGetReply(kvReader *r, void **reply);
+=======
+LIBVALKEY_API valkeyReader *valkeyReaderCreateWithFunctions(valkeyReplyObjectFunctions *fn);
+LIBVALKEY_API void valkeyReaderFree(valkeyReader *r);
+LIBVALKEY_API int valkeyReaderFeed(valkeyReader *r, const char *buf, size_t len);
+LIBVALKEY_API int valkeyReaderGetReply(valkeyReader *r, void **reply);
+>>>>>>> v9.0.4
 
 #define kvReaderSetPrivdata(_r, _p) (int)(((kvReader *)(_r))->privdata = (_p))
 #define kvReaderGetObject(_r) (((kvReader *)(_r))->reply)

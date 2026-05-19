@@ -71,6 +71,7 @@ void flushdbCallback(KVModuleCtx *ctx, KVModuleEvent e, uint64_t sub, void *data
     }
 }
 
+<<<<<<< HEAD
 void authenticationAttemptCallback(KVModuleCtx *ctx, KVModuleEvent e, uint64_t sub, void *data) {
     KVMODULE_NOT_USED(ctx);
     KVMODULE_NOT_USED(e);
@@ -78,6 +79,15 @@ void authenticationAttemptCallback(KVModuleCtx *ctx, KVModuleEvent e, uint64_t s
     KVModuleAuthenticationInfo *ai = data;
     printf("Authentication attempt for client #%llu with username=%s module=%s success=%d\n",
            (unsigned long long)ai->client_id, ai->username, ai->module_name, ai->result == KVMODULE_AUTH_RESULT_GRANTED);
+=======
+void authenticationAttemptCallback(ValkeyModuleCtx *ctx, ValkeyModuleEvent e, uint64_t sub, void *data) {
+    VALKEYMODULE_NOT_USED(ctx);
+    VALKEYMODULE_NOT_USED(e);
+
+    ValkeyModuleAuthenticationInfo *ai = data;
+    printf("Authentication attempt for client #%llu with username=%s module=%s success=%d\n",
+           (unsigned long long)ai->client_id, ai->username, ai->module_name, ai->result == VALKEYMODULE_AUTH_RESULT_GRANTED);
+>>>>>>> v9.0.4
 }
 
 /* This function must be present on each module. It is used in order to
@@ -88,8 +98,15 @@ int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
 
     if (KVModule_Init(ctx, "hellohook", 1, KVMODULE_APIVER_1) == KVMODULE_ERR) return KVMODULE_ERR;
 
+<<<<<<< HEAD
     KVModule_SubscribeToServerEvent(ctx, KVModuleEvent_ClientChange, clientChangeCallback);
     KVModule_SubscribeToServerEvent(ctx, KVModuleEvent_FlushDB, flushdbCallback);
     KVModule_SubscribeToServerEvent(ctx, KVModuleEvent_AuthenticationAttempt, authenticationAttemptCallback);
     return KVMODULE_OK;
+=======
+    ValkeyModule_SubscribeToServerEvent(ctx, ValkeyModuleEvent_ClientChange, clientChangeCallback);
+    ValkeyModule_SubscribeToServerEvent(ctx, ValkeyModuleEvent_FlushDB, flushdbCallback);
+    ValkeyModule_SubscribeToServerEvent(ctx, ValkeyModuleEvent_AuthenticationAttempt, authenticationAttemptCallback);
+    return VALKEYMODULE_OK;
+>>>>>>> v9.0.4
 }

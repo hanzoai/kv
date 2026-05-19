@@ -117,7 +117,19 @@ LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
 
 LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     /* Name of the tracepoint class provider */
+<<<<<<< HEAD
     kv_cluster, kv_cluster_class, kv_cluster, fork,
+=======
+    valkey_cluster, valkey_cluster_class, valkey_cluster, fork,
+
+    /* List of tracepoint arguments (input) */
+    LTTNG_UST_TP_ARGS(
+      uint64_t, duration
+    )
+)
+
+#define valkey_cluster_trace(...) lttng_ust_tracepoint(__VA_ARGS__)
+>>>>>>> v9.0.4
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(

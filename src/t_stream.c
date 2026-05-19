@@ -2276,8 +2276,13 @@ void xreadCommand(client *c) {
                                  "just return an empty result set.");
                 goto cleanup;
             }
+<<<<<<< HEAD
             if (o && ((stream *)objectGetVal(o))->length) {
                 stream *s = objectGetVal(o);
+=======
+            if (o && ((stream *)(o->ptr))->length) {
+                stream *s = o->ptr;
+>>>>>>> v9.0.4
                 ids[id_idx] = s->last_id;
                 if (streamDecrID(&ids[id_idx]) != C_OK) {
                     /* shouldn't happen */

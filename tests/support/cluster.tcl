@@ -9,7 +9,11 @@
 # $c get foo
 # $c close
 
+<<<<<<< HEAD
 package provide kv_cluster 0.1
+=======
+package provide valkey_cluster 0.1
+>>>>>>> v9.0.4
 
 namespace eval kv_cluster {}
 set ::kv_cluster::internal_id 0

@@ -5,14 +5,22 @@ proc get_function_code {args} {
 tags {"check-rdb external:skip logreqres:skip"} {
     test {Check old valid RDB} {
         catch {
+<<<<<<< HEAD:tests/integration/kv-check-rdb.tcl
             exec $::KV_CHECK_RDB_BIN tests/assets/encodings.rdb
+=======
+            exec src/valkey-check-rdb tests/assets/encodings.rdb
+>>>>>>> v9.0.4:tests/integration/valkey-check-rdb.tcl
         } result
         assert_match {*\[offset ???\] \\o/ RDB looks OK! \\o/*} $result
     }
 
     test {Check foreign RDB without unknown data} {
         catch {
+<<<<<<< HEAD:tests/integration/kv-check-rdb.tcl
             exec $::KV_CHECK_RDB_BIN tests/assets/encodings-rdb12.rdb
+=======
+            exec src/valkey-check-rdb tests/assets/encodings-rdb12.rdb
+>>>>>>> v9.0.4:tests/integration/valkey-check-rdb.tcl
         } result
         assert_match {*\[offset ?\] Foreign RDB version 12 detected*} $result
         assert_match {*\[offset ???\] \\o/ RDB looks OK, but loading requires config 'rdb-version-check relaxed'*} $result
@@ -20,7 +28,11 @@ tags {"check-rdb external:skip logreqres:skip"} {
 
     test {Check foreign RDB with unknown data} {
         catch {
+<<<<<<< HEAD:tests/integration/kv-check-rdb.tcl
             exec $::KV_CHECK_RDB_BIN tests/assets/encodings-rdb75-unknown-types.rdb
+=======
+            exec src/valkey-check-rdb tests/assets/encodings-rdb75-unknown-types.rdb
+>>>>>>> v9.0.4:tests/integration/valkey-check-rdb.tcl
         } result
         assert_match {*\[offset ?\] Foreign RDB version 75 detected*} $result
         assert_match {*--- RDB ERROR DETECTED ---*} $result
@@ -30,7 +42,11 @@ tags {"check-rdb external:skip logreqres:skip"} {
 
     test {Check future RDB without unknown data} {
         catch {
+<<<<<<< HEAD:tests/integration/kv-check-rdb.tcl
             exec $::KV_CHECK_RDB_BIN tests/assets/encodings-rdb987.rdb
+=======
+            exec src/valkey-check-rdb tests/assets/encodings-rdb987.rdb
+>>>>>>> v9.0.4:tests/integration/valkey-check-rdb.tcl
         } result
         assert_match {*\[offset ?\] Future RDB version 987 detected*} $result
         assert_match {*\[offset ???\] \\o/ RDB looks OK, but loading requires config 'rdb-version-check relaxed'*} $result
@@ -38,7 +54,11 @@ tags {"check-rdb external:skip logreqres:skip"} {
 
     test {Check future RDB with unknown data} {
         catch {
+<<<<<<< HEAD:tests/integration/kv-check-rdb.tcl
             exec $::KV_CHECK_RDB_BIN tests/assets/encodings-rdb987-unknown-types.rdb
+=======
+            exec src/valkey-check-rdb tests/assets/encodings-rdb987-unknown-types.rdb
+>>>>>>> v9.0.4:tests/integration/valkey-check-rdb.tcl
         } result
         assert_match {*\[offset ?\] Future RDB version 987 detected*} $result
         assert_match {*--- RDB ERROR DETECTED ---*} $result

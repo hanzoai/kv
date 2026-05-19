@@ -401,6 +401,7 @@ start_server {tags {"other"}} {
             assert_no_match "*redis_mode:*" $info
             assert_match "*server_mode:*" $info
             set lolwut_output [r lolwut]
+<<<<<<< HEAD
             assert_match {*KV ver.*} $lolwut_output
             set lolwut_output [r lolwut version 5]
             assert_match {*KV ver.*} $lolwut_output
@@ -408,6 +409,15 @@ start_server {tags {"other"}} {
             assert_match {*KV ver.*} $lolwut_output
             set lolwut_output [r lolwut version 9]
             assert_match {*KV ver.*} $lolwut_output
+=======
+            assert_match {*Valkey ver.*} $lolwut_output
+            set lolwut_output [r lolwut version 5]
+            assert_match {*Valkey ver.*} $lolwut_output
+            set lolwut_output [r lolwut version 6]
+            assert_match {*Valkey ver.*} $lolwut_output
+            set lolwut_output [r lolwut version 9]
+            assert_match {*Valkey ver.*} $lolwut_output
+>>>>>>> v9.0.4
         }
     }
 }
@@ -470,7 +480,11 @@ start_server {tags {"other external:skip"}} {
             set cmdline [read_proc_title [srv 0 pid]]
 
             assert_equal "TEST" [lindex $cmdline 0]
+<<<<<<< HEAD
             assert_match "*/kv-server" [lindex $cmdline 1]
+=======
+            assert_match "*/valkey-server" [lindex $cmdline 1]
+>>>>>>> v9.0.4
 
             if {$::tls} {
                 set expect_port [srv 0 pport]

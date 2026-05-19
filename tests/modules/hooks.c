@@ -367,16 +367,26 @@ void keyInfoCallback(KVModuleCtx *ctx, KVModuleEvent e, uint64_t sub, void *data
     }
 }
 
+<<<<<<< HEAD
 void authAttemptCallback(KVModuleCtx *ctx, KVModuleEvent e, uint64_t sub, void *data)
 {
     KVMODULE_NOT_USED(e);
     KVMODULE_NOT_USED(sub);
 
     KVModuleAuthenticationInfo *ai = data;
+=======
+void authAttemptCallback(ValkeyModuleCtx *ctx, ValkeyModuleEvent e, uint64_t sub, void *data)
+{
+    VALKEYMODULE_NOT_USED(e);
+    VALKEYMODULE_NOT_USED(sub);
+
+    ValkeyModuleAuthenticationInfo *ai = data;
+>>>>>>> v9.0.4
     LogStringEvent(ctx, "auth-attempt", ai->username);
     if (ai->module_name) {
         LogStringEvent(ctx, "auth-attempt-module", ai->module_name);
     }
+<<<<<<< HEAD
     LogNumericEvent(ctx, "auth-attempt-success", ai->result == KVMODULE_AUTH_RESULT_GRANTED);
 }
 
@@ -399,11 +409,36 @@ void logAtomicSlotMigrationInfo(KVModuleCtx *ctx, const char *prefix, KVModuleAt
             const char *range_buf = KVModule_StringPtrLen(range_str, &range_str_len);
             KVModule_StringAppendBuffer(ctx, joined_range_str, range_buf, range_str_len);
             KVModule_FreeString(ctx, range_str);
+=======
+    LogNumericEvent(ctx, "auth-attempt-success", ai->result == VALKEYMODULE_AUTH_RESULT_GRANTED);
+}
+
+void logAtomicSlotMigrationInfo(ValkeyModuleCtx *ctx, const char *prefix, ValkeyModuleAtomicSlotMigrationInfo *asmi) {
+    ValkeyModuleString *job_keyname = ValkeyModule_CreateStringPrintf(ctx, "%s-jobname", prefix);
+    LogStringEvent(ctx, ValkeyModule_StringPtrLen(job_keyname, NULL), asmi->job_name);
+    ValkeyModule_FreeString(ctx, job_keyname);
+
+    ValkeyModuleString *numslotranges_keyname = ValkeyModule_CreateStringPrintf(ctx, "%s-numslotranges", prefix);
+    LogNumericEvent(ctx, ValkeyModule_StringPtrLen(numslotranges_keyname, NULL), asmi->num_slot_ranges);
+    ValkeyModule_FreeString(ctx, numslotranges_keyname);
+
+    ValkeyModuleString *joined_range_str = NULL;
+    for (size_t i = 0; i < asmi->num_slot_ranges; i++) {
+        ValkeyModuleString *range_str = ValkeyModule_CreateStringPrintf(ctx, "%d-%d",
+            asmi->slot_ranges[i].start, asmi->slot_ranges[i].end);
+        if (joined_range_str) {
+            ValkeyModule_StringAppendBuffer(ctx, range_str, " ", 1);
+            size_t range_str_len;
+            const char *range_buf = ValkeyModule_StringPtrLen(range_str, &range_str_len);
+            ValkeyModule_StringAppendBuffer(ctx, joined_range_str, range_buf, range_str_len);
+            ValkeyModule_FreeString(ctx, range_str);
+>>>>>>> v9.0.4
         } else {
             joined_range_str = range_str;
         }
     }
     if (!joined_range_str) {
+<<<<<<< HEAD
         joined_range_str = KVModule_CreateString(ctx, "", 0);
     }
     KVModuleString *slotranges_keyname = KVModule_CreateStringPrintf(ctx, "%s-slotranges", prefix);
@@ -434,12 +469,48 @@ void atomicSlotMigrationCallback(KVModuleCtx *ctx, KVModuleEvent e, uint64_t sub
             logAtomicSlotMigrationInfo(ctx, "atomic-slot-migration-export-complete", asmi);
             break;
         case KVMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_ABORTED:
+=======
+        joined_range_str = ValkeyModule_CreateString(ctx, "", 0);
+    }
+    ValkeyModuleString *slotranges_keyname = ValkeyModule_CreateStringPrintf(ctx, "%s-slotranges", prefix);
+    LogStringEvent(ctx, ValkeyModule_StringPtrLen(slotranges_keyname, NULL), ValkeyModule_StringPtrLen(joined_range_str, NULL));
+    ValkeyModule_FreeString(ctx, slotranges_keyname);
+    ValkeyModule_FreeString(ctx, joined_range_str);
+}
+
+void atomicSlotMigrationCallback(ValkeyModuleCtx *ctx, ValkeyModuleEvent e, uint64_t sub, void *data)
+{
+    VALKEYMODULE_NOT_USED(e);
+
+    ValkeyModuleAtomicSlotMigrationInfo *asmi = data;
+    switch (sub) {
+        case VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_STARTED:
+            logAtomicSlotMigrationInfo(ctx, "atomic-slot-migration-import-start", asmi);
+            break;
+        case VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_COMPLETED:
+            logAtomicSlotMigrationInfo(ctx, "atomic-slot-migration-import-complete", asmi);
+            break;
+        case VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_IMPORT_ABORTED:
+            logAtomicSlotMigrationInfo(ctx, "atomic-slot-migration-import-abort", asmi);
+            break;
+        case VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_STARTED:
+            logAtomicSlotMigrationInfo(ctx, "atomic-slot-migration-export-start", asmi);
+            break;
+        case VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_COMPLETED:
+            logAtomicSlotMigrationInfo(ctx, "atomic-slot-migration-export-complete", asmi);
+            break;
+        case VALKEYMODULE_SUBEVENT_ATOMIC_SLOT_MIGRATION_EXPORT_ABORTED:
+>>>>>>> v9.0.4
             logAtomicSlotMigrationInfo(ctx, "atomic-slot-migration-export-abort", asmi);
             break;
     }
 }
 
+<<<<<<< HEAD
 static int cmdIsKeyRemoved(KVModuleCtx *ctx, KVModuleString **argv, int argc){
+=======
+static int cmdIsKeyRemoved(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc){
+>>>>>>> v9.0.4
     if(argc != 2){
         return KVModule_WrongArity(ctx);
     }
@@ -527,8 +598,21 @@ int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
     KVModule_SubscribeToServerEvent(ctx,
         KVModuleEvent_Key, keyInfoCallback);
 
+<<<<<<< HEAD
     KVModule_SubscribeToServerEvent(ctx,
         KVModuleEvent_AuthenticationAttempt, authAttemptCallback);
+=======
+    ValkeyModule_SubscribeToServerEvent(ctx,
+        ValkeyModuleEvent_AuthenticationAttempt, authAttemptCallback);
+
+    ValkeyModule_SubscribeToServerEvent(ctx,
+        ValkeyModuleEvent_AtomicSlotMigration, atomicSlotMigrationCallback);
+
+    event_log = ValkeyModule_CreateDict(ctx);
+    removed_event_log = ValkeyModule_CreateDict(ctx);
+    removed_subevent_type = ValkeyModule_CreateDict(ctx);
+    removed_expiry_log = ValkeyModule_CreateDict(ctx);
+>>>>>>> v9.0.4
 
     KVModule_SubscribeToServerEvent(ctx,
         KVModuleEvent_AtomicSlotMigration, atomicSlotMigrationCallback);
@@ -561,9 +645,15 @@ int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
         }
     }
 
+<<<<<<< HEAD
     KVModule_SetModuleOptions(ctx, KVMODULE_OPTIONS_HANDLE_ATOMIC_SLOT_MIGRATION);
 
     return KVMODULE_OK;
+=======
+    ValkeyModule_SetModuleOptions(ctx, VALKEYMODULE_OPTIONS_HANDLE_ATOMIC_SLOT_MIGRATION);
+
+    return VALKEYMODULE_OK;
+>>>>>>> v9.0.4
 }
 
 int KVModule_OnUnload(KVModuleCtx *ctx) {

@@ -68,10 +68,13 @@ static inline bool rdbIsForeignVersion(int rdbver) {
     return rdbver >= RDB_FOREIGN_VERSION_MIN && rdbver <= RDB_FOREIGN_VERSION_MAX;
 }
 
+<<<<<<< HEAD
 static inline bool rdbUseKVMagic(int rdbver) {
     return rdbver > RDB_FOREIGN_VERSION_MAX;
 }
 
+=======
+>>>>>>> v9.0.4
 /* Defines related to the dump file format. To store 32 bits lengths for short
  * keys requires a lot of space, so we check the most significant 2 bits of
  * the first byte to interpreter the length:
@@ -127,7 +130,11 @@ enum RdbType {
     RDB_TYPE_STREAM_LISTPACKS_2 = 19,
     RDB_TYPE_SET_LISTPACK = 20, /* Added in RDB 11 (7.2) */
     RDB_TYPE_STREAM_LISTPACKS_3 = 21,
+<<<<<<< HEAD
     RDB_TYPE_HASH_2 = 22, /* Hash with field-level expiration, RDB 80 (9.0) */
+=======
+    RDB_TYPE_HASH_2 = 22, /* Hash with field-level expiration (Valkey 9.0) */
+>>>>>>> v9.0.4
     RDB_TYPE_LAST
 };
 /* NOTE: WHEN ADDING NEW RDB TYPE, UPDATE rdb_type_string[] */
@@ -142,7 +149,11 @@ enum RdbType {
 
 /* Special RDB opcodes (saved/loaded with rdbSaveType/rdbLoadType).
  * These are special RDB types, but they start from 255 and grow down. */
+<<<<<<< HEAD
 #define RDB_OPCODE_SLOT_IMPORT 243     /* Slot import state (9.0). */
+=======
+#define RDB_OPCODE_SLOT_IMPORT 243     /* Slot import state. */
+>>>>>>> v9.0.4
 #define RDB_OPCODE_SLOT_INFO 244       /* Foreign slot info, safe to ignore. */
 #define RDB_OPCODE_FUNCTION2 245       /* function library data */
 #define RDB_OPCODE_FUNCTION_PRE_GA 246 /* old function library data for 7.0 rc1 and rc2 */
@@ -185,7 +196,11 @@ enum RdbType {
 #define RDB_LOAD_ERR_UNKNOWN_TYPE 2 /* Unknown type in file */
 #define RDB_LOAD_ERR_OTHER 3        /* Any other errors */
 
+<<<<<<< HEAD
 bool rdbIsVersionAccepted(int rdbver, bool is_kv_magic, bool is_redis_magic);
+=======
+bool rdbIsVersionAccepted(int rdbver, bool is_valkey_magic, bool is_redis_magic);
+>>>>>>> v9.0.4
 ssize_t rdbWriteRaw(rio *rdb, void *p, size_t len);
 int rdbSaveType(rio *rdb, unsigned char type);
 int rdbLoadType(rio *rdb);
@@ -224,6 +239,9 @@ int rdbFunctionLoad(rio *rdb, int ver, functionsLibCtx *lib_ctx, int rdbflags, s
 int rdbSaveRio(int req, int rdbver, rio *rdb, int *error, int rdbflags, rdbSaveInfo *rsi);
 ssize_t rdbSaveFunctions(rio *rdb);
 rdbSaveInfo *rdbPopulateSaveInfo(rdbSaveInfo *rsi);
+<<<<<<< HEAD
 void replicationEmptyDbCallback(hashtable *ht);
+=======
+>>>>>>> v9.0.4
 
 #endif

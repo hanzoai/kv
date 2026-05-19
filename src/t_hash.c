@@ -946,7 +946,11 @@ void hincrbyCommand(client *c) {
     new = sdsfromlonglong(value);
     bool has_volatile_fields = hashTypeHasVolatileFields(o);
     bool expired_overwritten = false;
+<<<<<<< HEAD
     hashTypeSet(o, objectGetVal(c->argv[2]), new, expiry, HASH_SET_TAKE_VALUE, &expired_overwritten);
+=======
+    hashTypeSet(o, c->argv[2]->ptr, new, expiry, HASH_SET_TAKE_VALUE, &expired_overwritten);
+>>>>>>> v9.0.4
     if (has_volatile_fields != hashTypeHasVolatileFields(o)) {
         dbUpdateObjectWithVolatileItemsTracking(c->db, o);
     }
@@ -1030,7 +1034,11 @@ void hincrbyfloatCommand(client *c) {
     new = sdsnewlen(buf, len);
     bool has_volatile_fields = hashTypeHasVolatileFields(o);
     bool expired_overwritten = false;
+<<<<<<< HEAD
     hashTypeSet(o, objectGetVal(c->argv[2]), new, expiry, HASH_SET_TAKE_VALUE, &expired_overwritten);
+=======
+    hashTypeSet(o, c->argv[2]->ptr, new, expiry, HASH_SET_TAKE_VALUE, &expired_overwritten);
+>>>>>>> v9.0.4
     if (has_volatile_fields != hashTypeHasVolatileFields(o)) {
         dbUpdateObjectWithVolatileItemsTracking(c->db, o);
     }
@@ -1246,7 +1254,11 @@ void hsetnxCommand(client *c) {
     } else {
         hashTypeTryConversion(o, c->argv, 2, 3);
         bool has_volatile_fields = hashTypeHasVolatileFields(o), expired_overwritten = false;
+<<<<<<< HEAD
         hashTypeSet(o, objectGetVal(c->argv[2]), objectGetVal(c->argv[3]), EXPIRY_NONE, HASH_SET_COPY, &expired_overwritten);
+=======
+        hashTypeSet(o, c->argv[2]->ptr, c->argv[3]->ptr, EXPIRY_NONE, HASH_SET_COPY, &expired_overwritten);
+>>>>>>> v9.0.4
         if (has_volatile_fields != hashTypeHasVolatileFields(o)) {
             dbUpdateObjectWithVolatileItemsTracking(c->db, o);
         }
@@ -1282,7 +1294,11 @@ void hsetCommand(client *c) {
     int expired_overwritten = 0;
     for (i = 2; i < c->argc; i += 2) {
         bool expired = false;
+<<<<<<< HEAD
         created += !hashTypeSet(o, objectGetVal(c->argv[i]), objectGetVal(c->argv[i + 1]), EXPIRY_NONE, HASH_SET_COPY, &expired);
+=======
+        created += !hashTypeSet(o, c->argv[i]->ptr, c->argv[i + 1]->ptr, EXPIRY_NONE, HASH_SET_COPY, &expired);
+>>>>>>> v9.0.4
         /* NOTE - We do not need to track all expired items which are overitten in order to propagate them, since the replica will surely just override them
          * we just need to remember that we had such items to report the keyspace notification and update the stats */
         if (expired) expired_overwritten++;
@@ -1390,6 +1406,7 @@ void hsetexCommand(client *c) {
     if (checkType(c, o, OBJ_HASH))
         return;
 
+<<<<<<< HEAD
     if (flags & (ARGS_SET_NX | ARGS_SET_XX | ARGS_SET_FNX | ARGS_SET_FXX | ARGS_EX | ARGS_PX | ARGS_EXAT)) {
         need_rewrite_argv = 1;
     }
@@ -1401,6 +1418,8 @@ void hsetexCommand(client *c) {
         return;
     }
 
+=======
+>>>>>>> v9.0.4
     /* Handle parsing and calculating the expiration time. */
     if (flags & ARGS_KEEPTTL)
         set_flags |= HASH_SET_KEEP_EXPIRY;
@@ -1421,8 +1440,13 @@ void hsetexCommand(client *c) {
         if (o) {
             /* Key exists: check fields normally */
             for (i = fields_index; i < c->argc; i += 2) {
+<<<<<<< HEAD
                 if (((flags & ARGS_SET_FNX) && hashTypeExists(o, objectGetVal(c->argv[i]))) ||
                     ((flags & ARGS_SET_FXX) && !hashTypeExists(o, objectGetVal(c->argv[i])))) {
+=======
+                if (((flags & ARGS_SET_FNX) && hashTypeExists(o, c->argv[i]->ptr)) ||
+                    ((flags & ARGS_SET_FXX) && !hashTypeExists(o, c->argv[i]->ptr))) {
+>>>>>>> v9.0.4
                     addReply(c, shared.czero);
                     return;
                 }
@@ -1443,11 +1467,23 @@ void hsetexCommand(client *c) {
         dbAdd(c->db, c->argv[1], &o);
     }
 
+<<<<<<< HEAD
     bool has_volatile_fields = hashTypeHasVolatileFields(o);
 
     /* Prepare a new argv when rewriting the command. If set_expired is true,
      * all expired fields will be deleted. Otherwise, if rewriting is needed due to NX/XX/FNX/FXX flags,
      * copy the command, key, and optional arguments, skipping the NX/XX/FNX/FXX flags. */
+=======
+    if (flags & (ARGS_SET_FNX | ARGS_SET_FXX | ARGS_EX | ARGS_PX | ARGS_EXAT)) {
+        need_rewrite_argv = 1;
+    }
+
+    bool has_volatile_fields = hashTypeHasVolatileFields(o);
+
+    /* Prepare a new argv when rewriting the command. If set_expired is true,
+     * all expired fields will be deleted. Otherwise, if rewriting is needed due to FNX/FXX flags,
+     * copy the command, key, and optional arguments, skipping the FNX/FXX flags. */
+>>>>>>> v9.0.4
     if (set_expired) {
         new_argv = zmalloc(sizeof(robj *) * (num_fields + 2));
         new_argv[new_argc++] = shared.hdel;
@@ -1457,12 +1493,19 @@ void hsetexCommand(client *c) {
     } else if (need_rewrite_argv) {
         /* We use new_argv for rewrite */
         new_argv = zmalloc(sizeof(robj *) * c->argc);
+<<<<<<< HEAD
         // Copy optional args (skip NX/XX/FNX/FXX)
         for (int i = 0; i < fields_index; i++) {
             if (strcasecmp(objectGetVal(c->argv[i]), "NX") &&
                 strcasecmp(objectGetVal(c->argv[i]), "XX") &&
                 strcasecmp(objectGetVal(c->argv[i]), "FNX") &&
                 strcasecmp(objectGetVal(c->argv[i]), "FXX")) {
+=======
+        // Copy optional args (skip FNX/FXX)
+        for (int i = 0; i < fields_index; i++) {
+            if (strcasecmp(c->argv[i]->ptr, "FNX") &&
+                strcasecmp(c->argv[i]->ptr, "FXX")) {
+>>>>>>> v9.0.4
                 /* Propagate as HSETEX Key Value PXAT millisecond-timestamp if there is
                  * EX/PX/EXAT flag. */
                 if (expire && !(flags & ARGS_PXAT) && c->argv[i + 1] == expire) {
@@ -1481,7 +1524,11 @@ void hsetexCommand(client *c) {
     for (i = fields_index; i < c->argc; i += 2) {
         if (set_expired) {
             hashTypeIgnoreTTL(o, true);
+<<<<<<< HEAD
             if (hashTypeDelete(o, objectGetVal(c->argv[i]))) {
+=======
+            if (hashTypeDelete(o, c->argv[i]->ptr)) {
+>>>>>>> v9.0.4
                 new_argv[new_argc++] = c->argv[i];
                 incrRefCount(c->argv[i]);
                 changes++;
@@ -1491,7 +1538,11 @@ void hsetexCommand(client *c) {
             hashTypeIgnoreTTL(o, false);
         } else {
             bool expired;
+<<<<<<< HEAD
             hashTypeSet(o, objectGetVal(c->argv[i]), objectGetVal(c->argv[i + 1]), when, set_flags, &expired);
+=======
+            hashTypeSet(o, c->argv[i]->ptr, c->argv[i + 1]->ptr, when, set_flags, &expired);
+>>>>>>> v9.0.4
             changes++;
 
             if (expired) {
@@ -1703,7 +1754,11 @@ void hgetexCommand(client *c) {
         bool changed = false;
         addHashFieldToReply(c, o, objectGetVal(c->argv[i]));
         if (o && set_expired) {
+<<<<<<< HEAD
             changed = hashTypeDelete(o, objectGetVal(c->argv[i]));
+=======
+            changed = hashTypeDelete(o, c->argv[i]->ptr);
+>>>>>>> v9.0.4
             /* we treat this case exactly as active expiration. */
             if (changed) server.stat_expiredfields++;
         } else if (set_expiry) {
@@ -1918,7 +1973,11 @@ void hexpireGenericCommand(client *c, long long basetime, int unit) {
     addReplyArrayLen(c, num_fields);
 
     for (i = 0; i < num_fields; i++) {
+<<<<<<< HEAD
         expiryModificationResult result = hashTypeSetExpire(obj, objectGetVal(c->argv[fields_index + i]), when, flag);
+=======
+        expiryModificationResult result = hashTypeSetExpire(obj, c->argv[fields_index + i]->ptr, when, flag);
+>>>>>>> v9.0.4
         if (result == EXPIRATION_MODIFICATION_SUCCESSFUL)
             updated++;
         else if (result == EXPIRATION_MODIFICATION_EXPIRE_ASAP) {
@@ -2379,8 +2438,13 @@ typedef struct {
 static int hashTypeExpireEntry(void *entry, void *c) {
     expiryContext *ctx = c;
     robj *o = ctx->key;
+<<<<<<< HEAD
     serverAssert(o->encoding == OBJ_ENCODING_HASHTABLE && hashtableSize(objectGetVal(o)) > 0);
     hashtable *ht = objectGetVal(o);
+=======
+    serverAssert(o->encoding == OBJ_ENCODING_HASHTABLE && hashtableSize(o->ptr) > 0);
+    hashtable *ht = o->ptr;
+>>>>>>> v9.0.4
     void *entry_ptr = NULL;
     bool deleted = hashtablePop(ht, entry, &entry_ptr);
     if (deleted) {

@@ -314,7 +314,11 @@ int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
     if (KVModule_Init(ctx,"testrdb",1,KVMODULE_APIVER_1) == KVMODULE_ERR)
         return KVMODULE_ERR;
 
+<<<<<<< HEAD
     KVModule_SetModuleOptions(ctx, KVMODULE_OPTIONS_HANDLE_IO_ERRORS | KVMODULE_OPTIONS_HANDLE_REPL_ASYNC_LOAD | KVMODULE_OPTIONS_HANDLE_ATOMIC_SLOT_MIGRATION);
+=======
+    ValkeyModule_SetModuleOptions(ctx, VALKEYMODULE_OPTIONS_HANDLE_IO_ERRORS | VALKEYMODULE_OPTIONS_HANDLE_REPL_ASYNC_LOAD | VALKEYMODULE_OPTIONS_HANDLE_ATOMIC_SLOT_MIGRATION);
+>>>>>>> v9.0.4
 
     if (argc > 0)
         KVModule_StringToLongLong(argv[0], &conf_aux_count);

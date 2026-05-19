@@ -391,13 +391,22 @@ static int connRdmaHandleCq(kvContext *c) {
             return KV_ERR;
         }
 
+<<<<<<< HEAD
         return KV_OK;
+=======
+        return VALKEY_OK;
+>>>>>>> v9.0.4
     }
 
     ibv_ack_cq_events(ctx->cq, 1);
     if (ibv_req_notify_cq(ev_cq, 0)) {
+<<<<<<< HEAD
         kvSetError(c, KV_ERR_OTHER, "RDMA: notify cq failed");
         return KV_ERR;
+=======
+        valkeySetError(c, VALKEY_ERR_OTHER, "RDMA: notify cq failed");
+        return VALKEY_ERR;
+>>>>>>> v9.0.4
     }
 
 pollcq:
@@ -617,9 +626,15 @@ waitcq:
     }
 }
 
+<<<<<<< HEAD
 /* RDMA has no POLLOUT event supported, so it couldn't work well with kv async mechanism */
 static void kvRdmaAsyncRead(KV_UNUSED kvAsyncContext *ac) {
     assert("kv async mechanism can't work with RDMA" == NULL);
+=======
+/* RDMA has no POLLOUT event supported, so it couldn't work well with valkey async mechanism */
+static void valkeyRdmaAsyncRead(VALKEY_UNUSED valkeyAsyncContext *ac) {
+    assert("valkey async mechanism can't work with RDMA" == NULL);
+>>>>>>> v9.0.4
 }
 
 static void kvRdmaAsyncWrite(KV_UNUSED kvAsyncContext *ac) {

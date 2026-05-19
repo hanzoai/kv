@@ -29,9 +29,15 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+<<<<<<< HEAD
 #ifndef KV_ASYNC_H
 #define KV_ASYNC_H
 #include "kv.h"
+=======
+#ifndef VALKEY_ASYNC_H
+#define VALKEY_ASYNC_H
+#include "valkey.h"
+>>>>>>> v9.0.4
 #include "visibility.h"
 
 #ifdef __cplusplus
@@ -123,6 +129,7 @@ typedef struct kvAsyncContext {
     kvAsyncPushFn *push_cb;
 } kvAsyncContext;
 
+<<<<<<< HEAD
 LIBKV_API kvAsyncContext *kvAsyncConnectWithOptions(const kvOptions *options);
 LIBKV_API kvAsyncContext *kvAsyncConnect(const char *ip, int port);
 LIBKV_API kvAsyncContext *kvAsyncConnectBind(const char *ip, int port, const char *source_addr);
@@ -150,6 +157,35 @@ LIBKV_API int kvvAsyncCommand(kvAsyncContext *ac, kvCallbackFn *fn, void *privda
 LIBKV_API int kvAsyncCommand(kvAsyncContext *ac, kvCallbackFn *fn, void *privdata, const char *format, ...);
 LIBKV_API int kvAsyncCommandArgv(kvAsyncContext *ac, kvCallbackFn *fn, void *privdata, int argc, const char **argv, const size_t *argvlen);
 LIBKV_API int kvAsyncFormattedCommand(kvAsyncContext *ac, kvCallbackFn *fn, void *privdata, const char *cmd, size_t len);
+=======
+LIBVALKEY_API valkeyAsyncContext *valkeyAsyncConnectWithOptions(const valkeyOptions *options);
+LIBVALKEY_API valkeyAsyncContext *valkeyAsyncConnect(const char *ip, int port);
+LIBVALKEY_API valkeyAsyncContext *valkeyAsyncConnectBind(const char *ip, int port, const char *source_addr);
+LIBVALKEY_API valkeyAsyncContext *valkeyAsyncConnectBindWithReuse(const char *ip, int port,
+                                                                  const char *source_addr);
+LIBVALKEY_API valkeyAsyncContext *valkeyAsyncConnectUnix(const char *path);
+LIBVALKEY_API int valkeyAsyncSetConnectCallback(valkeyAsyncContext *ac, valkeyConnectCallback *fn);
+LIBVALKEY_API int valkeyAsyncSetDisconnectCallback(valkeyAsyncContext *ac, valkeyDisconnectCallback *fn);
+
+LIBVALKEY_API valkeyAsyncPushFn *valkeyAsyncSetPushCallback(valkeyAsyncContext *ac, valkeyAsyncPushFn *fn);
+LIBVALKEY_API int valkeyAsyncSetTimeout(valkeyAsyncContext *ac, struct timeval tv);
+LIBVALKEY_API void valkeyAsyncDisconnect(valkeyAsyncContext *ac);
+LIBVALKEY_API void valkeyAsyncFree(valkeyAsyncContext *ac);
+
+/* Handle read/write events */
+LIBVALKEY_API void valkeyAsyncHandleRead(valkeyAsyncContext *ac);
+LIBVALKEY_API void valkeyAsyncHandleWrite(valkeyAsyncContext *ac);
+LIBVALKEY_API void valkeyAsyncHandleTimeout(valkeyAsyncContext *ac);
+LIBVALKEY_API void valkeyAsyncRead(valkeyAsyncContext *ac);
+LIBVALKEY_API void valkeyAsyncWrite(valkeyAsyncContext *ac);
+
+/* Command functions for an async context. Write the command to the
+ * output buffer and register the provided callback. */
+LIBVALKEY_API int valkeyvAsyncCommand(valkeyAsyncContext *ac, valkeyCallbackFn *fn, void *privdata, const char *format, va_list ap);
+LIBVALKEY_API int valkeyAsyncCommand(valkeyAsyncContext *ac, valkeyCallbackFn *fn, void *privdata, const char *format, ...);
+LIBVALKEY_API int valkeyAsyncCommandArgv(valkeyAsyncContext *ac, valkeyCallbackFn *fn, void *privdata, int argc, const char **argv, const size_t *argvlen);
+LIBVALKEY_API int valkeyAsyncFormattedCommand(valkeyAsyncContext *ac, valkeyCallbackFn *fn, void *privdata, const char *cmd, size_t len);
+>>>>>>> v9.0.4
 
 #ifdef __cplusplus
 }

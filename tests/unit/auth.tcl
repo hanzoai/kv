@@ -117,7 +117,11 @@ start_server {tags {"auth external:skip"} overrides {requirepass foobar}} {
         set mget_proto "*11\r\n\$4\r\nMGET\r\n$A$A$A$A$A$A$A$A$A$A"
 
         set proto "$auth_proto$set_proto$mget_proto"
+<<<<<<< HEAD
         set rd [kv [srv "host"] [srv "port"] 1 $::tls]
+=======
+        set rd [valkey [srv "host"] [srv "port"] 1 $::tls]
+>>>>>>> v9.0.4
         set fd [$rd channel]
         puts -nonewline $fd $proto
         flush $fd
