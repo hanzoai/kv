@@ -93,6 +93,22 @@ bool rdbIsVersionAccepted(int rdbver, bool is_kv_magic, bool is_redis_magic) {
     return true;
 }
 
+/* Returns true if the RDB version is valid and accepted, false otherwise. This
+ * function takes configuration into account. The parameter `is_valkey_magic`
+ * indicates that an RDB file with the VALKEY magic string was parsed.
+ * `is_redis_magic` indicates a legacy RDB file with the REDIS magic string.
+ * When there is no magic string such as in DUMP/RESTORE, set both to false. */
+bool rdbIsVersionAccepted(int rdbver, bool is_valkey_magic, bool is_redis_magic) {
+    if (rdbver < 1) return false;
+    if (is_valkey_magic && rdbver <= RDB_FOREIGN_VERSION_MAX) return false;
+    if (is_redis_magic && rdbver > RDB_FOREIGN_VERSION_MAX) return false;
+    if (server.rdb_version_check == RDB_VERSION_CHECK_STRICT) {
+        if (rdbver > RDB_VERSION) return false; /* future version */
+        if (rdbIsForeignVersion(rdbver)) return false;
+    }
+    return true;
+}
+
 #ifdef __GNUC__
 void rdbReportError(int corruption_error, int linenum, char *reason, ...) __attribute__((format(printf, 3, 4)));
 #endif
@@ -2376,11 +2392,12 @@ robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int dbid, int *error) {
 
                     /* search for duplicate records */
                     sds field = sdstrynewlen(fstr, flen);
-                    if (!field || !hashtableAdd(dupSearchHashtable, field) ||
-                        !lpSafeToAdd(lp, (size_t)flen + vlen)) {
+                    if (!field || !lpSafeToAdd(lp, (size_t)flen + vlen) ||
+                        !hashtableAdd(dupSearchHashtable, field)) {
                         rdbReportCorruptRDB("Hash zipmap with dup elements, or big length (%u)", flen);
                         hashtableRelease(dupSearchHashtable);
                         sdsfree(field);
+                        lpFree(lp);
                         zfree(encoded);
                         objectSetVal(o, NULL);
                         decrRefCount(o);
@@ -2828,7 +2845,6 @@ robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int dbid, int *error) {
                                             " loading a stream consumer "
                                             "group");
                         decrRefCount(o);
-                        streamFreeNACK(nack);
                         return NULL;
                     }
                 }
