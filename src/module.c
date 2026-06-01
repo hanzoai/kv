@@ -4100,11 +4100,6 @@ int VM_GetContextFlags(KVModuleCtx *ctx) {
             } else if (ctx->client->slot_migration_job) {
                 flags |= KVMODULE_CTX_FLAGS_SLOT_EXPORT_CLIENT;
             }
-            if (ctx->client->slot_migration_job && isImportSlotMigrationJob(ctx->client->slot_migration_job)) {
-                flags |= VALKEYMODULE_CTX_FLAGS_SLOT_IMPORT_CLIENT;
-            } else if (ctx->client->slot_migration_job) {
-                flags |= VALKEYMODULE_CTX_FLAGS_SLOT_EXPORT_CLIENT;
-            }
         }
 
         /* For DIRTY flags, we need the blocked client if used */
