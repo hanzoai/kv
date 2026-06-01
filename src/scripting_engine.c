@@ -160,6 +160,10 @@ int scriptingEngineManagerRegister(const char *engine_name,
         e->module_ctx_cache[i] = moduleAllocateContext();
     }
 
+    for (size_t i = 0; i < MODULE_CTX_CACHE_SIZE; i++) {
+        e->module_ctx_cache[i] = moduleAllocateContext();
+    }
+
     dictAdd(engineMgr.engines, engine_name_sds, e);
 
     engineMemoryInfo mem_info = scriptingEngineCallGetMemoryInfo(e, VMSE_ALL);

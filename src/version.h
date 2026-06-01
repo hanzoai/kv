@@ -4,13 +4,13 @@
  * similar. */
 #define SERVER_NAME "kv"
 #define SERVER_TITLE "KV"
-#define KV_VERSION "255.255.255"
-#define KV_VERSION_NUM 0x00ffffff
+#define KV_VERSION "9.0.4"
+#define KV_VERSION_NUM 0x00090004
 /* The release stage is used in order to provide release status information.
  * In unstable branch the status is always "dev".
  * During release process the status will be set to rc1,rc2...rcN.
  * When the version is released the status will be "ga". */
-#define KV_RELEASE_STAGE "dev"
+#define KV_RELEASE_STAGE "ga"
 
 /* Redis OSS compatibility version, should never
  * exceed 7.2.x. */
