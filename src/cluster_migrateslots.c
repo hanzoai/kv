@@ -1217,6 +1217,10 @@ void clusterCommandMigrateSlots(client *c) {
             addReplyError(c, "Target node can not be this node.");
             goto cleanup;
         }
+        if (target_node == server.cluster->myself) {
+            addReplyError(c, "Target node can not be this node.");
+            goto cleanup;
+        }
         curr_index++;
 
         slotMigrationJob *job = createSlotExportJob(target_node, slot_ranges);

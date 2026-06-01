@@ -338,10 +338,11 @@ proc test_slave_buffers {test_name cmd_count payload_len limit_memory pipeline} 
                 set rd_master [kv_deferring_client -1]
                 for {set k 0} {$k < $cmd_count} {incr k} {
                     $rd_master setrange key:0 0 [string repeat A $payload_len]
+                    if {$k % 10000 == 0} {$rd_master flush}
                 }
-                for {set k 0} {$k < $cmd_count} {incr k} {
-                    $rd_master read
-                }
+                $rd_master client reply on
+                $rd_master flush
+                $rd_master read ;# read the +OK from CLIENT REPLY ON
             } else {
                 for {set k 0} {$k < $cmd_count} {incr k} {
                     $master setrange key:0 0 [string repeat A $payload_len]

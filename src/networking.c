@@ -953,6 +953,20 @@ void addReplyError(client *c, const char *err) {
 
 /* Add error reply to the given client.
  * Supported flags:
+ * ERR_REPLY_FLAG_NO_STATS_UPDATE - indicate not to perform any error stats updates
+ * As a side effect the SDS string is freed. */
+void addReplyErrorSdsExSafe(client *c, sds err, int flags) {
+    /* Trim any newlines at the end (ones will be added by addReplyErrorLength) */
+    err = sdstrim(err, "\r\n");
+    /* Make sure there are no newlines in the middle of the string, otherwise
+     * invalid protocol is emitted. */
+    err = sdsmapchars(err, "\r\n", "  ", 2);
+    addReplyErrorSdsEx(c, err, flags);
+}
+
+/* Add error reply to the given client.
+ * See addReplyErrorLength for expectations from the input string.
+ * Supported flags:
  * * ERR_REPLY_FLAG_NO_STATS_UPDATE - indicate not to perform any error stats updates */
 void addReplyErrorSdsEx(client *c, sds err, int flags) {
     addReplyErrorLength(c, err, sdslen(err));
@@ -3097,12 +3111,14 @@ parseResult handleParseResults(client *c) {
         /* in case the client's query was an empty line we will ignore it and proceed to process the rest of the buffer
          * if any */
         resetClient(c);
+        c->reqtype = 0;
         return PARSE_OK;
     }
 
     if (c->read_flags & READ_FLAGS_PARSING_NEGATIVE_MBULK_LEN) {
         /* Multibulk processing could see a <= 0 length. */
         resetClient(c);
+        c->reqtype = 0;
         return PARSE_OK;
     }
 

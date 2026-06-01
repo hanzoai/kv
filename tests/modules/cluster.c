@@ -109,6 +109,9 @@ int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
     if (KVModule_CreateCommand(ctx, "test.start_cluster_timer", test_start_cluster_timer, "", 0, 0, 0) == KVMODULE_ERR)
         return KVMODULE_ERR;
 
+    if (ValkeyModule_CreateCommand(ctx, "test.start_cluster_timer", test_start_cluster_timer, "", 0, 0, 0) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
+
     /* Register our handlers for different message types. */
     KVModule_RegisterClusterMessageReceiver(ctx, MSGTYPE_DING, DingReceiver);
     KVModule_RegisterClusterMessageReceiver(ctx, MSGTYPE_DONG, DongReceiver);
