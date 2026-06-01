@@ -33,6 +33,8 @@
 
 #include "visibility.h"
 
+#include "visibility.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
