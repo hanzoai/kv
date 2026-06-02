@@ -3,3 +3,5 @@
 *.gcov
 kv.info
 lcov-html
+generated_*
+unit/wrapped/

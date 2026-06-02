@@ -95,6 +95,9 @@ typedef struct moduleValue {
     void *value;
 } moduleValue;
 
+typedef int (*ModuleLoadFunc)(void *, void **, int);
+typedef int (*ModuleUnLoadFunc)(void *);
+
 /* This structure represents a module inside the system. */
 typedef struct KVModule {
     void *handle;                         /* Module dlopen() handle. */
@@ -182,6 +185,7 @@ void moduleInitModulesSystem(void);
 void moduleInitModulesSystemLast(void);
 void modulesCron(void);
 int moduleLoad(const char *path, void **argv, int argc, int is_loadex);
+int moduleLoadStatic(const char *path, void **argv, int argc, int is_loadex);
 int moduleUnload(sds name, const char **errmsg);
 void moduleUnloadAllModules(void);
 void moduleLoadFromQueue(void);
@@ -208,6 +212,13 @@ void moduleNotifyKeyspaceEvent(int type, const char *event, robj *key, int dbid)
 unsigned long moduleNotifyKeyspaceSubscribersCnt(void);
 void firePostExecutionUnitJobs(void);
 void moduleCallCommandFilters(client *c);
+void moduleFireCommandResultEvent(client *c,
+                                  struct serverCommand *cmd,
+                                  int command_failed,
+                                  long long duration,
+                                  long long dirty);
+void moduleFireCommandRejectedEvent(client *c, const char *reply_str);
+void moduleFireCommandACLRejectedEvent(client *c, uint64_t subevent, int errpos);
 void modulePostExecutionUnitOperations(void);
 void ModuleForkDoneHandler(int exitcode, int bysignal);
 int TerminateModuleForkChild(int child_pid, int wait);

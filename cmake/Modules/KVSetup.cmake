@@ -78,7 +78,7 @@ macro (kv_build_and_install_bin target sources ld_flags libs link_name)
         OR USE_TCMALLOC
         OR USE_TCMALLOC_MINIMAL)
         # Using custom allocator
-        target_link_libraries(${target} ${ALLOCATOR_LIB})
+        target_link_libraries(${target} PRIVATE ${ALLOCATOR_LIB})
     endif ()
 
     # Place this line last to ensure that ${ld_flags} is placed last on the linker line
@@ -95,7 +95,7 @@ macro (kv_build_and_install_bin target sources ld_flags libs link_name)
     endif ()
 
     if (IS_FREEBSD)
-        target_link_libraries(${target} execinfo)
+        target_link_libraries(${target} PRIVATE execinfo)
     endif ()
 
     # Enable all warnings + fail on warning
@@ -330,22 +330,10 @@ if (PYTHON_EXE)
         COMMAND touch ${CMAKE_BINARY_DIR}/fmtargs_generated
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src")
     add_custom_target(generate_fmtargs_h DEPENDS ${CMAKE_BINARY_DIR}/fmtargs_generated)
-
-    # Rule for generating test_files.h
-    message(STATUS "Adding target generate_test_files_h")
-    file(GLOB UNIT_TEST_SRCS "${CMAKE_SOURCE_DIR}/src/unit/*.c")
-    add_custom_command(
-        OUTPUT ${CMAKE_BINARY_DIR}/test_files_generated
-        DEPENDS "${UNIT_TEST_SRCS};${CMAKE_SOURCE_DIR}/utils/generate-unit-test-header.py"
-        COMMAND ${PYTHON_EXE} ${CMAKE_SOURCE_DIR}/utils/generate-unit-test-header.py
-        COMMAND touch ${CMAKE_BINARY_DIR}/test_files_generated
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src")
-    add_custom_target(generate_test_files_h DEPENDS ${CMAKE_BINARY_DIR}/test_files_generated)
 else ()
     # Fake targets
     add_custom_target(generate_commands_def)
     add_custom_target(generate_fmtargs_h)
-    add_custom_target(generate_test_files_h)
 endif ()
 
 # Generate release.h file (always)

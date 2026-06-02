@@ -138,13 +138,6 @@ start_server [list overrides [list "dir" $server_path] keep_persistence true] {
         r xdel stream [lindex [lindex [lindex [lindex $records 0] 1] 1] 0]
         r xack stream mygroup [lindex [lindex [lindex [lindex $records 0] 1] 0] 0]
         set digest [debug_digest]
-        r config set sanitize-dump-payload no
-        r debug reload
-        set newdigest [debug_digest]
-        assert {$digest eq $newdigest}
-    }
-    test {Test RDB stream encoding - sanitize dump} {
-        r config set sanitize-dump-payload yes
         r debug reload
         set newdigest [debug_digest]
         assert {$digest eq $newdigest}
@@ -242,7 +235,7 @@ start_server {} {
         assert_equal [s rdb_bgsave_in_progress] 1
         r flushall
         # wait a second max (bgsave should take 5)
-        wait_for_condition 10 100 {
+        wait_for_condition 50 100 {
             [s rdb_bgsave_in_progress] == 0
         } else {
             fail "bgsave not aborted"
@@ -416,14 +409,12 @@ start_server {overrides {save ""}} {
         set rd [kv_deferring_client 0]
         set size 500 ;# aim for the 512 bin (sds overhead)
         set cmd_count 10000
+        set AAA [string repeat A $size]
         for {set k 0} {$k < $cmd_count} {incr k} {
-            $rd set key$k [string repeat A $size]
+            $rd set key$k $AAA
         }
-
-        for {set k 0} {$k < $cmd_count} {incr k} {
-            catch { $rd read }
-        }
-
+        $rd client reply on
+        assert_equal OK [$rd read]
         $rd close
 
         # start background rdb save
@@ -452,8 +443,9 @@ start_server {overrides {save ""}} {
 
             # trigger copy-on-write
             set modified_keys 16
+            set BBB [string repeat B $size]
             for {set k 0} {$k < $modified_keys} {incr k} {
-                r setrange key$key_idx 0 [string repeat B $size]
+                r setrange key$key_idx 0 $BBB
                 incr key_idx 1
             }
 

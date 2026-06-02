@@ -186,6 +186,20 @@ void test_kv_parse_cmd_georadius_ro_ok(void) {
     command_destroy(c);
 }
 
+void test_valkey_parse_cmd_sadd_ok(void) {
+    char key[201];
+    memset(key, 'A', 200);
+    key[200] = '\0';
+
+    struct cmd *c = command_get();
+    int len = valkeyFormatCommand(&c->cmd, "SADD %s value", key);
+    ASSERT_MSG(len >= 0, "Format command error");
+    c->clen = len;
+    valkey_parse_cmd(c);
+    ASSERT_KEY(c, key);
+    command_destroy(c);
+}
+
 int main(void) {
     test_kv_parse_error_nonresp();
     test_kv_parse_cmd_get();

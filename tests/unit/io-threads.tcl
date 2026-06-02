@@ -1,3 +1,28 @@
+proc wait_for_io_threads_to_go_idle {} {
+    set io_threads_always_active [dict get [r config get io-threads-always-active] io-threads-always-active]
+    if {$io_threads_always_active eq {yes}} {
+        # Polling INFO while io-threads-always-active is enabled wakes the
+        # workers in afterSleep(), so observe the idle transition with that
+        # policy disabled and then restore the original test setting.
+        assert_equal {OK} [r config set io-threads-always-active no]
+    }
+
+    set errcode [catch {
+        wait_for_condition 1000 50 {
+            [getInfoProperty [r info server] io_threads_active] eq 0
+        } else {
+            fail "Failed to wait until no io_threads are active"
+        }
+    } result]
+
+    if {$io_threads_always_active eq {yes}} {
+        assert_equal {OK} [r config set io-threads-always-active yes]
+    }
+    if {$errcode != 0} {
+        return -code $errcode $result
+    }
+}
+
 proc activate_io_threads_and_wait {} {
     set server_pid [s process_id]
     # Create 16 clients
@@ -8,9 +33,11 @@ proc activate_io_threads_and_wait {} {
     # Create a batch of commands by suspending the server for a while
     # before responding to the first command
     pause_process $server_pid
-    # Send set commands for all clients except the first
-    for {set i 1} {$i < 16} {incr i} {
-        $rd($i) incr a
+    # Send a pipeline of INCR commands for all clients except the first.
+    for {set i 1} {$i < $client_count} {incr i} {
+        for {set j 0} {$j < $requests_per_client} {incr j} {
+            $rd($i) incr a
+        }
         $rd($i) flush
     }
     # Resume the server
@@ -18,27 +45,24 @@ proc activate_io_threads_and_wait {} {
 
     # Wait until all the client commands have executed
     wait_for_condition 1000 50 {
-        [r get a] eq 15
+        [r get a] eq [expr {($client_count - 1) * $requests_per_client}]
     } else {
         fail "Failed to apply the incr command for all clients"
     }
 
-    # Wait until active io_threads are no longer active
-    wait_for_condition 1000 50 {
-        [getInfoProperty [r info server] io_threads_active] eq 0
-    } else {
-        fail "Failed to wait until no io_threads are active"
-    }
-
-    for {set i 0} {$i < 16} {incr i} {
+    for {set i 0} {$i < $client_count} {incr i} {
         $rd($i) close
     }
+
+    wait_for_io_threads_to_go_idle
 }
 
 start_server {config "minimal.conf" tags {"external:skip" "valgrind:skip"} overrides {enable-debug-command {yes} io-threads 5}} {
     # Skip if non io-threads mode - as it is relevant only for io-threads mode
     assert_equal {io-threads 5} [r config get io-threads]
     test {Force the use of IO threads and assert active IO thread usage} {
+        # Ensure all configured IO threads activate on any event, bypassing CPU-based ignition thresholds.
+        r config set io-threads-always-active yes
         activate_io_threads_and_wait
         set info [r info]
         set io_threads_count [dict get [r config get io-threads] io-threads]
@@ -56,11 +80,7 @@ start_server {config "minimal.conf" tags {"external:skip" "valgrind:skip"} overr
         # Adjust io-threads to a lower value and assert that active io_threads fields are >= values found initially
         assert_equal {OK} [r config set io-threads 1]
         set info [r info]
-        wait_for_condition 1000 50 {
-            [getInfoProperty [r info server] io_threads_active] eq 0
-        } else {
-            fail "Failed to wait until no io_threads are active"
-        }
+        wait_for_io_threads_to_go_idle
         set used_active_time_1 [getInfoProperty $info used_active_time_io_thread_1]
         assert_equal $used_active_time_1 {}
 

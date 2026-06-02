@@ -11,18 +11,9 @@
  * Tests will call a libkvcluster API-function while iterating on a number,
  * the number of successful allocations during the call before it hits an OOM.
  * The result and the error code is then checked to show "Out of memory".
- * As a last step the correct number of allocations is prepared to get a
- * successful API-function call.
- *
- * Tip:
- * When this testcase fails after code changes in the library, run the testcase
- * in `gdb` to find which API call that failed, and in which iteration.
- * - Go to the correct stack frame to find which API that triggered a failure.
- * - Use the gdb command `print i` to find which iteration.
- * - Investigate if a failure or a success is expected after the code change.
- * - Set correct `i` in for-loop and the `prepare_allocation_test()` for the test.
- *   Correct `i` can be hard to know, finding the correct number might require trial
- *   and error of running with increased/decreased `i` until the edge is found.
+ * The required number of allocations for a successful call is discovered at
+ * runtime rather than hardcoded, making the tests resilient to changes in
+ * internal allocation patterns.
  */
 #define _XOPEN_SOURCE 600 /* For strdup() */
 #include "adapters/libevent.h"
@@ -197,6 +188,7 @@ void test_alloc_failure_handling(void) {
 
             kvClusterReset(cc);
         }
+        assert(na < 1000);
 
         for (int i = 0; i < 4; ++i) {
             // Appended command lost when receiving error from kv
@@ -241,6 +233,7 @@ void test_alloc_failure_handling(void) {
 
             kvClusterReset(cc);
         }
+        assert(na < 1000);
 
         // OOM failing GetResults
         for (int i = 0; i < 4; ++i) {

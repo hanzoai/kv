@@ -38,9 +38,10 @@
 #include "adlist.h"
 #include "alloc.h"
 #include "command.h"
+#include "dict.h"
 #include "vkutil.h"
+#include "dict.h"
 
-#include <dict.h>
 #include <sds.h>
 
 #include <assert.h>
@@ -212,13 +213,13 @@ static replyErrorType getReplyErrorType(kvReply *reply) {
 
     if (reply->type != KV_REPLY_ERROR)
         return CLUSTER_NO_ERROR;
-    if (memcmp(reply->str, "MOVED", 5) == 0)
+    if (reply->len >= 5 && memcmp(reply->str, "MOVED", 5) == 0)
         return CLUSTER_ERR_MOVED;
-    if (memcmp(reply->str, "ASK", 3) == 0)
+    if (reply->len >= 3 && memcmp(reply->str, "ASK", 3) == 0)
         return CLUSTER_ERR_ASK;
-    if (memcmp(reply->str, "TRYAGAIN", 8) == 0)
+    if (reply->len >= 8 && memcmp(reply->str, "TRYAGAIN", 8) == 0)
         return CLUSTER_ERR_TRYAGAIN;
-    if (memcmp(reply->str, "CLUSTERDOWN", 11) == 0)
+    if (reply->len >= 11 && memcmp(reply->str, "CLUSTERDOWN", 11) == 0)
         return CLUSTER_ERR_CLUSTERDOWN;
     return CLUSTER_ERR_OTHER;
 }
@@ -356,6 +357,25 @@ error:
     freeReplyObject(reply);
 
     return KV_ERR;
+}
+
+/* Select a logical database by sending the SELECT command. */
+static int select_db(valkeyClusterContext *cc, valkeyContext *c) {
+    if (cc->select_db == 0)
+        return VALKEY_OK;
+
+    valkeyReply *reply = valkeyCommand(c, "SELECT %d", cc->select_db);
+    if (reply == NULL) {
+        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, "Failed to select logical database");
+        return VALKEY_ERR;
+    }
+    if (reply->type == VALKEY_REPLY_ERROR) {
+        valkeyClusterSetError(cc, VALKEY_ERR_OTHER, reply->str);
+        freeReplyObject(reply);
+        return VALKEY_ERR;
+    }
+    freeReplyObject(reply);
+    return VALKEY_OK;
 }
 
 /**
@@ -1189,6 +1209,9 @@ static int kvClusterContextInit(kvClusterContext *cc,
     } else {
         cc->max_retry_count = CLUSTER_DEFAULT_MAX_RETRY_COUNT;
     }
+    if (options->select_db > 0) {
+        cc->select_db = options->select_db;
+    }
     if (options->initial_nodes != NULL &&
         kvClusterSetOptionAddNodes(cc, options->initial_nodes) != KV_OK) {
         return KV_ERR; /* err and errstr already set. */
@@ -1563,8 +1586,10 @@ kvContext *kvClusterGetKVContext(kvClusterContext *cc,
             if (cc->tls && cc->tls_init_fn(c, cc->tls) != KV_OK) {
                 kvClusterSetError(cc, c->err, c->errstr);
             }
-
-            authenticate(cc, c); // err and errstr handled in function
+            /* Authenticate and select a logical database when configured.
+             * cc->err and cc->errstr are set when failing. */
+            authenticate(cc, c);
+            select_db(cc, c);
         }
 
         return c;
@@ -1604,6 +1629,10 @@ kvContext *kvClusterGetKVContext(kvClusterContext *cc,
 
     if (authenticate(cc, c) != KV_OK) {
         kvFree(c);
+        return NULL;
+    }
+    if (select_db(cc, c) != VALKEY_OK) {
+        valkeyFree(c);
         return NULL;
     }
 
@@ -1951,8 +1980,6 @@ ask_retry:
             }
 
             goto moved_retry;
-
-            break;
         case CLUSTER_ERR_ASK:
             node = getNodeFromRedirectReply(cc, c, reply, NULL);
             if (node == NULL) {
@@ -1980,15 +2007,12 @@ ask_retry:
             reply = NULL;
 
             goto ask_retry;
-
-            break;
         case CLUSTER_ERR_TRYAGAIN:
         case CLUSTER_ERR_CLUSTERDOWN:
             freeReplyObject(reply);
             reply = NULL;
             goto retry;
 
-            break;
         default:
 
             break;
@@ -2658,6 +2682,15 @@ kvClusterGetKVAsyncContext(kvClusterAsyncContext *acc,
             return NULL;
         }
     }
+    // Select logical database when needed
+    if (acc->cc.select_db > 0) {
+        ret = valkeyAsyncCommand(ac, selectReplyCallback, acc, "SELECT %d", acc->cc.select_db);
+        if (ret != VALKEY_OK) {
+            valkeyClusterAsyncSetError(acc, ac->c.err, ac->c.errstr);
+            valkeyAsyncFree(ac);
+            return NULL;
+        }
+    }
 
     if (acc->attach_fn) {
         ret = acc->attach_fn(ac, acc->attach_data);
@@ -2996,7 +3029,6 @@ static void kvClusterAsyncCallback(kvAsyncContext *ac, void *r,
         default:
 
             goto done;
-            break;
         }
 
         goto retry;
