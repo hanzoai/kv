@@ -413,6 +413,23 @@ int fsl_getall(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
     return KVMODULE_OK;
 }
 
+/* FSL.CLEAR <key> - Clear all elements from the list. */
+int fsl_clear(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
+    if (argc != 2)
+        return ValkeyModule_WrongArity(ctx);
+
+    fsl_t *fsl;
+    if (!get_fsl(ctx, argv[1], VALKEYMODULE_WRITE, 0, &fsl, 1))
+        return VALKEYMODULE_OK;
+
+    if (!fsl)
+        return ValkeyModule_ReplyWithArray(ctx, 0);
+
+    fsl->length = 0;
+    ValkeyModule_ReplyWithSimpleString(ctx, "OK");
+    return VALKEYMODULE_OK;
+}
+
 /* Callback for blockonkeys_popall */
 int blockonkeys_popall_reply_callback(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
     KVMODULE_NOT_USED(argc);

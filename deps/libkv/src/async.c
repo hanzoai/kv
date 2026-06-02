@@ -44,10 +44,10 @@
 
 #include "async.h"
 #include "async_private.h"
+#include "dict.h"
 #include "net.h"
 #include "kv_private.h"
 
-#include <dict.h>
 #include <sds.h>
 
 #include <assert.h>
@@ -808,21 +808,78 @@ void kvAsyncHandleTimeout(kvAsyncContext *ac) {
     kvAsyncDisconnectInternal(ac);
 }
 
-/* Sets a pointer to the first argument and its length starting at p. Returns
- * the number of bytes to skip to get to the following argument. */
-static const char *nextArgument(const char *start, const char **str, size_t *len) {
-    const char *p = start;
-    if (p[0] != '$') {
-        p = strchr(p, '$');
-        if (p == NULL)
+static inline int vk_isdigit_ascii(char c) {
+    return (unsigned)(c - '0') < 10;
+}
+
+#define MAX_BULK_LEN (512ULL * 1024ULL * 1024ULL)
+vk_static_assert(MAX_BULK_LEN < (UINT64_MAX - 9U) / 10);
+static const char *parseBulkLen(const char *p, const char *end, uint64_t *len) {
+    uint64_t acc = 0;
+
+    assert(p != NULL && end != NULL && end - p >= 0 && len != NULL);
+
+    if (end == p || !vk_isdigit_ascii(*p))
+        return NULL;
+
+    while (p < end && vk_isdigit_ascii(*p)) {
+        unsigned d = *p - '0';
+
+        acc = acc * 10 + d;
+        if (acc > (uint64_t)MAX_BULK_LEN)
             return NULL;
+
+        p++;
     }
 
-    *len = (int)strtol(p + 1, NULL, 10);
-    p = strchr(p, '\r');
-    assert(p);
+    *len = acc;
+    return p;
+}
+
+/* Find the next argument in a command buffer, i.e. find the next bulkstring
+ * in an array of bulkstrings.
+ * Returns a pointer to the end of a found argument, which can be used when
+ * finding following arguments, or NULL when an argument is not found.
+ * The found string is returned by pointer via `str` and length in `strlen`. */
+static const char *nextArgument(const char *buf, size_t buflen, const char **str, size_t *strlen) {
+    if (buf == NULL || buflen == 0)
+        goto error;
+
+    const char *p = buf;
+
+    /* Find a bulkstring identifier. */
+    if (p[0] != '$') {
+        if ((p = memchr(p, '$', buflen)) == NULL)
+            goto error;
+    }
+    p++; /* Skip found '$' */
+
+    uint64_t len;
+
+    p = parseBulkLen(p, buf + buflen, &len);
+    if (p == NULL)
+        goto error;
+
+    /* Calculate end pointer for \r\n<payload>\r\n */
+    const char *end = p + 2 + len + 2;
+
+    /* Validate the parsed length and field separators. */
+    if ((size_t)(end - buf) > buflen || p[0] != '\r' || p[len + 2] != '\r')
+        goto error;
+
+    /* Return pointer to the string, length, and pointer to next element. */
     *str = p + 2;
-    return p + 2 + (*len) + 2;
+    *strlen = len;
+
+    if ((size_t)(end - buf) == buflen) /* No more data in buffer? */
+        return NULL;
+
+    return end;
+
+error:
+    *str = NULL;
+    *strlen = 0;
+    return NULL;
 }
 
 void kvSsubscribeCallback(struct kvAsyncContext *ac, void *reply, void *privdata) {
@@ -846,8 +903,8 @@ void kvSsubscribeCallback(struct kvAsyncContext *ac, void *reply, void *privdata
     assert(r != NULL);
     if (r->type == KV_REPLY_ERROR) {
         /*/ On CROSSSLOT, MOVED and other errors */
-        p = nextArgument(data->command, &cstr, &clen);
-        while ((p = nextArgument(p, &astr, &alen)) != NULL) {
+        p = nextArgument(data->command, data->len, &cstr, &clen);
+        while ((p = nextArgument(p, data->len - (p - data->command), &astr, &alen)) != NULL || astr != NULL) {
             sname = sdsnewlen(astr, alen);
             if (sname == NULL)
                 goto oom;
@@ -921,6 +978,18 @@ static int kvAsyncAppendCmdLen(kvAsyncContext *ac, kvCallbackFn *fn, void *privd
     if (c->flags & (KV_DISCONNECTING | KV_FREEING))
         return KV_ERR;
 
+    /* Get the first string in the command, and don't accept empty commands. */
+    p = nextArgument(cmd, len, &cstr, &clen);
+    if (cstr == NULL)
+        return VALKEY_ERR;
+
+    hasnext = (p && (p[0] == '$'));
+    pvariant = (tolower(cstr[0]) == 'p') ? 1 : 0;
+    svariant = valkeyIsShardedVariant(cstr);
+    hasprefix = svariant || pvariant;
+    cstr += hasprefix;
+    clen -= hasprefix;
+
     /* Setup callback */
     cb.fn = fn;
     cb.privdata = privdata;
@@ -943,7 +1012,7 @@ static int kvAsyncAppendCmdLen(kvAsyncContext *ac, kvCallbackFn *fn, void *privd
         c->flags |= KV_SUBSCRIBED;
 
         /* Add every channel/pattern to the list of subscription callbacks. */
-        while ((p = nextArgument(p, &astr, &alen)) != NULL) {
+        while ((p = nextArgument(p, len - (p - cmd), &astr, &alen)) != NULL || astr != NULL) {
             sname = sdsnewlen(astr, alen);
             if (sname == NULL)
                 goto oom;
@@ -984,8 +1053,8 @@ static int kvAsyncAppendCmdLen(kvAsyncContext *ac, kvCallbackFn *fn, void *privd
             ssubscribe_data->command = vk_malloc(len + 1);
             if (ssubscribe_data->command == NULL)
                 goto oom;
-            memcpy(ssubscribe_data->command, cmd, len + 1);
-
+            memcpy(ssubscribe_data->command, cmd, len);
+            ssubscribe_data->len = len;
             ssubscribe_data->user_callback = fn;
             ssubscribe_data->user_priv_data = privdata;
 
@@ -1015,7 +1084,7 @@ static int kvAsyncAppendCmdLen(kvAsyncContext *ac, kvCallbackFn *fn, void *privd
         if (hasnext) {
             /* Send an unsubscribe with specific channels/patterns.
              * Bookkeeping the number of expected replies */
-            while ((p = nextArgument(p, &astr, &alen)) != NULL) {
+            while ((p = nextArgument(p, len - (p - cmd), &astr, &alen)) != NULL || astr != NULL) {
                 sname = sdsnewlen(astr, alen);
                 if (sname == NULL)
                     goto oom;

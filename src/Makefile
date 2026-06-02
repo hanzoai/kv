@@ -171,6 +171,7 @@ ifeq ($(uname_S),SunOS)
 else
 ifeq ($(uname_S),Darwin)
 	# Darwin
+	FINAL_LDFLAGS+= -Wl,-export_dynamic
 	FINAL_LIBS+= -ldl
 	# Homebrew's OpenSSL is not linked to /usr/local to avoid
 	# conflicts with the system's LibreSSL installation so it
@@ -209,18 +210,22 @@ ifeq ($(uname_S),NetBSD)
 else
 ifeq ($(uname_S),FreeBSD)
 	# FreeBSD
+	FINAL_LDFLAGS+= -rdynamic
 	FINAL_LIBS+= -lpthread -lexecinfo
 else
 ifeq ($(uname_S),DragonFly)
 	# DragonFly
+	FINAL_LDFLAGS+= -rdynamic
 	FINAL_LIBS+= -lpthread -lexecinfo
 else
 ifeq ($(uname_S),OpenBSD)
 	# OpenBSD
+	FINAL_LDFLAGS+= -rdynamic
 	FINAL_LIBS+= -lpthread -lexecinfo
 else
 ifeq ($(uname_S),NetBSD)
 	# NetBSD
+	FINAL_LDFLAGS+= -rdynamic
 	FINAL_LIBS+= -lpthread -lexecinfo
 else
 ifeq ($(uname_S),Haiku)
@@ -256,9 +261,12 @@ FINAL_CFLAGS+= -I../deps/libkv/include -I../deps/linenoise -I../deps/hdr_histogr
 # Lua scripting engine module
 LUA_MODULE_NAME:=modules/lua/libkvlua.so
 ifeq ($(BUILD_LUA),no)
+	LUA_MODULE_NAME=
 	LUA_MODULE=
 	LUA_MODULE_INSTALL=
-else
+	FINAL_CFLAGS+=-DSTATIC_LUA=0
+else ifeq ($(BUILD_LUA),module)
+	LUA_MODULE_NAME=modules/lua/libvalkeylua.so
 	LUA_MODULE=$(LUA_MODULE_NAME)
 	LUA_MODULE_INSTALL=install-lua-module
 
@@ -268,8 +276,18 @@ ifeq ($(uname_S),Darwin)
 	FINAL_LDFLAGS+= -Wl,-rpath,$(PREFIX)/lib
 	FINAL_LDFLAGS+= -Wl,-rpath,$(current_dir)/modules/lua
 else
-	FINAL_LDFLAGS+= -Wl,-rpath,$(PREFIX)/lib:$(current_dir)/modules/lua -Wl,--disable-new-dtags
-endif
+	# The default: building Lua as a static module.
+	LUA_MODULE_NAME=modules/lua/libvalkeylua.a
+	LUA_MODULE=$(LUA_MODULE_NAME)
+	current_dir = $(shell pwd)
+	FINAL_CFLAGS+=-DLUA_ENABLED -DSTATIC_LUA=1
+	ifeq ($(uname_S),Darwin)
+		LUA_LDFLAGS=-Wl,-export_dynamic -Wl,-force_load,$(current_dir)/modules/lua/libvalkeylua.a ../deps/lua/src/liblua.a
+	else ifeq ($(uname_S),FreeBSD)
+		LUA_LDFLAGS=-Wl,--export-dynamic -Wl,--whole-archive $(current_dir)/modules/lua/libvalkeylua.a -Wl,--no-whole-archive ../deps/lua/src/liblua.a
+	else
+		LUA_LDFLAGS=-Wl,--whole-archive $(current_dir)/modules/lua/libvalkeylua.a -Wl,--no-whole-archive ../deps/lua/src/liblua.a
+	endif
 endif
 
 # Determine systemd support and/or build preference (defaulting to auto-detection)
@@ -471,13 +489,13 @@ ENGINE_SERVER_OBJ = \
     config.o \
     connection.o \
     crc16.o \
+    crc16_slottable.o \
     crc64.o \
     crccombine.o \
     crcspeed.o \
     db.o \
     debug.o \
     defrag.o \
-    dict.o \
     entry.o \
     eval.o \
     evict.o \
@@ -559,7 +577,8 @@ ENGINE_SERVER_OBJ = \
     vset.o \
     ziplist.o \
     zipmap.o \
-    zmalloc.o
+    zmalloc.o \
+	queues.o
 ENGINE_SERVER_OBJ+=$(ENGINE_TRACE_OBJ)
 ENGINE_CLI_NAME=$(ENGINE_NAME)-cli$(PROG_SUFFIX)
 ENGINE_CLI_OBJ = \
@@ -572,7 +591,7 @@ ENGINE_CLI_OBJ = \
     crc64.o \
     crccombine.o \
     crcspeed.o \
-    dict.o \
+    hashtable.o \
     monotonic.o \
     mt19937-64.o \
     release.o \
@@ -591,12 +610,13 @@ ENGINE_BENCHMARK_OBJ = \
     anet.o \
     cli_common.o \
     crc16.o \
+    crc16_slottable.o \
     crc64.o \
     crccombine.o \
     crcspeed.o \
-    dict.o \
     fuzzer_client.o \
     fuzzer_command_generator.o \
+    hashtable.o \
     monotonic.o \
     mt19937-64.o \
     release.o \
@@ -611,9 +631,7 @@ ENGINE_BENCHMARK_OBJ = \
 ENGINE_CHECK_RDB_NAME=$(ENGINE_NAME)-check-rdb$(PROG_SUFFIX)
 ENGINE_CHECK_AOF_NAME=$(ENGINE_NAME)-check-aof$(PROG_SUFFIX)
 ENGINE_LIB_NAME=lib$(ENGINE_NAME).a
-ENGINE_TEST_FILES:=$(wildcard unit/*.c)
-ENGINE_TEST_OBJ:=$(sort $(patsubst unit/%.c,unit/%.o,$(ENGINE_TEST_FILES)))
-ENGINE_UNIT_TESTS:=$(ENGINE_NAME)-unit-tests$(PROG_SUFFIX)
+ENGINE_UNIT_GTESTS:=$(ENGINE_NAME)-unit-gtests$(PROG_SUFFIX)
 ALL_SOURCES=$(sort $(patsubst %.o,%.c,$(ENGINE_SERVER_OBJ) $(ENGINE_CLI_OBJ) $(ENGINE_BENCHMARK_OBJ)))
 
 USE_FAST_FLOAT?=no
@@ -637,7 +655,9 @@ ifeq ($(USE_LIBBACKTRACE),yes)
 	FINAL_LIBS += -lbacktrace
 endif
 
-ALL_BUILD_PREREQUISITES=$(SERVER_NAME) $(ENGINE_SENTINEL_NAME) $(ENGINE_CLI_NAME) $(ENGINE_BENCHMARK_NAME) $(ENGINE_CHECK_RDB_NAME) $(ENGINE_CHECK_AOF_NAME) $(TLS_MODULE) $(RDMA_MODULE) $(LUA_MODULE)
+DEPENDENCY_TARGETS+= gtest-parallel
+
+ALL_BUILD_PREREQUISITES=$(SERVER_NAME) $(ENGINE_SENTINEL_NAME) $(ENGINE_CLI_NAME) $(ENGINE_BENCHMARK_NAME) $(ENGINE_CHECK_RDB_NAME) $(ENGINE_CHECK_AOF_NAME) $(TLS_MODULE) $(RDMA_MODULE)
 
 all: $(ALL_BUILD_PREREQUISITES)
 	@echo ""
@@ -653,7 +673,7 @@ endif
 
 .PHONY: all
 
-all-with-unit-tests: all $(ENGINE_UNIT_TESTS)
+all-with-unit-tests: all $(ENGINE_UNIT_GTESTS)
 .PHONY: all
 
 persist-settings: distclean
@@ -666,14 +686,15 @@ persist-settings: distclean
 	echo BUILD_RDMA=$(BUILD_RDMA) >> .make-settings
 	echo USE_SYSTEMD=$(USE_SYSTEMD) >> .make-settings
 	echo BUILD_LUA=$(BUILD_LUA) >> .make-settings
-	echo USE_FAST_FLOAT=$(USE_FAST_FLOAT) >> .make-settings
 	echo USE_LIBBACKTRACE=$(USE_LIBBACKTRACE) >> .make-settings
+	echo LIBBACKTRACE_PREFIX=$(LIBBACKTRACE_PREFIX) >> .make-settings
 	echo CFLAGS=$(CFLAGS) >> .make-settings
 	echo LDFLAGS=$(LDFLAGS) >> .make-settings
 	echo SERVER_CFLAGS=$(SERVER_CFLAGS) >> .make-settings
 	echo SERVER_LDFLAGS=$(SERVER_LDFLAGS) >> .make-settings
 	echo PREV_FINAL_CFLAGS=$(FINAL_CFLAGS) >> .make-settings
 	echo PREV_FINAL_LDFLAGS=$(FINAL_LDFLAGS) >> .make-settings
+	echo ENGINE_SERVER_OBJ=$(ENGINE_SERVER_OBJ) >> .make-settings
 	-(cd ../deps && $(MAKE) $(DEPENDENCY_TARGETS))
 
 .PHONY: persist-settings
@@ -717,15 +738,15 @@ $(ENGINE_CHECK_AOF_NAME): $(SERVER_NAME)
 
 # kv-tls.so
 $(TLS_MODULE_NAME): $(SERVER_NAME)
-	$(QUIET_CC)$(CC) -o $@ tls.c -shared -fPIC $(TLS_MODULE_CFLAGS) $(TLS_CLIENT_LIBS)
+	$(QUIET_CC)$(CC) $(LDFLAGS) -o $@ tls.c -shared -fPIC $(TLS_MODULE_CFLAGS) $(TLS_CLIENT_LIBS)
 
 # kv-rdma.so
 $(RDMA_MODULE_NAME): $(SERVER_NAME)
-	$(QUIET_CC)$(CC) -o $@ rdma.c -shared -fPIC $(RDMA_MODULE_CFLAGS)
+	$(QUIET_CC)$(CC) $(LDFLAGS) -o $@ rdma.c -shared -fPIC $(RDMA_MODULE_CFLAGS)
 
 # engine_lua.so
-$(LUA_MODULE_NAME): $(SERVER_NAME)
-	cd modules/lua && $(MAKE) OPTIMIZATION="$(OPTIMIZATION)"
+$(LUA_MODULE_NAME): .make-prerequisites
+	$(MAKE) -C modules/lua OPTIMIZATION="$(OPTIMIZATION)" BUILD_LUA="$(BUILD_LUA)"
 
 # kv-cli
 $(ENGINE_CLI_NAME): $(ENGINE_CLI_OBJ)
@@ -747,9 +768,6 @@ DEP = $(ENGINE_SERVER_OBJ:%.o=%.d) $(ENGINE_CLI_OBJ:%.o=%.d) $(ENGINE_BENCHMARK_
 trace/%.o: trace/%.c .make-prerequisites
 	$(SERVER_CC) -Itrace -MMD -o $@ -c $<
 
-unit/%.o: unit/%.c .make-prerequisites
-	$(SERVER_CC) -MMD -o $@ -c $<
-
 # The following files are checked in and don't normally need to be rebuilt. They
 # are built only if python is available and their prereqs are modified.
 ifneq (,$(PYTHON))
@@ -760,11 +778,6 @@ fmtargs.h: ../utils/generate-fmtargs.py
 	$(QUITE_GEN)sed '/Everything below this line/,$$d' $@ > $@.tmp
 	$(QUITE_GEN)$(PYTHON) ../utils/generate-fmtargs.py >> $@.tmp
 	$(QUITE_GEN)mv $@.tmp $@
-
-unit/test_files.h: unit/*.c ../utils/generate-unit-test-header.py
-	$(QUIET_GEN)$(PYTHON) ../utils/generate-unit-test-header.py
-
-unit/test_main.o: unit/test_files.h
 endif
 
 commands.c: $(COMMANDS_DEF_FILENAME).def
@@ -780,15 +793,21 @@ distclean: clean
 	-(cd ../deps && $(MAKE) distclean)
 	-(cd modules && $(MAKE) clean)
 	-(cd ../tests/modules && $(MAKE) clean)
+	-(cd unit && $(MAKE) clean)
 	-(rm -f .make-*)
+	-(find unit -type d -name __pycache__ -exec rm -rf {} +)
 
 .PHONY: distclean
 
 test: $(ALL_BUILD_PREREQUISITES)
 	@(cd ..; KV_PROG_SUFFIX="$(PROG_SUFFIX)" ./runtest)
 
-test-unit: $(ENGINE_UNIT_TESTS)
-	./$(ENGINE_UNIT_TESTS)
+test-unit:
+	@(cd unit && $(MAKE) test-unit)
+
+# valkey-unit-gtests
+$(ENGINE_UNIT_GTESTS): $(ENGINE_LIB_NAME)
+	@(cd unit && $(MAKE) $(ENGINE_UNIT_GTESTS))
 
 test-modules: $(SERVER_NAME)
 	@(cd ..; ./runtest-moduleapi)

@@ -55,18 +55,17 @@
  * replacements are done, such as the replacement of RM with KVModule in
  * function names. For details, see the script src/modules/gendoc.rb.
  * -------------------------------------------------------------------------- */
-
 #include "server.h"
 #include "cluster.h"
 #include "commandlog.h"
 #include "rdb.h"
 #include "monotonic.h"
 #include "script.h"
-#include "call_reply.h"
 #include "hdr_histogram.h"
 #include "crc16_slottable.h"
 #include "kvmodule.h"
 #include "module.h"
+#include "call_reply.h"
 #include "io_threads.h"
 #include "scripting_engine.h"
 #include "cluster_migrateslots.h"
@@ -505,6 +504,8 @@ typedef struct KVModuleAsyncRMCallPromise {
     KVModuleCtx *ctx;
 } KVModuleAsyncRMCallPromise;
 
+typedef struct ValkeyModuleAsyncRMCallPromise ValkeyModuleCallArgvBlockedHandle;
+
 /* --------------------------------------------------------------------------
  * Prototypes
  * -------------------------------------------------------------------------- */
@@ -531,6 +532,8 @@ void moduleCreateContext(KVModuleCtx *out_ctx, KVModule *module, int ctx_flags);
 
 /* Common helper functions. */
 int moduleVerifyResourceName(const char *name);
+
+static void moduleCallCommandHelper(ValkeyModuleCtx *ctx, client *c, robj **argv, int argc, int flags, sds *error);
 
 /* --------------------------------------------------------------------------
  * ## Heap allocation raw functions
@@ -737,7 +740,8 @@ void moduleReleaseTempClient(client *c) {
     c->duration = 0;
     resetClient(c);
     c->bufpos = 0;
-    c->raw_flag = 0;
+    c->raw_flag1 = 0;
+    c->raw_flag2 = 0;
     c->flag.module = 1;
     c->flag.fake = 1;
     c->user = NULL; /* Root user */
@@ -929,13 +933,20 @@ void moduleCallCommandUnblockedHandler(client *c) {
     }
     moduleCreateContext(&ctx, module, KVMODULE_CTX_TEMP_CLIENT);
     selectDb(ctx.client, c->db->id);
-
-    CallReply *reply = moduleParseReply(c, NULL);
     module->in_call++;
-    promise->on_unblocked(&ctx, reply, promise->private_data);
-    module->in_call--;
 
+    if (!promise->from_call_argv) {
+        CallReply *reply = moduleParseReply(c, NULL);
+        promise->on_unblocked(&ctx, reply, promise->private_data);
+
+    } else {
+        invokeReplyHandlers(&ctx, c, &promise->resp_handlers, promise->resp_handlers_ctx);
+    }
+
+    module->in_call--;
     moduleFreeContext(&ctx);
+
+
     moduleReleaseTempClient(c);
 }
 
@@ -3611,6 +3622,24 @@ int VM_ReplyWithCallReply(KVModuleCtx *ctx, KVModuleCallReply *reply) {
     return KVMODULE_OK;
 }
 
+/* Forward raw RESP bytes directly to the client that issued the module command.
+ *
+ * This is intended to be called from a ValkeyModuleReplyHandlers.onRespAvailable
+ * callback to implement zero-copy pass-through: instead of parsing and
+ * re-serialising the inner command's reply the module writes the raw wire
+ * bytes straight to the calling client's output buffer.
+ *
+ * `proto` must point to a valid, complete RESP-encoded reply of length
+ * `proto_len`.  Returns VALKEYMODULE_OK.  If there is no client context
+ * (script, timer, etc.) the call is a no-op and returns VALKEYMODULE_OK. */
+// NON-PUBLIC API: remove this line when making this API public.
+int VM_ReplyRaw(ValkeyModuleCtx *ctx, const char *proto, size_t proto_len) {
+    client *c = moduleGetReplyClient(ctx);
+    if (c == NULL) return VALKEYMODULE_OK;
+    addReplyProto(c, proto, proto_len);
+    return VALKEYMODULE_OK;
+}
+
 /* Reply with a RESP3 Double type.
  * Visit https://kv.io/topics/protocol for more info about RESP3.
  *
@@ -6232,6 +6261,37 @@ int VM_CallReplyPromiseAbort(KVModuleCallReply *reply, void **private_data) {
     return KVMODULE_OK;
 }
 
+/* Abort a pending ValkeyModule_CallArgv invocation that has been deferred
+ * (i.e. the underlying command is blocking and onBlocked was called).
+ * Returns VALKEYMODULE_OK if the abort succeeded, or VALKEYMODULE_ERR if the
+ * call has already completed and can no longer be aborted.
+ *
+ * If the abort succeeds it is guaranteed that neither onRespAvailable nor
+ * any other reply callback in ValkeyModuleReplyHandlers will be invoked for
+ * this call. The abort handle becomes invalid after this function returns.
+ * The abort handle also becomes invalid once onRespAvailable is called.
+ *
+ * Note: as with VM_CallReplyPromiseAbort, if the underlying blocking command
+ * belongs to a module that does not honour disconnect callbacks, the abort may
+ * succeed internally without the command actually stopping. */
+// NON-PUBLIC API: remove this line when making this API public.
+int VM_CallArgvAbort(ValkeyModuleCallArgvBlockedHandle *handle) {
+    ValkeyModuleAsyncRMCallPromise *promise = handle;
+    serverAssert(promise->from_call_argv);
+    if (!promise->c) return VALKEYMODULE_ERR;               /* Already finished or aborted. */
+    if (!promise->c->flag.blocked) return VALKEYMODULE_ERR; /* No longer blocked. */
+
+    /* Zero out the handlers so no callbacks are fired if the unblocked-client
+     * processing path is still reached (e.g. module blocking command that
+     * ignores disconnect). */
+    promise->resp_handlers = (ValkeyModuleReplyHandlers){0};
+    promise->resp_handlers_ctx = NULL;
+
+    unblockClient(promise->c, 0);
+    moduleReleaseTempClient(promise->c);
+    return VALKEYMODULE_OK;
+}
+
 /* Return the pointer and length of a string or error reply. */
 const char *VM_CallReplyStringPtr(KVModuleCallReply *reply, size_t *len) {
     size_t private_len;
@@ -6268,7 +6328,8 @@ void VM_SetContextUser(KVModuleCtx *ctx, const KVModuleUser *user) {
  * items (which equals to the length of the allocated argv).
  *
  * The integer pointed by 'flags' is populated with flags according
- * to special modifiers in "fmt".
+ * to special modifiers in "fmt". The supported modifiers map to
+ * VALKEYMODULE_CALL_ARGV_* macros as follows:
  *
  *     "!" -> KVMODULE_ARGV_REPLICATE
  *     "A" -> KVMODULE_ARGV_NO_AOF
@@ -6511,9 +6572,10 @@ KVModuleCallReply *VM_Call(KVModuleCtx *ctx, const char *cmdname, const char *fm
     }
     c->db = ctx->client->db;
     c->argv = argv;
-    /* We have to assign argv_len, which is equal to argc in that case (VM_Call)
+    /* We have to assign argv_len, which is equal to argc in that case
      * because we may be calling a command that uses rewriteClientCommandArgument */
     c->argc = c->argv_len = argc;
+
     c->resp = 2;
     if (flags & KVMODULE_ARGV_RESP_3) {
         c->resp = 3;
@@ -6527,6 +6589,11 @@ KVModuleCallReply *VM_Call(KVModuleCtx *ctx, const char *cmdname, const char *fm
     if (flags & KVMODULE_ARGV_SCRIPT_MODE && is_running_script) {
         c->flag.module = 0;
         c->flag.script = 1;
+
+        if (ctx->client->user) {
+            /* If there is a user attached to the client, run the command as that user */
+            flags |= VALKEYMODULE_CALL_ARGV_RUN_AS_USER;
+        }
     }
 
     user *user = NULL;
@@ -6836,7 +6903,6 @@ KVModuleCallReply *VM_Call(KVModuleCtx *ctx, const char *cmdname, const char *fm
             .c = c,
             .ctx = (ctx->flags & KVMODULE_CTX_AUTO_MEMORY) ? ctx : NULL,
         };
-        reply = callReplyCreatePromise(promise);
         c->bstate->async_rm_call_handle = promise;
         if (!(call_flags & CMD_CALL_PROPAGATE_AOF)) {
             /* No need for AOF propagation, set the relevant flags of the client */
@@ -6859,9 +6925,8 @@ cleanup:
         afterErrorReply(c, reply_error_msg, sdslen(reply_error_msg), 0);
         incrCommandStatsOnError(c->cmd, ERROR_COMMAND_REJECTED);
     }
-    if (reply_error_msg != NULL) {
-        serverAssert(reply == NULL);
-        reply = callReplyCreateError(reply_error_msg, ctx);
+    if (reply_error_msg != NULL && error != NULL) {
+        *error = reply_error_msg;
     }
 
     if (reply) autoMemoryAdd(ctx, KVMODULE_AM_REPLY, reply);
@@ -6869,8 +6934,150 @@ cleanup:
     if (is_running_script) {
         scriptClusterSlotStatsInvalidateSlotIfApplicable();
     }
-    if (c) moduleReleaseTempClient(c);
-    return reply;
+}
+
+/* Low-level API to call any command from modules.
+ *
+ * This is an optimized version of VM_Call when the module already has the
+ * arguments prepared as an array of ValkeyModuleString pointers. Unlike
+ * VM_Call, this function does not allocate a CallReply object. Instead, the
+ * reply is delivered directly through the `resp_handlers` callbacks, enabling
+ * zero-copy pass-through and avoiding intermediate parsing overhead.
+ *
+ * The ownership of the `argv` array remains with the caller.
+ *
+ * * **argv**: The array of arguments.
+ * * **argc**: The length of the array of arguments.
+ * * **flags**: A combination of VALKEYMODULE_CALL_ARGV_* flags. The supported flags are:
+ *   * `VALKEYMODULE_CALL_ARGV_REPLICATE`: Propagate the command to replicas and AOF
+ *     (format specifier: "!").
+ *   * `VALKEYMODULE_CALL_ARGV_NO_AOF`: Do not propagate the command to the AOF
+ *     file (format specifier: "A").
+ *   * `VALKEYMODULE_CALL_ARGV_NO_REPLICAS`: Do not propagate the command to
+ *     replicas (format specifier: "R").
+ *   * `VALKEYMODULE_CALL_ARGV_RESP_3`: Request a RESP3 reply from the inner command
+ *     (format specifier: "3").
+ *   * `VALKEYMODULE_CALL_ARGV_RESP_AUTO`: Use the same RESP version as the calling
+ *     client (format specifier: "0"). Recommended for pass-through use cases.
+ *   * `VALKEYMODULE_CALL_ARGV_RUN_AS_USER`: Run the command with the given user for
+ *     ACL checks (format specifier: "C").
+ *   * `VALKEYMODULE_CALL_ARGV_SCRIPT_MODE`: Mark the call as coming from script
+ *     execution (format specifier: "S").
+ *   * `VALKEYMODULE_CALL_ARGV_NO_WRITES`: Disallow write commands in this call
+ *     (format specifier: "W").
+ *   * `VALKEYMODULE_CALL_ARGV_ERRORS_AS_REPLIES`: Deliver error replies through
+ *     reply_handlers rather than setting errno on the module context
+ *     (format specifier: "E").
+ *   * `VALKEYMODULE_CALL_ARGV_RESPECT_DENY_OOM`: Respect deny-oom policy when
+ *     executing the command (format specifier: "M").
+ *   * `VALKEYMODULE_CALL_ARGV_DRY_RUN`: Execute in dry-run mode; implies
+ *     `VALKEYMODULE_CALL_ARGV_ERRORS_AS_REPLIES` (format specifier: "D").
+ *   * `VALKEYMODULE_CALL_ARGV_ALLOW_BLOCK`: Allow blocking commands/calls
+ *     (format specifier: "K").
+ *   * `VALKEYMODULE_CALL_ARGV_REPLY_EXACT`: Request exact reply parsing (do not
+ *     coerce reply types) (format specifier: "X").
+ * * **resp_handlers**: Struct of callbacks that receive the command reply. The
+ *     `onRespAvailable` callback is called first with the raw RESP bytes; if it
+ *     returns 0 the per-type callbacks are skipped. If the inner command blocks,
+ *     `onBlocked` is called instead.
+ *
+ * Returns VALKEYMODULE_OK on success. Returns VALKEYMODULE_ERR if an error
+ * occurred before invoking the command and errno is set to one of:
+ * * EBADF: wrong format specifier.
+ * * EINVAL: wrong command arity.
+ * * ENOENT: command does not exist.
+ * * EPERM: operation in Cluster instance with key in non local slot.
+ * * EROFS: operation in Cluster instance when a write command is sent
+ *          in a readonly state.
+ * * ENETDOWN: operation in Cluster instance when cluster is down.
+ * * ENOTSUP: No ACL user for the specified module context
+ * * EACCES: Command cannot be executed, according to ACL rules
+ * * ENOSPC: Write or deny-oom command is not allowed
+ * * ESPIPE: Command not allowed on script mode
+ */
+// NON-PUBLIC API: remove this line when making this API public.
+int VM_CallArgv(ValkeyModuleCtx *ctx,
+                ValkeyModuleString **argv,
+                int argc,
+                int flags,
+                const ValkeyModuleReplyHandlers *resp_handlers,
+                void *reply_ctx) {
+    serverAssert(resp_handlers == NULL || resp_handlers->version == VALKEYMODULE_REPLY_HANDLERS_VERSION);
+
+    int ret = VALKEYMODULE_OK;
+    client *c = NULL;
+    sds reply_error_msg = NULL;
+
+    c = moduleAllocTempClient();
+    c->flag.argv_borrowed = 1;
+    moduleCallCommandHelper(ctx, c, argv, argc, flags, &reply_error_msg);
+
+    if (errno != 0 && !(flags & VALKEYMODULE_CALL_ARGV_ERRORS_AS_REPLIES)) {
+        /* Signal the caller that an error occurred */
+        ret = VALKEYMODULE_ERR;
+    }
+
+    if (!c->flag.blocked) {
+        if (reply_error_msg) {
+            serverAssert(errno != 0);
+            if (resp_handlers) {
+                if (reply_error_msg[0] != '-') {
+                    /* Sanitize the message to prevent embedded CR/LF from
+                     * breaking RESP protocol framing. */
+                    memmapchars(reply_error_msg, sdslen(reply_error_msg), "\r\n", "  ", 2);
+                    sds err_buff = sdscatfmt(sdsempty(), "-ERR %S\r\n", reply_error_msg);
+                    sdsfree(reply_error_msg);
+                    reply_error_msg = err_buff;
+                }
+                addReplyProto(c, reply_error_msg, sdslen(reply_error_msg));
+            }
+            sdsfree(reply_error_msg);
+        }
+
+        if (resp_handlers) {
+            invokeReplyHandlers(ctx, c, resp_handlers, reply_ctx);
+        }
+    } else {
+        serverAssert(errno == 0);
+        serverAssert(reply_error_msg == NULL);
+        serverAssert(flags & VALKEYMODULE_CALL_ARGV_ALLOW_BLOCK);
+        serverAssert(c->bstate->async_rm_call_handle);
+
+        robj **argv_copy = zmalloc(sizeof(robj *) * argc);
+        for (int i = 0; i < argc; i++) {
+            incrRefCount(argv[i]);
+            argv_copy[i] = argv[i];
+        }
+        c->argv = argv_copy;
+        c->flag.argv_borrowed = 0;
+
+        ValkeyModuleAsyncRMCallPromise *promise = c->bstate->async_rm_call_handle;
+        /* The promise was initialized with ref_count=1 for the blocked client.
+         * VM_CallArgv never wraps the promise in a CallReply, so no additional
+         * reference is needed here.
+         *
+         * If `resp_handlers` is set the promise is passed to `onBlocked` as an
+         * abort handle, but that is a *borrowed* pointer, not a counted reference.
+         * Its validity is bounded by the client's lifetime: `onRespAvailable` is
+         * always invoked (inside `moduleCallCommandUnblockedHandler`) before
+         * `moduleReleaseTempClient` releases the client's reference and frees the
+         * promise, so the promise is guaranteed to be alive for the duration of the
+         * callback. The abort handle becomes invalid once `onRespAvailable` returns
+         * or `ValkeyModule_CallArgvAbort` is called, whichever comes first. */
+        if (resp_handlers) {
+            promise->from_call_argv = 1;
+            promise->resp_handlers = *resp_handlers;
+            promise->resp_handlers_ctx = reply_ctx;
+            resp_handlers->onBlocked(reply_ctx, ctx, promise);
+        }
+        c = NULL; /* Make sure not to free the client */
+    }
+
+    if (c) {
+        moduleReleaseTempClient(c);
+    }
+
+    return ret;
 }
 
 /* Return a pointer, and a length, to the protocol returned by the command
@@ -9364,7 +9571,7 @@ void VM_RegisterClusterMessageReceiver(KVModuleCtx *ctx,
                 if (prev)
                     prev->next = r->next;
                 else
-                    clusterReceivers[type]->next = r->next;
+                    clusterReceivers[type] = r->next;
                 zfree(r);
             }
             return;
@@ -11335,6 +11542,19 @@ KVModuleString *VM_CommandFilterArgGet(KVModuleCommandFilterCtx *fctx, int pos) 
     return fctx->argv[pos];
 }
 
+/* Backup the original client argv if it is borrowed because the client does not own it. */
+static void backupOriginalClientArgv(ValkeyModuleCommandFilterCtx *fctx) {
+    if (!fctx->c->original_argv) {
+        fctx->c->original_argv = fctx->argv;
+        fctx->c->original_argc = fctx->argc;
+        fctx->argv = zmalloc(fctx->argv_len * sizeof(ValkeyModuleString *));
+        for (int i = 0; i < fctx->argc; i++) {
+            incrRefCount(fctx->c->original_argv[i]);
+            fctx->argv[i] = fctx->c->original_argv[i];
+        }
+    }
+}
+
 /* Modify the filtered command by inserting a new argument at the specified
  * position.  The specified KVModuleString argument may be used by the server
  * after the filter context is destroyed, so it must not be auto-memory
@@ -11366,6 +11586,10 @@ int VM_CommandFilterArgInsert(KVModuleCommandFilterCtx *fctx, int pos, KVModuleS
 int VM_CommandFilterArgReplace(KVModuleCommandFilterCtx *fctx, int pos, KVModuleString *arg) {
     if (pos < 0 || pos >= fctx->argc) return KVMODULE_ERR;
 
+    if (fctx->c->flag.argv_borrowed) {
+        backupOriginalClientArgv(fctx);
+    }
+
     decrRefCount(fctx->argv[pos]);
     fctx->argv[pos] = arg;
 
@@ -11378,6 +11602,10 @@ int VM_CommandFilterArgReplace(KVModuleCommandFilterCtx *fctx, int pos, KVModule
 int VM_CommandFilterArgDelete(KVModuleCommandFilterCtx *fctx, int pos) {
     int i;
     if (pos < 0 || pos >= fctx->argc) return KVMODULE_ERR;
+
+    if (fctx->c->flag.argv_borrowed) {
+        backupOriginalClientArgv(fctx);
+    }
 
     decrRefCount(fctx->argv[pos]);
     for (i = pos; i < fctx->argc - 1; i++) {
@@ -12213,11 +12441,21 @@ int VM_SubscribeToServerEvent(KVModuleCtx *ctx, KVModuleEvent event, KVModuleEve
         if (callback == NULL) {
             listDelNode(KVModule_EventListeners, ln);
             zfree(el);
+            if (event.id == VALKEYMODULE_EVENT_COMMAND_RESULT_SUCCESS)
+                commandResultSuccessListeners--;
+            else if (event.id == VALKEYMODULE_EVENT_COMMAND_RESULT_FAILURE)
+                commandResultFailureListeners--;
+            else if (event.id == VALKEYMODULE_EVENT_COMMAND_RESULT_REJECTED)
+                commandResultRejectedListeners--;
+            else if (event.id == VALKEYMODULE_EVENT_COMMAND_RESULT_ACL_REJECTED)
+                commandResultACLRejectedListeners--;
         } else {
             el->callback = callback; /* Update the callback with the new one. */
         }
         return KVMODULE_OK;
     }
+
+    if (callback == NULL) return VALKEYMODULE_OK;
 
     /* No event found, we need to add a new one. */
     el = zmalloc(sizeof(*el));
@@ -12340,6 +12578,11 @@ void moduleFireServerEvent(uint64_t eid, int subid, void *data) {
                 moduledata = data;
             } else if (eid == KVMODULE_EVENT_ATOMIC_SLOT_MIGRATION) {
                 moduledata = data;
+            } else if (eid == VALKEYMODULE_EVENT_COMMAND_RESULT_SUCCESS ||
+                       eid == VALKEYMODULE_EVENT_COMMAND_RESULT_FAILURE ||
+                       eid == VALKEYMODULE_EVENT_COMMAND_RESULT_REJECTED ||
+                       eid == VALKEYMODULE_EVENT_COMMAND_RESULT_ACL_REJECTED) {
+                moduledata = data;
             }
 
             el->module->in_hook++;
@@ -12363,6 +12606,7 @@ void moduleUnsubscribeAllServerEvents(KVModule *module) {
     listNode *ln;
     listRewind(KVModule_EventListeners, &li);
 
+    listRewind(ValkeyModule_EventListeners, &li);
     while ((ln = listNext(&li))) {
         el = ln->value;
         if (el->module == module) {
@@ -12459,21 +12703,11 @@ size_t moduleGetMemUsage(robj *key, robj *val, size_t sample_size, int dbid) {
 /* server.moduleapi dictionary type. Only uses plain C strings since
  * this gets queries from modules. */
 
-uint64_t dictCStringKeyHash(const void *key) {
-    return dictGenHashFunction((unsigned char *)key, strlen((char *)key));
-}
-
-int dictCStringKeyCompare(const void *key1, const void *key2) {
-    return strcmp(key1, key2) == 0;
-}
-
 dictType moduleAPIDictType = {
-    dictCStringKeyHash,    /* hash function */
-    NULL,                  /* key dup */
-    dictCStringKeyCompare, /* key compare */
-    NULL,                  /* key destructor */
-    NULL,                  /* val destructor */
-    NULL                   /* allow to expand */
+    .entryGetKey = dictEntryGetKey,
+    .hashFunction = dictCStrHash,
+    .keyCompare = dictCStrKeyCompare,
+    .entryDestructor = zfree,
 };
 
 int moduleRegisterApi(const char *funcname, void *funcptr) {
@@ -12496,14 +12730,11 @@ void moduleRegisterCoreAPI(void);
 void moduleInitModulesSystemLast(void) {
 }
 
-
 dictType sdsKeyValueHashDictType = {
-    dictSdsCaseHash,       /* hash function */
-    NULL,                  /* key dup */
-    dictSdsKeyCaseCompare, /* key compare */
-    dictSdsDestructor,     /* key destructor */
-    dictSdsDestructor,     /* val destructor */
-    NULL                   /* allow to expand */
+    .entryGetKey = dictEntryGetKey,
+    .hashFunction = dictSdsCaseHash,
+    .keyCompare = dictSdsKeyCaseCompare,
+    .entryDestructor = dictEntryDestructorSdsKeyValue,
 };
 
 void moduleInitModulesSystem(void) {
@@ -12864,26 +13095,36 @@ int moduleLoad(const char *path, void **module_argv, int module_argc, int is_loa
     moduleCreateContext(&ctx, NULL, KVMODULE_CTX_TEMP_CLIENT); /* We pass NULL since we don't have a module yet. */
     if (onload((void *)&ctx, module_argv, module_argc) == KVMODULE_ERR) {
         if (ctx.module) {
-            serverLog(LL_WARNING, "Module %s initialization failed. Module not loaded.", path);
+            serverLog(LL_WARNING, "%sModule %s initialization failed. Module not loaded.",
+                      is_static ? "Static " : "", display_name);
             moduleUnregisterCleanup(ctx.module);
             moduleRemoveCateogires(ctx.module);
             moduleFreeModuleStructure(ctx.module);
         } else {
             /* If there is no ctx.module, this means that our KVModule_Init call failed,
              * and currently init will only fail on busy name. */
-            serverLog(LL_WARNING, "Module %s initialization failed. Module name is busy.", path);
+            serverLog(LL_WARNING, "%sModule %s initialization failed. Module name is busy.",
+                      is_static ? "Static " : "", display_name);
         }
         moduleFreeContext(&ctx);
-        dlclose(handle);
+        if (handle) {
+            dlclose(handle);
+        }
         return C_ERR;
+    }
+
+    if (is_static && handle) {
+        dlclose(handle);
+        handle = NULL;
     }
 
     /* Module loaded! Register it. */
     dictAdd(modules, ctx.module->name, ctx.module);
     ctx.module->blocked_clients = 0;
     ctx.module->handle = handle;
+    ctx.module->is_static_module = is_static;
     ctx.module->loadmod = zmalloc(sizeof(struct moduleLoadQueueEntry));
-    ctx.module->loadmod->path = sdsnew(path);
+    ctx.module->loadmod->path = sdsnew(display_name);
     ctx.module->loadmod->argv = module_argc ? zmalloc(sizeof(robj *) * module_argc) : NULL;
     ctx.module->loadmod->argc = module_argc;
     for (int i = 0; i < module_argc; i++) {
@@ -12896,7 +13137,11 @@ int moduleLoad(const char *path, void **module_argv, int module_argc, int is_loa
     if (ctx.module->num_commands_with_acl_categories) {
         ACLRecomputeCommandBitsFromCommandRulesAllUsers();
     }
-    serverLog(LL_NOTICE, "Module '%s' loaded from %s", ctx.module->name, path);
+    if (is_static) {
+        serverLog(LL_NOTICE, "Static Module '%s' successfully loaded", ctx.module->name);
+    } else {
+        serverLog(LL_NOTICE, "Module '%s' loaded from %s", ctx.module->name, display_name);
+    }
     ctx.module->onload = 0;
 
     int post_load_err = 0;
@@ -12965,7 +13210,6 @@ static int moduleUnloadInternal(struct KVModule *module, const char **errmsg) {
             if (i >= 2) {
                 serverLog(LL_NOTICE, "Legacy Redis Module %s found", module->name);
             }
-            break;
         }
     }
 
@@ -12985,7 +13229,7 @@ static int moduleUnloadInternal(struct KVModule *module, const char **errmsg) {
     moduleUnregisterCleanup(module);
 
     /* Unload the dynamic library. */
-    if (dlclose(module->handle) == -1) {
+    if (module->handle != NULL && dlclose(module->handle) == -1) {
         char *error = dlerror();
         if (error == NULL) error = "Unknown error";
         serverLog(LL_WARNING, "Error when trying to close the %s module: %s", module->name, error);
@@ -13239,6 +13483,13 @@ int setModuleNumericConfig(ModuleConfig *config, long long val, const char **err
     return return_code == KVMODULE_OK ? 1 : 0;
 }
 
+int setModuleUnsignedNumericConfig(ModuleConfig *config, unsigned long long val, const char **err) {
+    ValkeyModuleString *error = NULL;
+    int return_code = config->set_fn.set_unsigned_numeric(config->name, val, config->privdata, &error);
+    propagateErrorString(error, err);
+    return return_code == VALKEYMODULE_OK ? 1 : 0;
+}
+
 /* This is a series of get functions for each type that act as dispatchers for
  * config.c to call module set callbacks. */
 int getModuleBoolConfig(ModuleConfig *module_config) {
@@ -13256,6 +13507,10 @@ int getModuleEnumConfig(ModuleConfig *module_config) {
 
 long long getModuleNumericConfig(ModuleConfig *module_config) {
     return module_config->get_fn.get_numeric(module_config->name, module_config->privdata);
+}
+
+unsigned long long getModuleUnsignedNumericConfig(ModuleConfig *module_config) {
+    return module_config->get_fn.get_unsigned_numeric(module_config->name, module_config->privdata);
 }
 
 /* This function takes a module and a list of configs stored as sds NAME VALUE pairs.
@@ -13600,6 +13855,34 @@ int VM_RegisterNumericConfig(KVModuleCtx *ctx,
     flags = maskModuleConfigFlags(flags);
     addModuleNumericConfig(module->name, name, flags, new_config, default_val, numeric_flags, min, max);
     return KVMODULE_OK;
+}
+
+/*
+ * Create an unsigned integer config that server clients can interact with via the
+ * `CONFIG SET`, `CONFIG GET`, and `CONFIG REWRITE` commands. See
+ * ValkeyModule_RegisterStringConfig for detailed information about configs. */
+int VM_RegisterUnsignedNumericConfig(ValkeyModuleCtx *ctx,
+                                     const char *name,
+                                     unsigned long long default_val,
+                                     unsigned int flags,
+                                     unsigned long long min,
+                                     unsigned long long max,
+                                     ValkeyModuleConfigGetUnsignedNumericFunc getfn,
+                                     ValkeyModuleConfigSetUnsignedNumericFunc setfn,
+                                     ValkeyModuleConfigApplyFunc applyfn,
+                                     void *privdata) {
+    ValkeyModule *module = ctx->module;
+    if (moduleConfigValidityCheck(module, name, flags, NUMERIC_CONFIG)) {
+        return VALKEYMODULE_ERR;
+    }
+    ModuleConfig *new_config = createModuleConfig(name, applyfn, privdata, module);
+    new_config->get_fn.get_unsigned_numeric = getfn;
+    new_config->set_fn.set_unsigned_numeric = setfn;
+    listAddNodeTail(module->module_configs, new_config);
+    unsigned int numeric_flags = maskModuleNumericConfigFlags(flags);
+    flags = maskModuleConfigFlags(flags);
+    addModuleUnsignedNumericConfig(module->name, name, flags, new_config, default_val, numeric_flags, min, max);
+    return VALKEYMODULE_OK;
 }
 
 /* Applies all pending configurations on the module load. This should be called
@@ -14789,6 +15072,7 @@ void moduleRegisterCoreAPI(void) {
     REGISTER_API(Yield);
     REGISTER_API(RegisterBoolConfig);
     REGISTER_API(RegisterNumericConfig);
+    REGISTER_API(RegisterUnsignedNumericConfig);
     REGISTER_API(RegisterStringConfig);
     REGISTER_API(RegisterEnumConfig);
     REGISTER_API(LoadConfigs);
