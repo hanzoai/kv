@@ -51,6 +51,7 @@ void kvContextSetFuncs(kvContext *c) {
         kvContextRegisterUnixFuncs();
         kvContextRegisterUserfdFuncs();
     }
+#endif
 
     assert(c->connection_type < KV_CONN_MAX);
     assert(!c->funcs);

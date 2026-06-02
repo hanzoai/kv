@@ -1,5 +1,6 @@
 #include "kvmodule.h"
 #include <strings.h>
+#include <limits.h>
 int mutable_bool_val;
 int immutable_bool_val;
 long long longval;
@@ -167,6 +168,9 @@ int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
     }
     if (KVModule_RegisterNumericConfig(ctx, "numeric", -1, KVMODULE_CONFIG_DEFAULT, -5, 2000, getNumericConfigCommand, setNumericConfigCommand, longlongApplyFunc, &longval) == KVMODULE_ERR) {
         return KVMODULE_ERR;
+    }
+    if (ValkeyModule_RegisterUnsignedNumericConfig(ctx, "unsigned_numeric", 1, VALKEYMODULE_CONFIG_DEFAULT | VALKEYMODULE_CONFIG_UNSIGNED, 0, LLONG_MAX * 1ULL + 1000, getUnsignedNumericConfigCommand, setUnsignedNumericConfigCommand, NULL, &mutable_ull_val) == VALKEYMODULE_ERR) {
+        return VALKEYMODULE_ERR;
     }
     size_t len;
     if (argc && !strcasecmp(KVModule_StringPtrLen(argv[0], &len), "noload")) {
