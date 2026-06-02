@@ -14,6 +14,13 @@
 static KVModuleUser *global = NULL;
 static long long client_change_delta = 0;
 
+/* Track the blocking auth thread so we can join it on unload to prevent
+ * use-after-unload crashes when dlclose() unmaps the module's code while
+ * the thread is still running. Only one blocking auth thread is tracked
+ * at a time — tests must not trigger concurrent blocking auths. */
+static pthread_t blocking_auth_tid;
+static int blocking_auth_tid_valid = 0;
+
 void UserChangedCallback(uint64_t client_id, void *privdata) {
     KVMODULE_NOT_USED(privdata);
     KVMODULE_NOT_USED(client_id);
