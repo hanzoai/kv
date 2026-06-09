@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 7200
     steps:
       - name: Checkout kv
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           path: kv
           fetch-depth: 0
@@ -35,7 +35,7 @@ jobs:
           persist-credentials: false
 
       - name: Checkout kv-perf-benchmark
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: ${{ github.repository_owner }}/kv-perf-benchmark
           path: kv-perf-benchmark
@@ -43,7 +43,7 @@ jobs:
           persist-credentials: false
 
       - name: Checkout kv for latest benchmark.
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: kv-io/kv
           ref: "unstable"
