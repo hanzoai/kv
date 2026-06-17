@@ -1,4 +1,4 @@
-# kv — AI Assistant Context
+# kv
 
 <p align="center">
   <strong>Hanzo KV</strong>
