@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   code-coverage:
-    runs-on: ubuntu-22.04
+    runs-on: hanzo-build-linux-amd64
 
     steps:
       - name: Install libbacktrace

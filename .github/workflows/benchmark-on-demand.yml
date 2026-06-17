@@ -45,7 +45,7 @@ permissions:
 jobs:
   resolve-pr:
     if: github.repository == 'valkey-io/valkey'
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     # Read-only access to the PR is enough to call pulls.get.
     permissions:
       contents: read
