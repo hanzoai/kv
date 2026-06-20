@@ -72,7 +72,7 @@ permissions:
   pull-requests: read
 jobs:
   test-ubuntu-jemalloc:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     # pull_request gate breakdown:
     # 1) (base != unstable) OR PR currently has run-extra-tests.
     # 2) Exclude all labeled events, except unstable + newly added run-extra-tests.
@@ -160,7 +160,7 @@ jobs:
         with:
           job-name: ${{ github.job }}
   test-ubuntu-arm:
-    runs-on: ubuntu-24.04-arm
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -212,7 +212,7 @@ jobs:
         if: true && !contains(github.event.inputs.skiptests, 'unittest')
         run: ./src/kv-unit-tests --accurate
   test-ubuntu-jemalloc-fortify:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -269,7 +269,7 @@ jobs:
         if: true && !contains(github.event.inputs.skiptests, 'unittest')
         run: ./src/kv-unit-tests --accurate
   test-ubuntu-libc-malloc:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -321,7 +321,7 @@ jobs:
         with:
           job-name: ${{ github.job }}
   test-ubuntu-no-malloc-usable-size:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -373,7 +373,7 @@ jobs:
         with:
           job-name: ${{ github.job }}
   test-ubuntu-32bit:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -446,7 +446,7 @@ jobs:
         if: true && !contains(github.event.inputs.skiptests, 'unittest')
         run: ./src/kv-unit-tests --accurate
   test-ubuntu-tls:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -503,7 +503,7 @@ jobs:
         with:
           job-name: ${{ github.job }}
   test-ubuntu-tls-no-tls:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -560,7 +560,7 @@ jobs:
         with:
           job-name: ${{ github.job }}
   test-ubuntu-io-threads:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -604,7 +604,7 @@ jobs:
         if: true && !contains(github.event.inputs.skiptests, 'cluster')
         run: ./runtest-cluster --io-threads ${{github.event.inputs.cluster_test_args}}
   test-ubuntu-tls-io-threads:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -653,7 +653,7 @@ jobs:
         with:
           job-name: ${{ github.job }}
   test-ubuntu-reclaim-cache:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -742,7 +742,7 @@ jobs:
           echo "$CACHE"
           if [ "$(( $CACHE-$CACHE0 ))" -gt "8000000" ]; then exit 1; fi
   test-valgrind-test:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -780,7 +780,7 @@ jobs:
         if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest --valgrind --no-latency --verbose --clients 1 --timeout 2400 --dump-logs ${{github.event.inputs.test_args}}
   test-valgrind-misc:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -825,7 +825,7 @@ jobs:
           valgrind --track-origins=yes --suppressions=./src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full --log-file=err.txt ./src/kv-unit-tests --valgrind
           if grep -q 0x err.txt; then cat err.txt; exit 1; fi
   test-valgrind-no-malloc-usable-size-test:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -863,7 +863,7 @@ jobs:
         if: true && !contains(github.event.inputs.skiptests, 'kv')
         run: ./runtest --valgrind --no-latency --verbose --clients 1 --timeout 2400 --dump-logs ${{github.event.inputs.test_args}}
   test-valgrind-no-malloc-usable-size-misc:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -908,7 +908,7 @@ jobs:
           valgrind --track-origins=yes --suppressions=./src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full --log-file=err.txt ./src/kv-unit-tests --valgrind
           if grep -q 0x err.txt; then cat err.txt; exit 1; fi
   test-sanitizer-address:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -963,7 +963,7 @@ jobs:
         if: true && !contains(github.event.inputs.skiptests, 'unittest')
         run: ./src/kv-unit-tests
   test-sanitizer-address-large-memory:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -1033,7 +1033,7 @@ jobs:
         with:
           job-name: ${{ github.job }}-${{ matrix.compiler }}
   test-sanitizer-undefined:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -1088,7 +1088,7 @@ jobs:
         if: true && !contains(github.event.inputs.skiptests, 'unittest')
         run: ./src/kv-unit-tests --accurate
   test-sanitizer-undefined-large-memory:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -1160,7 +1160,7 @@ jobs:
         with:
           job-name: ${{ github.job }}-${{ matrix.compiler }}
   test-sanitizer-force-defrag:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -1211,7 +1211,7 @@ jobs:
         if: true && !contains(github.event.inputs.skiptests, 'unittest')
         run: ./src/kv-unit-tests
   test-ubuntu-lttng:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -1294,7 +1294,7 @@ jobs:
           - name: test-fedorarawhide-jemalloc
             container: fedora:rawhide
     name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     container: ${{ matrix.container }}
     timeout-minutes: 1440
     steps:
@@ -1371,7 +1371,7 @@ jobs:
           - name: test-fedorarawhide-tls-module
             container: fedora:rawhide
     name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     container: ${{ matrix.container }}
     timeout-minutes: 1440
     steps:
@@ -1448,7 +1448,7 @@ jobs:
           - name: test-fedorarawhide-tls-module-no-tls
             container: fedora:rawhide
     name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     container: ${{ matrix.container }}
     timeout-minutes: 1440
     steps:
@@ -1672,7 +1672,7 @@ jobs:
       - name: make
         run: make SERVER_CFLAGS='-Werror' USE_LIBBACKTRACE=yes
   test-freebsd:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -1711,7 +1711,7 @@ jobs:
         with:
           job-name: ${{ github.job }}
   test-alpine-jemalloc:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -1766,7 +1766,7 @@ jobs:
         with:
           job-name: ${{ github.job }}
   test-alpine-libc-malloc:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'kv-io/kv') ||
@@ -1821,7 +1821,7 @@ jobs:
         with:
           job-name: ${{ github.job }}
   test-alpine-32bit:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey') ||
@@ -1902,7 +1902,7 @@ jobs:
           job-name: ${{ github.job }}
 
   reply-schemas-validator:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     timeout-minutes: 1440
     if: |
       (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' ||
@@ -1955,7 +1955,7 @@ jobs:
       - name: validator
         run: ./utils/req-res-log-validator.py --verbose --fail-missing-reply-schemas ${{ (!contains(github.event.inputs.skiptests, 'kv') && !contains(github.event.inputs.skiptests, 'module') && !contains(github.event.inputs.skiptests, 'sentinel') && !contains(github.event.inputs.skiptests, 'cluster')) && (inputs.test_args || github.event.inputs.test_args || '') == '' && (inputs.cluster_test_args || github.event.inputs.cluster_test_args || '') == '' && '--fail-commands-not-all-hit' || '' }}
   notify-about-job-results:
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     if: always() && github.event_name == 'schedule' && github.repository == 'kv-io/kv'
     needs:
       - test-ubuntu-jemalloc
