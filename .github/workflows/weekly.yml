@@ -13,7 +13,7 @@ concurrency:
 jobs:
   determine-release-branches:
     if: github.repository == 'kv-io/kv'
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     outputs:
       branches: ${{ steps.release-branches.outputs.branches }}
       has-branches: ${{ steps.release-branches.outputs.has-branches }}
