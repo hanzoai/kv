@@ -1,3 +1,5 @@
+<p align="center"><img src=".github/hero.svg" alt="kv" width="880"></p>
+
 <p align="center">
   <strong>Hanzo KV</strong>
 </p>
