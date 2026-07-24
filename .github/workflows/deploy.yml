@@ -1,19 +1,14 @@
 name: Docker
-
+# The build + deploy of ghcr.io/hanzoai/kv now lives in the native Hanzo pipeline:
+#   .hanzo/workflows/deploy.yml
+# (Hanzo Git push -> act_runner in-cluster -> BuildKit -> ghcr.io/hanzoai/kv:<sha>
+#  -> kubectl patch app -> operator reconcile -> hanzocd).
+# GitHub is a mirror; this workflow is intentionally a no-op sync notice.
 on:
   workflow_dispatch:
-  push:
-    branches: [main, dev, test]
-    tags: ['v*']
-
-permissions:
-  contents: read
-  packages: write
-
 jobs:
-  docker:
-    uses: hanzoai/.github/.github/workflows/docker-build.yml@main
-    with:
-      image: ghcr.io/hanzoai/kv
-      cache-key: kv
-    secrets: inherit
+  notice:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync notice
+        run: echo "native pipeline is .hanzo/workflows/deploy.yml; GitHub is a mirror"
