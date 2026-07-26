@@ -11,12 +11,11 @@ getDefinedVersion(VERSION_MAJOR)
 getDefinedVersion(VERSION_MINOR)
 getDefinedVersion(VERSION_PATCH)
 set(VERSION "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}")
-message("Detected libvalkey version: ${VERSION}")
+MESSAGE("Detected version: ${VERSION}")
 
 PROJECT(kv LANGUAGES "C" VERSION "${VERSION}")
 INCLUDE(GNUInstallDirs)
 
-option(ENABLE_THREADS "Enable thread-safe initialization" ON)
 OPTION(BUILD_SHARED_LIBS "Build shared libraries" ON)
 OPTION(ENABLE_TLS "Build kv_tls for TLS support" OFF)
 OPTION(DISABLE_TESTS "If tests should be compiled or not" OFF)
@@ -45,7 +44,6 @@ set(kv_sources
     src/command.c
     src/conn.c
     src/crc16.c
-    src/dict.c
     src/net.c
     src/read.c
     src/sockcompat.c
@@ -89,6 +87,7 @@ TARGET_INCLUDE_DIRECTORIES(kv
         $<INSTALL_INTERFACE:include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/kv>
     PRIVATE
+        $<BUILD_INTERFACE:${DICT_INCLUDE_DIR}>
         $<BUILD_INTERFACE:${SDS_INCLUDE_DIR}>
 )
 
@@ -117,9 +116,7 @@ set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/hanzoai/kv")
 set(CPACK_PACKAGE_CONTACT "michael dot grunder at gmail dot com")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 set(CPACK_RPM_PACKAGE_AUTOREQPROV ON)
-set(CPACK_RPM_PACKAGE_DESCRIPTION "${CPACK_PACKAGE_DESCRIPTION}")
-set(CPACK_RPM_PACKAGE_GROUP "Productivity/Databases/Clients")
-set(CPACK_RPM_PACKAGE_LICENSE "BSD-3-Clause")
+
 include(CPack)
 
 INSTALL(TARGETS kv
@@ -138,12 +135,7 @@ endif()
 install(DIRECTORY include/kv
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         PATTERN "tls.h" EXCLUDE
-        PATTERN "rdma.h" EXCLUDE
-        PATTERN "adapters/macosx.h" EXCLUDE)
-if(APPLE)
-  install(FILES include/valkey/adapters/macosx.h
-          DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/valkey/adapters)
-endif()
+        PATTERN "rdma.h" EXCLUDE)
 
 INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/kv.pc
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
@@ -329,11 +321,8 @@ if(NOT DISABLE_TESTS)
     add_library(kv_unittest ALIAS kv)
   endif()
 
-  # Create libvalkey_unittest.a in the tests directory.
-  set_target_properties(valkey_unittest PROPERTIES
-                        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tests")
-
   # Make sure ctest prints the output when a test fails.
+  # Must be set before including CTest.
   set(CMAKE_CTEST_ARGUMENTS "--output-on-failure")
   include(CTest)
   add_subdirectory(tests)

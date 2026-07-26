@@ -532,10 +532,8 @@ static int rdmaHandleDisconnect(aeEventLoop *el, struct rdma_cm_event *ev) {
     conn->state = CONN_STATE_CLOSED;
 
     /* we can't close connection now, let's mark this connection as closed state */
-    if (rdma_conn->pending_list_node == NULL) {
-        listAddNodeTail(pending_list, conn);
-        rdma_conn->pending_list_node = listLast(pending_list);
-    }
+    listAddNodeTail(pending_list, conn);
+    rdma_conn->pending_list_node = listLast(pending_list);
 
     return C_OK;
 }
@@ -955,10 +953,8 @@ static int connRdmaSetWriteHandler(connection *conn, ConnectionCallbackFunc func
 
     /* does this connection has pending write data? */
     if (func) {
-        if (rdma_conn->pending_list_node == NULL) {
-            listAddNodeTail(pending_list, conn);
-            rdma_conn->pending_list_node = listLast(pending_list);
-        }
+        listAddNodeTail(pending_list, conn);
+        rdma_conn->pending_list_node = listLast(pending_list);
     } else if (rdma_conn->pending_list_node) {
         listDelNode(pending_list, rdma_conn->pending_list_node);
         rdma_conn->pending_list_node = NULL;
@@ -1569,7 +1565,7 @@ static int rdmaServer(char *err, int port, char *bindaddr, int af, rdma_listener
 
         if (rdma_create_id(listen_channel, &listen_cmid, NULL, RDMA_PS_TCP)) {
             serverRdmaError(err, "RDMA: create listen cm id error");
-            goto error;
+            return ANET_ERR;
         }
 
         rdma_set_option(listen_cmid, RDMA_OPTION_ID, RDMA_OPTION_ID_AFONLY, &afonly, sizeof(afonly));
@@ -1780,15 +1776,14 @@ static int rdmaProcessPendingData(void) {
         /* a connection can be disconnected by remote peer, CM event mark state as CONN_STATE_CLOSED, kick connection
          * read/write handler to close connection */
         if (conn->state == CONN_STATE_ERROR || conn->state == CONN_STATE_CLOSED) {
+            listDelNode(pending_list, rdma_conn->pending_list_node);
+            rdma_conn->pending_list_node = NULL;
             /* Invoke both read_handler and write_handler, unless read_handler
                returns 0, indicating the connection has closed, in which case
                write_handler will be skipped. */
             if (callHandler(conn, conn->read_handler)) {
                 callHandler(conn, conn->write_handler);
             }
-
-            listDelNode(pending_list, ln);
-            rdma_conn->pending_list_node = NULL;
 
             ++processed;
             continue;

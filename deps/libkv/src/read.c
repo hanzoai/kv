@@ -558,7 +558,6 @@ static int processAggregateItem(kvReader *r) {
         } else {
             if (cur->type == KV_REPLY_MAP || cur->type == KV_REPLY_ATTR)
                 elements *= 2;
-            }
 
             if (r->fn && r->fn->createArray)
                 obj = r->fn->createArray(cur, elements);
@@ -739,13 +738,24 @@ int kvReaderFeed(kvReader *r, const char *buf, size_t len) {
     if (r->err)
         return KV_ERR;
 
+    /* Copy the provided buffer. */
     if (buf != NULL && len >= 1) {
-        char *dest;
-        size_t cap;
-        if (valkeyReaderGetReadBuf(r, &dest, &cap, len) != VALKEY_OK)
-            return VALKEY_ERR;
-        memcpy(dest, buf, len);
-        valkeyReaderCommitRead(r, len);
+        /* Destroy internal buffer when it is empty and is quite large. */
+        if (r->len == 0 && r->maxbuf != 0 && sdsavail(r->buf) > r->maxbuf) {
+            sdsfree(r->buf);
+            r->buf = sdsempty();
+            if (r->buf == 0)
+                goto oom;
+
+            r->pos = 0;
+        }
+
+        newbuf = sdscatlen(r->buf, buf, len);
+        if (newbuf == NULL)
+            goto oom;
+
+        r->buf = newbuf;
+        r->len = sdslen(r->buf);
     }
 
     return KV_OK;

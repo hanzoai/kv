@@ -80,10 +80,6 @@ int scriptInterrupt(scriptRunCtx *run_ctx) {
         return (run_ctx->flags & SCRIPT_KILLED) ? SCRIPT_KILL : SCRIPT_CONTINUE;
     }
 
-    if (server.busy_reply_threshold == 0) {
-        return SCRIPT_CONTINUE;
-    }
-
     long long elapsed = elapsedMs(run_ctx->start_time);
     if (elapsed < server.busy_reply_threshold) {
         return SCRIPT_CONTINUE;
@@ -168,14 +164,14 @@ int scriptPrepareForRun(scriptRunCtx *run_ctx,
                                         "-MISCONF %s is configured to save RDB snapshots, "
                                         "but it's currently unable to persist to disk. "
                                         "Writable scripts are blocked. Use 'no-writes' flag for read only scripts.",
-                                        server.extended_redis_compat ? "Redis" : SERVER_TITLE);
+                                        SERVER_TITLE);
                 else
                     addReplyErrorFormat(caller,
                                         "-MISCONF %s is configured to persist data to AOF, "
                                         "but it's currently unable to persist to disk. "
                                         "Writable scripts are blocked. Use 'no-writes' flag for read only scripts. "
                                         "AOF error: %s",
-                                        server.extended_redis_compat ? "Redis" : SERVER_TITLE,
+                                        SERVER_TITLE,
                                         strerror(server.aof_last_write_errno));
                 return C_ERR;
             }

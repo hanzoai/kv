@@ -392,14 +392,13 @@ static int kvTLSConnect(kvContext *c, SSL *ssl) {
     }
 
     if (c->err == 0) {
+        char err[512];
         if (rv == SSL_ERROR_SYSCALL)
-            valkeySetErrorFromErrno(c, VALKEY_ERR_IO, "SSL_connect failed");
+            snprintf(err, sizeof(err) - 1, "SSL_connect failed: %s", strerror(errno));
         else {
             unsigned long e = ERR_peek_last_error();
-            char err[512];
-            snprintf(err, sizeof(err), "SSL_connect failed: %s",
+            snprintf(err, sizeof(err) - 1, "SSL_connect failed: %s",
                      ERR_reason_error_string(e));
-            valkeySetError(c, VALKEY_ERR_IO, err);
         }
         kvSetError(c, KV_ERR_IO, err);
     }
@@ -509,9 +508,6 @@ static ssize_t kvTLSRead(kvContext *c, char *buf, size_t bufcap) {
              */
             if (errno == EINTR) {
                 return 0;
-            } else if (errno == EAGAIN) {
-                valkeySetError(c, VALKEY_ERR_IO, "Resource temporarily unavailable");
-                return -1;
             } else {
                 const char *msg = NULL;
                 if (errno == EAGAIN) {

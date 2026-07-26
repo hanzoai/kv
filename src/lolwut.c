@@ -44,8 +44,8 @@ void lolwut9Command(client *c);
 /* The default target for LOLWUT if no matching version was found.
  * This is what unstable versions of the server will display. */
 void lolwutUnstableCommand(client *c) {
-    sds rendered = sdscatprintf(sdsempty(), "%s ver.", server.extended_redis_compat ? "Redis" : "KV");
-    rendered = sdscat(rendered, server.extended_redis_compat ? REDIS_VERSION : KV_VERSION);
+    sds rendered = sdscatprintf(sdsempty(), "%s ver.", "KV");
+    rendered = sdscat(rendered, KV_VERSION);
     rendered = sdscatlen(rendered, "\n", 1);
     addReplyVerbatim(c, rendered, sdslen(rendered), "txt");
     sdsfree(rendered);

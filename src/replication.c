@@ -712,9 +712,7 @@ void replicationFeedMonitors(client *c, list *monitors, int dictid, robj **argv,
     }
 
     for (j = 0; j < argc; j++) {
-        if (clientCommandArgShouldBeRedacted(c, j)) {
-            cmdrepr = sdscatrepr(cmdrepr, (char *)objectGetVal(shared.redacted), sdslen(objectGetVal(shared.redacted)));
-        } else if (argv[j]->encoding == OBJ_ENCODING_INT) {
+        if (argv[j]->encoding == OBJ_ENCODING_INT) {
             cmdrepr = sdscatprintf(cmdrepr, "\"%ld\"", (long)objectGetVal(argv[j]));
         } else {
             cmdrepr = sdscatrepr(cmdrepr, (char *)objectGetVal(argv[j]), sdslen(objectGetVal(argv[j])));
@@ -1617,14 +1615,6 @@ void replicaStartCommandStream(client *replica) {
     serverAssert(!(replica->flag.repl_rdbonly));
     replica->repl_data->repl_start_cmd_stream_on_ack = 0;
 
-    /* If the replication stream is empty, send a PING so that replication
-     * offset becomes non-zero. In cluster mode, this allows replicas to be
-     * reported as available in CLUSTER SLOTS/SHARDS right away. */
-    if (server.primary_repl_offset == 0) {
-        robj *ping_argv[1] = {shared.ping};
-        replicationFeedReplicas(-1, ping_argv, 1);
-    }
-
     putClientInPendingWriteQueue(replica);
 }
 
@@ -2350,7 +2340,7 @@ void replicaBeforeLoadPrimaryRDB(connection *conn, int use_diskless_load) {
     connSetReadHandler(conn, NULL);
 }
 
-void replicaAfterLoadPrimaryRDB(connection *conn, rdbSaveInfo *rsi, int disk_based_sync) {
+void replicaAfterLoadPrimaryRDB(connection *conn, rdbSaveInfo *rsi) {
     /* Final setup of the connected replica <- primary link */
     if (conn == server.repl_rdb_transfer_s) {
         dualChannelSyncHandleRdbLoadCompletion();
@@ -2385,21 +2375,10 @@ void replicaAfterLoadPrimaryRDB(connection *conn, rdbSaveInfo *rsi, int disk_bas
                                  "in read-write mode.\n");
     }
 
-    /* Restart the AOF subsystem now that we finished the sync.
-     *
-     * When disk-based sync was used and aof-use-rdb-preamble is enabled,
-     * reuse the RDB file received from the primary as the AOF base file
-     * directly, avoiding a redundant bgrewriteaof. Otherwise (diskless
-     * sync or rdb-preamble disabled), fall back to bgrewriteaof. */
-    if (server.aof_enabled) {
-        if (disk_based_sync && server.aof_use_rdb_preamble) {
-            if (restartAOFWithSyncRdb() == C_ERR) {
-                restartAOFAfterSYNC();
-            }
-        } else {
-            restartAOFAfterSYNC();
-        }
-    }
+    /* Restart the AOF subsystem now that we finished the sync. This
+     * will trigger an AOF rewrite, and when done will start appending
+     * to the new file. */
+    if (server.aof_enabled) restartAOFAfterSYNC();
 
     /* In case of dual channel replication sync we want to close the RDB connection
      * once the connection is established */
@@ -2602,11 +2581,8 @@ int replicaLoadPrimaryRDBFromDisk(rdbSaveInfo *rsi) {
         return C_ERR;
     }
 
-    /* Cleanup. When aof-use-rdb-preamble is enabled and AOF is on, keep the
-     * RDB file so it can be reused as the AOF base file, avoiding a redundant
-     * bgrewriteaof that would produce an almost identical snapshot. */
-    if (!(server.aof_enabled && server.aof_use_rdb_preamble) &&
-        server.rdb_del_sync_files && allPersistenceDisabled()) {
+    /* Cleanup. */
+    if (server.rdb_del_sync_files && allPersistenceDisabled()) {
         serverLog(LL_NOTICE, "Removing the RDB file obtained from "
                              "the primary. This replica has persistence "
                              "disabled");
@@ -2671,7 +2647,7 @@ read_from_socket:
         cancelReplicationHandshake(1);
         return;
     }
-    replicaAfterLoadPrimaryRDB(conn, &rsi, 0);
+    replicaAfterLoadPrimaryRDB(conn, &rsi);
 }
 
 int tryReadBulkPayload(connection *conn, char *buf, int usemark, ssize_t *nread_out) {
@@ -2946,7 +2922,6 @@ sds getReplicaPortString(void) {
 void freePendingReplDataBuf(void) {
     if (server.pending_repl_data.blocks) freePendingReplDataBufAsync(server.pending_repl_data.blocks);
     server.pending_repl_data.blocks = NULL;
-    server.pending_repl_data.mem = 0;
     server.pending_repl_data.len = 0;
 }
 
@@ -3062,14 +3037,6 @@ static int dualChannelReplHandleHandshake(connection *conn, sds *err) {
         return C_ERR;
     }
 
-    if (server.replica_announce_ip) {
-        *err = sendCommand(conn, "REPLCONF", "ip-address", server.replica_announce_ip, NULL);
-        if (*err) {
-            dualChannelServerLog(LL_WARNING, "Sending command to primary in dual channel replication handshake: %s", *err);
-            return C_ERR;
-        }
-    }
-
     if (connSetReadHandler(conn, dualChannelFullSyncWithPrimary) == C_ERR) {
         char conninfo[CONN_INFO_LEN];
         dualChannelServerLog(LL_WARNING, "Can't create readable event for SYNC: %s (%s)", strerror(errno),
@@ -3105,22 +3072,6 @@ static int dualChannelReplHandleReplconfReply(connection *conn, sds *err) {
                              *err);
         return C_ERR;
     }
-
-    /* If replica-announce-ip is configured, we sent an additional REPLCONF ip-address command
-     * and need to read its response as well. */
-    if (server.replica_announce_ip) {
-        sdsfree(*err);
-        *err = receiveSynchronousResponse(conn);
-        if (*err == NULL) {
-            dualChannelServerLog(LL_WARNING, "Primary did not respond to REPLCONF ip-address command during SYNC handshake");
-            return C_ERR;
-        }
-        if ((*err)[0] == '-') {
-            dualChannelServerLog(LL_WARNING, "Primary rejected REPLCONF ip-address: %s", *err);
-            return C_ERR;
-        }
-    }
-
     if (connSyncWrite(conn, "SYNC\r\n", 6, server.repl_syncio_timeout * 1000) == -1) {
         dualChannelServerLog(LL_WARNING, "I/O error writing to Primary: %s", connGetLastError(conn));
         return C_ERR;
@@ -3251,7 +3202,6 @@ error:
  * itself once we need it */
 void replDataBufInit(void) {
     serverAssert(server.pending_repl_data.blocks == NULL);
-    server.pending_repl_data.mem = 0;
     server.pending_repl_data.len = 0;
     server.pending_repl_data.peak = 0;
     server.pending_repl_data.blocks = listCreate();
@@ -3335,7 +3285,6 @@ void bufferReplData(connection *conn) {
             tail->size = usable_size - sizeof(replDataBufBlock);
             tail->used = 0;
             listAddNodeTail(server.pending_repl_data.blocks, tail);
-            server.pending_repl_data.mem += (usable_size + sizeof(listNode));
             server.pending_repl_data.len += tail->size;
             /* Update buffer's peak */
             if (server.pending_repl_data.peak < server.pending_repl_data.len)
@@ -3370,7 +3319,6 @@ int streamReplDataBufToDb(client *c) {
         c->querybuf = sdscatlen(c->querybuf, o->buf, used);
         c->repl_data->read_reploff += used;
         processInputBuffer(c);
-        server.pending_repl_data.mem -= (used + sizeof(replDataBufBlock) + sizeof(listNode));
         server.pending_repl_data.len -= used;
         offset += used;
         listDelNode(server.pending_repl_data.blocks, cur);
@@ -4560,32 +4508,15 @@ void replicationHandlePrimaryDisconnection(void) {
         moduleFireServerEvent(KVMODULE_EVENT_PRIMARY_LINK_CHANGE, KVMODULE_SUBEVENT_PRIMARY_LINK_DOWN, NULL);
 
     server.primary = NULL;
-
-    /* freeClient(primary) can be deferred via freeClientAsync when the client
-     * has pending IO. By the time we run in that deferred context,
-     * replicationUnsetPrimary()/replicationSetPrimary() may have already
-     * finalized replication state. Only transition to REPL_STATE_CONNECT if
-     * we were genuinely connected (REPL_STATE_CONNECTED) and primary_host is
-     * still set. Otherwise this is a stale deferred free and we must not
-     * clobber the current state. */
-    if (server.repl_state == REPL_STATE_CONNECTED && server.primary_host) {
-        server.repl_state = REPL_STATE_CONNECT;
-        server.repl_down_since = server.unixtime;
-    } else if (server.repl_state == REPL_STATE_CONNECTED) {
-        /* primary_host is NULL: deliberate unset in progress. */
-        server.repl_state = REPL_STATE_NONE;
-        server.repl_down_since = server.unixtime;
-    }
-    /* Any other repl_state means the state machine already moved on
-     * (e.g. REPL_STATE_CONNECT, CONNECTING, NONE) — leave it untouched. */
-
+    server.repl_state = REPL_STATE_CONNECT;
+    server.repl_down_since = server.unixtime;
     /* We lost connection with our primary, don't disconnect replicas yet,
      * maybe we'll be able to PSYNC with our primary later. We'll disconnect
      * the replicas only if we'll have to do a full resync with our primary. */
 
     /* Try to re-connect immediately rather than wait for replicationCron
      * waiting 1 second may risk backlog being recycled. */
-    if (server.repl_state == REPL_STATE_CONNECT && server.primary_host) {
+    if (server.primary_host) {
         serverLog(LL_NOTICE, "Reconnecting to PRIMARY %s:%d", server.primary_host, server.primary_port);
         connectWithPrimary();
     }
@@ -5036,7 +4967,7 @@ void waitCommand(client *c) {
     }
 
     /* Argument parsing. */
-    if (getRangeLongFromObjectOrReply(c, c->argv[1], 0, INT_MAX, &numreplicas, NULL) != C_OK) return;
+    if (getLongFromObjectOrReply(c, c->argv[1], &numreplicas, NULL) != C_OK) return;
     if (getTimeoutFromObjectOrReply(c, c->argv[2], &timeout, UNIT_MILLISECONDS) != C_OK) return;
 
     /* First try without blocking at all. */
@@ -5063,7 +4994,7 @@ void waitaofCommand(client *c) {
 
     /* Argument parsing. */
     if (getRangeLongFromObjectOrReply(c, c->argv[1], 0, 1, &numlocal, NULL) != C_OK) return;
-    if (getRangeLongFromObjectOrReply(c, c->argv[2], 0, INT_MAX, &numreplicas, NULL) != C_OK) return;
+    if (getPositiveLongFromObjectOrReply(c, c->argv[2], &numreplicas, NULL) != C_OK) return;
     if (getTimeoutFromObjectOrReply(c, c->argv[3], &timeout, UNIT_MILLISECONDS) != C_OK) return;
 
     if (server.primary_host) {
@@ -5246,7 +5177,7 @@ void handleBioThreadFinishedRDBDownload(void) {
         cancelReplicationHandshake(1);
         return;
     }
-    replicaAfterLoadPrimaryRDB(conn, &rsi, 1);
+    replicaAfterLoadPrimaryRDB(conn, &rsi);
     server.repl_transfer_size = bio_repl_transfer_size;
     server.repl_transfer_read = bio_repl_transfer_read;
 }

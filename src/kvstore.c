@@ -408,14 +408,12 @@ void hashtableScanToKvstoreScanCallback(void *privdata, void *entry) {
  * 3. If the hashtable is entirely scanned i.e. the cursor has reached 0, the next non empty hashtable is discovered.
  *    The hashtable information is embedded into the cursor and returned.
  *
- * Scanning modes controlled by first_idx and last_idx:
- * 1. first_idx == -1 and last_idx == -1: scan all hashtables.
- * 2. first_idx >= 0 and last_idx >= 0: scan range [first_idx, last_idx].
+ * To restrict the scan to a single hashtable, pass a valid hashtable index as
+ * 'onlydidx', otherwise pass -1.
  */
 unsigned long long kvstoreScan(kvstore *kvs,
                                unsigned long long cursor,
-                               int first_idx,
-                               int last_idx,
+                               int onlydidx,
                                kvstoreScanFunction scan_cb,
                                kvstoreScanShouldSkipHashtable *skip_cb,
                                void *privdata) {
@@ -425,15 +423,14 @@ unsigned long long kvstoreScan(kvstore *kvs,
      * Hashtable index is always 0 at the start of iteration and can be incremented only if there are
      * multiple hashtables. */
     int didx = getAndClearHashtableIndexFromCursor(kvs, &cursor);
-    if (first_idx >= 0) {
-        assert(last_idx >= first_idx);
-        assert(last_idx < kvs->num_hashtables);
-        if (didx < first_idx) {
-            /* Fast-forward to first_idx. */
-            didx = first_idx;
+    if (onlydidx >= 0) {
+        if (didx < onlydidx) {
+            /* Fast-forward to onlydidx. */
+            assert(onlydidx < kvs->num_hashtables);
+            didx = onlydidx;
             cursor = 0;
-        } else if (didx > last_idx) {
-            /* The cursor is already past last_idx. */
+        } else if (didx > onlydidx) {
+            /* The cursor is already past onlydidx. */
             return 0;
         }
     }
@@ -449,16 +446,8 @@ unsigned long long kvstoreScan(kvstore *kvs,
     }
     /* scanning done for the current hash table or if the scanning wasn't possible, move to the next hashtable index. */
     if (next_cursor == 0 || skip) {
-        if (first_idx >= 0 && didx >= last_idx) {
-            /* Range exhausted; no need to look up the next hashtable. */
-            return 0;
-        }
-        int nextdidx = kvstoreGetNextNonEmptyHashtableIndex(kvs, didx);
-        if (first_idx >= 0 && nextdidx > last_idx) {
-            /* Range exhausted. */
-            return 0;
-        }
-        didx = nextdidx;
+        if (onlydidx >= 0) return 0;
+        didx = kvstoreGetNextNonEmptyHashtableIndex(kvs, didx);
     }
     if (didx == KVSTORE_INDEX_NOT_FOUND) {
         return 0;

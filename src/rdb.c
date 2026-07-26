@@ -93,22 +93,6 @@ bool rdbIsVersionAccepted(int rdbver, bool is_kv_magic, bool is_redis_magic) {
     return true;
 }
 
-/* Returns true if the RDB version is valid and accepted, false otherwise. This
- * function takes configuration into account. The parameter `is_valkey_magic`
- * indicates that an RDB file with the VALKEY magic string was parsed.
- * `is_redis_magic` indicates a legacy RDB file with the REDIS magic string.
- * When there is no magic string such as in DUMP/RESTORE, set both to false. */
-bool rdbIsVersionAccepted(int rdbver, bool is_valkey_magic, bool is_redis_magic) {
-    if (rdbver < 1) return false;
-    if (is_valkey_magic && rdbver <= RDB_FOREIGN_VERSION_MAX) return false;
-    if (is_redis_magic && rdbver > RDB_FOREIGN_VERSION_MAX) return false;
-    if (server.rdb_version_check == RDB_VERSION_CHECK_STRICT) {
-        if (rdbver > RDB_VERSION) return false; /* future version */
-        if (rdbIsForeignVersion(rdbver)) return false;
-    }
-    return true;
-}
-
 #ifdef __GNUC__
 void rdbReportError(int corruption_error, int linenum, char *reason, ...) __attribute__((format(printf, 3, 4)));
 #endif
@@ -160,18 +144,13 @@ typedef struct {
     rdbAuxFieldDecoder decoder;
 } rdbAuxFieldCodec;
 
-static void dictEntryDestructorSdsKeyHeapValue(void *entry) {
-    dictEntry *de = entry;
-    dictSdsDestructor(dictGetKey(de));
-    dictVanillaFree(dictGetVal(de));
-    zfree(de);
-}
-
 dictType rdbAuxFieldDictType = {
-    .entryGetKey = dictEntryGetKey,
-    .hashFunction = dictSdsCaseHash,
-    .keyCompare = dictSdsKeyCaseCompare,
-    .entryDestructor = dictEntryDestructorSdsKeyHeapValue,
+    dictSdsCaseHash,       /* hash function */
+    NULL,                  /* key dup */
+    dictSdsKeyCaseCompare, /* key compare */
+    dictSdsDestructor,     /* key destructor */
+    dictVanillaFree,       /* val destructor */
+    NULL                   /* allow to expand */
 };
 
 dict *rdbAuxFields = NULL;
@@ -835,7 +814,7 @@ ssize_t rdbSaveStreamPEL(rio *rdb, rax *pel, int nacks) {
 /* Serialize the consumers of a stream consumer group into the RDB. Helper
  * function for the stream data type serialization. What we do here is to
  * persist the consumer metadata, and it's PEL, for each consumer. */
-ssize_t rdbSaveStreamConsumers(rio *rdb, streamCG *cg) {
+size_t rdbSaveStreamConsumers(rio *rdb, streamCG *cg) {
     ssize_t n, nwritten = 0;
 
     /* Number of consumers in this consumer group. */
@@ -1034,7 +1013,7 @@ ssize_t rdbSaveObject(rio *rdb, robj *o, robj *key, int dbid, unsigned char rdbt
                 nwritten += n;
                 if (add_expiry) {
                     long long expiry = entryGetExpiry(next);
-                    if ((n = rdbSaveMillisecondTime(rdb, expiry)) == -1) {
+                    if ((n = rdbSaveMillisecondTime(rdb, expiry) == -1)) {
                         hashtableCleanupIterator(&iter);
                         return -1;
                     }
@@ -1234,12 +1213,8 @@ int rdbSaveKeyValuePair(rio *rdb, robj *key, robj *val, long long expiretime, in
     /* Save type, key, value */
     int rdbtype = rdbGetObjectType(val, rdbver);
     if (rdbtype == -1) {
-        if (server.hide_user_data_from_log) {
-            serverLog(LL_WARNING, "Can't store key (db %d) in RDB version %d", dbid, rdbver);
-        } else {
-            serverLog(LL_WARNING, "Can't store key '%s' (db %d) in RDB version %d",
-                      (char *)objectGetVal(key), dbid, rdbver);
-        }
+        serverLog(LL_WARNING, "Can't store key '%s' (db %d) in RDB version %d",
+                  (char *)objectGetVal(key), dbid, rdbver);
         return -1;
     }
     if (rdbSaveType(rdb, rdbtype) == -1) return -1;
@@ -1917,10 +1892,14 @@ static int _lpEntryValidation(unsigned char *p, unsigned int head_count, void *u
     return 1;
 }
 
-/* Validate the integrity of the listpack structure and check for duplicates.
+/* Validate the integrity of the listpack structure.
+ * when `deep` is 0, only the integrity of the header is validated.
+ * when `deep` is 1, we scan all the entries one by one.
  * when `pairs` is 0, all elements need to be unique (it's a set)
  * when `pairs` is 1, odd elements need to be unique (it's a key-value map) */
-int lpValidateIntegrityAndDups(unsigned char *lp, size_t size, int pairs) {
+int lpValidateIntegrityAndDups(unsigned char *lp, size_t size, int deep, int pairs) {
+    if (!deep) return lpValidateIntegrity(lp, size, 0, NULL, NULL);
+
     /* Keep track of the field names to locate duplicate ones */
     struct {
         int pairs;
@@ -1928,7 +1907,7 @@ int lpValidateIntegrityAndDups(unsigned char *lp, size_t size, int pairs) {
         hashtable *fields; /* Initialisation at the first callback. */
     } data = {pairs, 0, NULL};
 
-    int ret = lpValidateIntegrity(lp, size, _lpEntryValidation, &data);
+    int ret = lpValidateIntegrity(lp, size, 1, _lpEntryValidation, &data);
 
     /* make sure we have an even number of records. */
     if (pairs && data.count & 1) ret = 0;
@@ -1941,13 +1920,23 @@ int lpValidateIntegrityAndDups(unsigned char *lp, size_t size, int pairs) {
  * On success a newly allocated object is returned, otherwise NULL.
  * When the function returns NULL and if 'error' is not NULL, the
  * integer pointed by 'error' is set to the type of error that occurred */
-robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int dbid, int *error, int rdbflags, mstime_t now) {
+robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int dbid, int *error) {
     robj *o = NULL, *ele, *dec;
     uint64_t len;
     unsigned int i;
 
     /* Set default error of load object, it will be set to 0 on success. */
     if (error) *error = RDB_LOAD_ERR_OTHER;
+
+    int deep_integrity_validation = server.sanitize_dump_payload == SANITIZE_DUMP_YES;
+    if (server.sanitize_dump_payload == SANITIZE_DUMP_CLIENTS) {
+        /* Skip sanitization when loading (an RDB), or getting a RESTORE command
+         * from either the primary or a client using an ACL user with the skip-sanitize-payload flag. */
+        int skip = server.loading || (server.current_client && (server.current_client->flag.primary));
+        if (!skip && server.current_client && server.current_client->user)
+            skip = !!(server.current_client->user->flags & USER_FLAG_SANITIZE_PAYLOAD_SKIP);
+        deep_integrity_validation = !skip;
+    }
 
     if (rdbtype == RDB_TYPE_STRING) {
         /* Read string value */
@@ -2150,11 +2139,11 @@ robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int dbid, int *error, int rd
         /* Too many entries or hash object contains elements with expiry? Use a hash table right from the start. */
         if (len > server.hash_max_listpack_entries || rdbtype == RDB_TYPE_HASH_2)
             hashTypeConvert(o, OBJ_ENCODING_HASHTABLE);
-        else {
-            /* Guarantee that the server won't crash later when the listpack
-             * is converted to a hashtable.
-             * Create a set (hashtable with no values) for a dup search.
-             * We can dismiss it as soon as we convert the listpack to a hash. */
+        else if (deep_integrity_validation) {
+            /* In this mode, we need to guarantee that the server won't crash
+             * later when the ziplist is converted to a hashtable.
+             * Create a set (hashtable with no values) to for a dup search.
+             * We can dismiss it as soon as we convert the ziplist to a hash. */
             dupSearchHashtable = hashtableCreate(&setHashtableType);
         }
 
@@ -2255,26 +2244,6 @@ robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int dbid, int *error, int rd
                 }
             }
 
-            /* If this is a non-preamble RDB being loaded on the primary, and this
-             * field is already expired relative to 'now', skip it. */
-            if (iAmPrimary() && !(rdbflags & RDBFLAGS_AOF_PREAMBLE) && now != 0 &&
-                itemexpiry != EXPIRY_NONE && itemexpiry < now) {
-                /* Emit HDEL to replicas. */
-                if ((rdbflags & RDBFLAGS_FEED_REPL) && server.repl_backlog) {
-                    robj keyobj, fieldobj;
-                    initStaticStringObject(keyobj, key);
-                    initStaticStringObject(fieldobj, field);
-                    robj *argv[3];
-                    argv[0] = shared.hdel;
-                    argv[1] = &keyobj;
-                    argv[2] = &fieldobj;
-                    replicationFeedReplicas(dbid, argv, 3);
-                }
-                sdsfree(field);
-                sdsfree(value);
-                continue;
-            }
-
             /* Add pair to hash table */
             entry *entry = entryCreate(field, value, itemexpiry);
             sdsfree(field);
@@ -2292,13 +2261,6 @@ robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int dbid, int *error, int rd
 
         /* All pairs should be read by now */
         serverAssert(len == 0);
-
-        /* Check if hash became empty after skipping all expired fields */
-        if (hashTypeLength(o) == 0) {
-            decrRefCount(o);
-            if (error) *error = RDB_LOAD_ERR_ALL_ITEMS_EXPIRED;
-            return NULL;
-        }
     } else if (rdbtype == RDB_TYPE_LIST_QUICKLIST || rdbtype == RDB_TYPE_LIST_QUICKLIST_2) {
         if ((len = rdbLoadLen(rdb, NULL)) == RDB_LENERR) return NULL;
         if (len == 0) goto emptykey;
@@ -2336,8 +2298,8 @@ robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int dbid, int *error, int rd
 
             if (rdbtype == RDB_TYPE_LIST_QUICKLIST_2) {
                 lp = data;
-                server.stat_dump_payload_sanitizations++;
-                if (!lpValidateIntegrity(lp, encoded_len, NULL, NULL)) {
+                if (deep_integrity_validation) server.stat_dump_payload_sanitizations++;
+                if (!lpValidateIntegrity(lp, encoded_len, deep_integrity_validation, NULL, NULL)) {
                     rdbReportCorruptRDB("Listpack integrity check failed.");
                     decrRefCount(o);
                     zfree(lp);
@@ -2421,7 +2383,6 @@ robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int dbid, int *error, int rd
                         sdsfree(field);
                         lpFree(lp);
                         zfree(encoded);
-                        zfree(lp);
                         objectSetVal(o, NULL);
                         decrRefCount(o);
                         return NULL;
@@ -2469,8 +2430,8 @@ robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int dbid, int *error, int rd
             break;
         }
         case RDB_TYPE_SET_INTSET:
-            server.stat_dump_payload_sanitizations++;
-            if (!intsetValidateIntegrity(encoded, encoded_len, 1)) {
+            if (deep_integrity_validation) server.stat_dump_payload_sanitizations++;
+            if (!intsetValidateIntegrity(encoded, encoded_len, deep_integrity_validation)) {
                 rdbReportCorruptRDB("Intset integrity check failed.");
                 zfree(encoded);
                 objectSetVal(o, NULL);
@@ -2482,8 +2443,8 @@ robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int dbid, int *error, int rd
             if (intsetLen(objectGetVal(o)) > server.set_max_intset_entries) setTypeConvert(o, OBJ_ENCODING_HASHTABLE);
             break;
         case RDB_TYPE_SET_LISTPACK:
-            server.stat_dump_payload_sanitizations++;
-            if (!lpValidateIntegrityAndDups(encoded, encoded_len, 0)) {
+            if (deep_integrity_validation) server.stat_dump_payload_sanitizations++;
+            if (!lpValidateIntegrityAndDups(encoded, encoded_len, deep_integrity_validation, 0)) {
                 rdbReportCorruptRDB("Set listpack integrity check failed.");
                 zfree(encoded);
                 objectSetVal(o, NULL);
@@ -2528,8 +2489,8 @@ robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int dbid, int *error, int rd
             break;
         }
         case RDB_TYPE_ZSET_LISTPACK:
-            server.stat_dump_payload_sanitizations++;
-            if (!lpValidateIntegrityAndDups(encoded, encoded_len, 1)) {
+            if (deep_integrity_validation) server.stat_dump_payload_sanitizations++;
+            if (!lpValidateIntegrityAndDups(encoded, encoded_len, deep_integrity_validation, 1)) {
                 rdbReportCorruptRDB("Zset listpack integrity check failed.");
                 zfree(encoded);
                 objectSetVal(o, NULL);
@@ -2572,8 +2533,8 @@ robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int dbid, int *error, int rd
             break;
         }
         case RDB_TYPE_HASH_LISTPACK:
-            server.stat_dump_payload_sanitizations++;
-            if (!lpValidateIntegrityAndDups(encoded, encoded_len, 1)) {
+            if (deep_integrity_validation) server.stat_dump_payload_sanitizations++;
+            if (!lpValidateIntegrityAndDups(encoded, encoded_len, deep_integrity_validation, 1)) {
                 rdbReportCorruptRDB("Hash listpack integrity check failed.");
                 zfree(encoded);
                 objectSetVal(o, NULL);
@@ -2632,8 +2593,8 @@ robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int dbid, int *error, int rd
                 decrRefCount(o);
                 return NULL;
             }
-            server.stat_dump_payload_sanitizations++;
-            if (!streamValidateListpackIntegrity(lp, lp_size)) {
+            if (deep_integrity_validation) server.stat_dump_payload_sanitizations++;
+            if (!streamValidateListpackIntegrity(lp, lp_size, deep_integrity_validation)) {
                 rdbReportCorruptRDB("Stream listpack integrity check failed.");
                 sdsfree(nodekey);
                 decrRefCount(o);
@@ -2750,11 +2711,7 @@ robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int dbid, int *error, int rd
 
             streamCG *cgroup = streamCreateCG(s, cgname, sdslen(cgname), &cg_id, cg_offset);
             if (cgroup == NULL) {
-                if (server.hide_user_data_from_log) {
-                    rdbReportCorruptRDB("Duplicated consumer group name");
-                } else {
-                    rdbReportCorruptRDB("Duplicated consumer group name %s", cgname);
-                }
+                rdbReportCorruptRDB("Duplicated consumer group name %s", cgname);
                 decrRefCount(o);
                 sdsfree(cgname);
                 return NULL;
@@ -2878,19 +2835,21 @@ robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int dbid, int *error, int rd
             }
 
             /* Verify that each PEL eventually got a consumer assigned to it. */
-            raxIterator ri_cg_pel;
-            raxStart(&ri_cg_pel, cgroup->pel);
-            raxSeek(&ri_cg_pel, "^", NULL, 0);
-            while (raxNext(&ri_cg_pel)) {
-                streamNACK *nack = ri_cg_pel.data;
-                if (!nack->consumer) {
-                    raxStop(&ri_cg_pel);
-                    rdbReportCorruptRDB("Stream CG PEL entry without consumer");
-                    decrRefCount(o);
-                    return NULL;
+            if (deep_integrity_validation) {
+                raxIterator ri_cg_pel;
+                raxStart(&ri_cg_pel, cgroup->pel);
+                raxSeek(&ri_cg_pel, "^", NULL, 0);
+                while (raxNext(&ri_cg_pel)) {
+                    streamNACK *nack = ri_cg_pel.data;
+                    if (!nack->consumer) {
+                        raxStop(&ri_cg_pel);
+                        rdbReportCorruptRDB("Stream CG PEL entry without consumer");
+                        decrRefCount(o);
+                        return NULL;
+                    }
                 }
+                raxStop(&ri_cg_pel);
             }
-            raxStop(&ri_cg_pel);
         }
     } else if (rdbtype == RDB_TYPE_MODULE_PRE_GA) {
         rdbReportCorruptRDB("Pre-release module format not supported");
@@ -3466,7 +3425,7 @@ int rdbLoadRioWithLoadingCtx(rio *rdb, int rdbflags, rdbSaveInfo *rsi, rdbLoadin
         /* Read key */
         if ((key = rdbGenericLoadStringObject(rdb, RDB_LOAD_SDS, NULL)) == NULL) goto eoferr;
         /* Read value */
-        val = rdbLoadObject(type, rdb, key, db->id, &error, rdbflags, now);
+        val = rdbLoadObject(type, rdb, key, db->id, &error);
 
         /* Check if the key already expired. This function is used when loading
          * an RDB file from disk, either at startup, or when an RDB was
@@ -3482,21 +3441,12 @@ int rdbLoadRioWithLoadingCtx(rio *rdb, int rdbflags, rdbSaveInfo *rsi, rdbLoadin
              * in an RDB file, instead we will silently discard it and
              * continue loading. */
             if (error == RDB_LOAD_ERR_EMPTY_KEY) {
-                if (empty_keys_skipped++ < 10) {
-                    if (server.hide_user_data_from_log) {
-                        serverLog(LL_NOTICE, "rdbLoadObject skipping empty key");
-                    } else {
-                        serverLog(LL_NOTICE, "rdbLoadObject skipping empty key: %s", key);
-                    }
-                }
+                if (empty_keys_skipped++ < 10) serverLog(LL_NOTICE, "rdbLoadObject skipping empty key: %s", key);
                 sdsfree(key);
             } else if (error == RDB_LOAD_ERR_UNKNOWN_TYPE) {
                 sdsfree(key);
                 serverLog(LL_WARNING, "Unknown type or opcode when loading DB. Unrecoverable error, aborting now.");
                 return RDB_FAILED;
-            } else if (error == RDB_LOAD_ERR_ALL_ITEMS_EXPIRED) {
-                rdb_last_load_all_fields_expired++;
-                sdsfree(key);
             } else {
                 sdsfree(key);
                 goto eoferr;
@@ -3533,11 +3483,7 @@ int rdbLoadRioWithLoadingCtx(rio *rdb, int rdbflags, rdbSaveInfo *rsi, rdbLoadin
                     added = dbAddRDBLoad(db, key, &val);
                     serverAssert(added);
                 } else {
-                    if (server.hide_user_data_from_log) {
-                        serverLog(LL_WARNING, "RDB has duplicated key in DB %d", db->id);
-                    } else {
-                        serverLog(LL_WARNING, "RDB has duplicated key '%s' in DB %d", key, db->id);
-                    }
+                    serverLog(LL_WARNING, "RDB has duplicated key '%s' in DB %d", key, db->id);
                     serverPanic("Duplicated key found in RDB file");
                 }
             }
@@ -3590,11 +3536,11 @@ int rdbLoadRioWithLoadingCtx(rio *rdb, int rdbflags, rdbSaveInfo *rsi, rdbLoadin
     }
 
     if (empty_keys_skipped) {
-        serverLog(LL_NOTICE, "Done loading RDB, keys loaded: %lld, keys expired: %lld, empty keys skipped: %lld, all fields expired hashes: %lld.",
-                  server.rdb_last_load_keys_loaded, server.rdb_last_load_keys_expired, empty_keys_skipped, rdb_last_load_all_fields_expired);
+        serverLog(LL_NOTICE, "Done loading RDB, keys loaded: %lld, keys expired: %lld, empty keys skipped: %lld.",
+                  server.rdb_last_load_keys_loaded, server.rdb_last_load_keys_expired, empty_keys_skipped);
     } else {
-        serverLog(LL_NOTICE, "Done loading RDB, keys loaded: %lld, keys expired: %lld, all fields expired hashes: %lld.",
-                  server.rdb_last_load_keys_loaded, server.rdb_last_load_keys_expired, rdb_last_load_all_fields_expired);
+        serverLog(LL_NOTICE, "Done loading RDB, keys loaded: %lld, keys expired: %lld.",
+                  server.rdb_last_load_keys_loaded, server.rdb_last_load_keys_expired);
     }
     return RDB_OK;
 
