@@ -1,53 +1,50 @@
 ## Introduction
 KV uses a very simple C testing framework, built up over time but now based loosely off of [Unity](https://www.throwtheswitch.org/unity).
 
-To use this framework to write unit tests, we have modified Valkey to build as
-a library that can link against other test executables. This framework uses the
-GNU linker (ld), which implements 'wrap' functionality to rename function calls
-to foo() to a method __wrap_foo() and renames the real foo() method to
-__real_foo().
+All test files are located at `src/unit/test_*`.
+A single test file can have multiple individual tests, and they must be of the form `int test_<test_name>(int argc, char *argv[], int flags) {`, where test_name is the name of the test.
+The test name must be globally unique.
+A test will be marked as successful if returns 0, and will be marked failed in all other cases.
 
-Using this trick, we define the Valkey wrappers we wish to mock in 'wrappers.h'.
-Note that these functions can only be mocked if they include calls between
-source files.
+The test framework also parses several flags passed in, and sets them based on the arguments to the tests.
 
-Using this set of functions, we run 'generate-wrappers.py' to generate the glue
-code needed to mock functions. Specifically, this generates an interface named
-Valkey containing all the desired methods and two implementations, MockValkey
-and RealValkey.
+Tests flags:
+* `UNIT_TEST_ACCURATE`: Corresponds to the `--accurate` flag. This flag indicates the test should use extra computation to more accurately validate the tests.
+* `UNIT_TEST_LARGE_MEMORY`: Corresponds to the `--large-memory` flag. This flag indicates whether or not tests should use more than 100mb of memory.
+* `UNIT_TEST_SINGLE`: Corresponds to the `--single` flag. This flag indicates that a single test is being executed.
+* `UNIT_TEST_VALGRIND`: Corresponds to the `--valgrind` flag. This flag is just a hint passed to the test to indicate that we are running it under valgrind.
 
-MockValkey uses gtest definitions to define a mock class. RealValkey uses the
-__real_foo() methods to call the renamed methods. The script also implements
-every __wrap_foo() command that delegates to the last MockValkey instance
-initialized.
+Tests are allowed to be passed in additional arbitrary `argv`/`argc`, which they can access from the `argc` and `argv` arguments of the test.
 
-To extend the Valkey classes for mocking further methods, simply add your method
-to 'wrappers.h' and re-run 'make test-unit' to regenerate the Valkey glue code
-and run the tests.
+## Assertions
 
-Important: All mocking should occur at software boundaries where interfaces are
-clearly defined. Your use of mocking will be denied if it is not at a well
-defined boundary. Overuse of mocking turns the unit tests into a "change
-detector" which will fail whenever the code is modified. Please also consider
-whether other testing strategies like injecting fakes/stubs or integration
-testing would yield similar test coverage.
+There are a few built in assertions that can be used, that will return from the current function with the correct error code.
+`ASSERT` assertions are for fatal errors and automatically return upon error.
+`EXPECT` assertions are for non-fatal errors and continue execution after an error.
+When an assertion fails, they will print out the line number that they failed on.
 
-This framework depends on GoogleTest and GoogleMock. You need to install them manually
-before building the gtests (e.g., `libgtest-dev` / `libgmock-dev` on Debian/Ubuntu,
-`gtest-devel` / `gmock-devel` on CentOS/Fedora, or `brew install googletest` on macOS).
+* `TEST_ASSERT(condition)`: Will evaluate the condition, and if it fails it will return 1 and print out the condition that failed.
+* `TEST_EXPECT(condition)`: Will evaluate the condition, and if it fails it will print the condition that failed, record the failure, and continue.
+* `TEST_ASSERT_MESSAGE(message, condition)`: Is like `TEST_ASSERT`, but prints the given message instead on failure.
+* `TEST_EXPECT_MESSAGE(message, condition)`: Is like `TEST_EXPECT`, but prints the given message instead on failure.
 
-Alternatively, you can build and install GoogleTest from source:
+## Other utilities
 
-```bash
-git clone https://github.com/google/googletest.git
-cd googletest
-mkdir build && cd build
-cmake ..
-make
-sudo make install
+If you would like to print out additional data, use the `TEST_PRINT_INFO(info, ...)` option, which has arguments similar to `printf`.
+This macro will also print out the function the code was executed from in addition to the line it was printed from.
+
+## Example test
+
+```
+int test_example(int argc, char *argv[], int flags) {
+    TEST_ASSERT(5 == 5);
+    TEST_ASSERT_MESSAGE("This should pass", 6 == 6);
+    return 0;
+}
 ```
 
-## Tricks in running unit tests
+## Running tests
+Tests can be run by executing:
 
 ```
 make kv-unit-tests
@@ -59,55 +56,4 @@ Running a single unit test file
 ./kv-unit-tests --single test_crc64.c
 ```
 
-   ```bash
-   make test-unit
-   ```
-
-3. Running all unit tests in the test class, replace TEST_CLASS_NAME with
-   expected test class name
-
-   ```bash
-   make test-unit UNIT_TEST_PATTERN='TEST_CLASS_NAME.*'
-   ```
-
-4. Running a subset of gtest unit tests in the test class, replace
-   TEST_CLASS_NAME with expected test class name, and replace TEST_NAME_PREFIX
-   with test name
-
-   ```bash
-   make test-unit UNIT_TEST_PATTERN='TEST_CLASS_NAME.TEST_NAME_PREFIX*'
-   ```
-
-5. Building and running with CMake
-
-   ```bash
-   mkdir build-release && cd $_
-   cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/valkey -DBUILD_UNIT_GTESTS=yes
-   make test-unit
-   ```
-
-6. Running disabled tests
-
-   GoogleTest allows tests to be disabled by prefixing the test name with `DISABLED_`. These tests are skipped during normal test runs.
-   Some tests are disabled by default because they take a long time to run (e.g., 1M iterations for performance benchmarks).
-   To run a specific disabled test explicitly:
-
-   ```bash
-   make valkey-unit-gtests
-   ./src/unit/valkey-unit-gtests --gtest_filter=TEST_CLASS_NAME.DISABLED_TEST_NAME --gtest_also_run_disabled_tests
-   ```
-
-## Test flags
-
-The gtest framework supports several command-line flags to control test behavior:
-
-* `accurate=1`: Indicates the test should use extra computation to more accurately validate the tests.
-* `large_memory=1`: Indicates whether tests should use more than 100mb of memory.
-* `valgrind=1`: A hint passed to tests to indicate that we are running under valgrind.
-* `seed=<number>`: Sets a specific random seed for reproducible test runs. All `rand()` calls will produce the same sequence with the same seed.
-
-Example usage:
-
-```bash
-make test-unit accurate=1 large_memory=1 seed=12345
-```
+Will just run the `test_crc64.c` file.

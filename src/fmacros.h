@@ -33,9 +33,7 @@
 #define _BSD_SOURCE
 
 #if defined(__linux__)
-#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
-#endif
 /*
  * This macro might have already been defined by including <features.h>, which
  * is transitively included by <sys/types.h>. Therefore, to avoid redefinition
@@ -64,9 +62,7 @@
 #define _POSIX_C_SOURCE 199506L
 #endif
 
-#ifndef _LARGEFILE_SOURCE
 #define _LARGEFILE_SOURCE
-#endif
 #define _FILE_OFFSET_BITS 64
 
 /* deprecate unsafe functions
@@ -74,12 +70,6 @@
  * NOTE: We do not use the poison pragma since it
  * will error on stdlib definitions in files as well*/
 #if (__GNUC__ && __GNUC__ >= 4) && !defined __APPLE__
-
-/* These deprecation attributes rely on C-only constructs (e.g. `restrict`)
- * and redeclare libc symbols. They are disabled for building gtest
- * to avoid conflicts with C++ standard library declarations.
- */
-#ifndef __cplusplus
 int sprintf(char *str, const char *format, ...)
     __attribute__((deprecated("please avoid use of unsafe C functions. prefer use of snprintf instead")));
 char *strcpy(char *restrict dest, const char *src)
@@ -91,8 +81,6 @@ char *strcat(char *restrict dest, const char *restrict src)
 #ifdef __linux__
 /* features.h uses the defines above to set feature specific defines.  */
 #include <features.h>
-#endif
-
 #endif
 
 #endif

@@ -6,7 +6,7 @@
         "since": "7.0.0",
         "arity": -5,
         "function": "bzmpopCommand",
-        "get_keys_function": "bzmpopGetKeys",
+        "get_keys_function": "blmpopGetKeys",
         "command_flags": [
             "WRITE",
             "BLOCKING"

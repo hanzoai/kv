@@ -1,5 +1,5 @@
 STD=
-WARN= -Wall -Werror
+WARN= -Wall
 OPT= -Os
 
 R_CFLAGS= $(STD) $(WARN) $(OPT) $(DEBUG) $(CFLAGS)

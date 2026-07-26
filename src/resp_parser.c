@@ -150,6 +150,7 @@ static int parseDouble(ReplyParser *parser, void *p_ctx) {
     const char *proto = parser->curr_location;
     const char *p = strchr(proto + 1, '\r');
     parser->curr_location = p + 2; /* for \r\n */
+    char buf[MAX_LONG_DOUBLE_CHARS + 1];
     size_t len = p - proto - 1;
     double d = 0;
     if (len <= MAX_LONG_DOUBLE_CHARS) {

@@ -374,14 +374,13 @@ static int connSocketBlockingConnect(connection *conn, const char *addr, int por
         return C_ERR;
     }
 
-    conn->fd = fd;
-
     if ((aeWait(fd, AE_WRITABLE, timeout) & AE_WRITABLE) == 0) {
         conn->state = CONN_STATE_ERROR;
         conn->last_errno = ETIMEDOUT;
         return C_ERR;
     }
 
+    conn->fd = fd;
     conn->state = CONN_STATE_CONNECTED;
     return C_OK;
 }
@@ -391,27 +390,15 @@ static int connSocketBlockingConnect(connection *conn, const char *addr, int por
  */
 
 static ssize_t connSocketSyncWrite(connection *conn, char *ptr, ssize_t size, long long timeout) {
-    ssize_t ret = syncWrite(conn->fd, ptr, size, timeout);
-    if (ret == -1) {
-        conn->last_errno = errno;
-    }
-    return ret;
+    return syncWrite(conn->fd, ptr, size, timeout);
 }
 
 static ssize_t connSocketSyncRead(connection *conn, char *ptr, ssize_t size, long long timeout) {
-    ssize_t ret = syncRead(conn->fd, ptr, size, timeout);
-    if (ret == -1) {
-        conn->last_errno = errno;
-    }
-    return ret;
+    return syncRead(conn->fd, ptr, size, timeout);
 }
 
 static ssize_t connSocketSyncReadLine(connection *conn, char *ptr, ssize_t size, long long timeout) {
-    ssize_t ret = syncReadLine(conn->fd, ptr, size, timeout);
-    if (ret == -1) {
-        conn->last_errno = errno;
-    }
-    return ret;
+    return syncReadLine(conn->fd, ptr, size, timeout);
 }
 
 static int connSocketGetType(void) {

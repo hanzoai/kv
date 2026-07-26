@@ -63,8 +63,10 @@ else()
   add_compile_options("-UNDEBUG")
 endif()
 
-# Add the non-cluster test binary.
-# Some tests are unit tests which require us to include private headers.
+# Make sure ctest gives the output when tests fail
+list(APPEND CMAKE_CTEST_ARGUMENTS "--output-on-failure")
+
+# Add non-cluster tests
 add_executable(client_test client_test.c)
 target_include_directories(client_test PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_link_libraries(client_test kv_unittest)
@@ -79,10 +81,20 @@ endif()
 if(LIBEVENT_LIBRARY)
   target_compile_definitions(client_test PUBLIC KV_TEST_ASYNC=1)
   target_link_libraries(client_test ${LIBEVENT_LIBRARY})
-  set_property(TEST client_test APPEND PROPERTY ENVIRONMENT "TEST_CLUSTER=1")
 endif()
+
+add_test(NAME client_test COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/test.sh")
 if(TEST_WITH_REDIS_VERSION)
   set_property(TEST client_test APPEND PROPERTY ENVIRONMENT "KV_SERVER=redis-server")
+endif()
+if(TLS_LIBRARY)
+  set_property(TEST client_test APPEND PROPERTY ENVIRONMENT "TEST_TLS=1")
+endif()
+if(ENABLE_RDMA)
+  set_property(TEST client_test APPEND PROPERTY ENVIRONMENT "TEST_RDMA=1")
+endif()
+if(LIBEVENT_LIBRARY)
+  set_property(TEST client_test APPEND PROPERTY ENVIRONMENT "TEST_CLUSTER=1")
 endif()
 
 # Unit tests
@@ -95,13 +107,6 @@ add_executable(ut_slotmap_update ut_slotmap_update.c)
 target_include_directories(ut_slotmap_update PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_link_libraries(ut_slotmap_update kv_unittest)
 add_test(NAME ut_slotmap_update COMMAND "$<TARGET_FILE:ut_slotmap_update>")
-
-if(NOT WIN32 AND NOT CYGWIN)
-  add_executable(ut_connect_fallback ut_connect_fallback.c)
-  target_compile_options(ut_connect_fallback PRIVATE -Wno-pedantic)
-  target_link_libraries(ut_connect_fallback valkey_unittest dl)
-  add_test(NAME ut_connect_fallback COMMAND "$<TARGET_FILE:ut_connect_fallback>")
-endif()
 
 # Cluster tests
 add_executable(ct_commands ct_commands.c test_utils.c)

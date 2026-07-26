@@ -16,15 +16,8 @@ add_dependencies(kv-server generate_commands_def)
 add_dependencies(kv-server generate_fmtargs_h)
 add_dependencies(kv-server release_header)
 
-if (NOT BUILD_LUA STREQUAL "no")
+if (BUILD_LUA)
     message(STATUS "Build Lua scripting engine module")
-    if (BUILD_LUA STREQUAL "static")
-        add_compile_definitions(STATIC_LUA=1)
-        message(STATUS "Building LUA as a STATIC module")
-    else ()
-        add_compile_definitions(STATIC_LUA=0)
-        message(STATUS "Building LUA as a DYNAMIC module")
-    endif ()
     add_subdirectory(modules/lua)
     add_dependencies(kv-server kvlua)
     target_compile_definitions(kv-server PRIVATE LUA_ENABLED)
@@ -90,7 +83,7 @@ if (BUILD_RDMA_MODULE)
     message(STATUS "Building RDMA module")
     add_library(${MODULE_NAME} SHARED "${KV_RDMA_MODULE_SRCS}")
     target_compile_options(${MODULE_NAME} PRIVATE -DBUILD_RDMA_MODULE=2 -DUSE_RDMA=1)
-    target_link_libraries(${MODULE_NAME} PRIVATE "${RDMA_LIBS}")
+    target_link_libraries(${MODULE_NAME} "${RDMA_LIBS}")
     # remove the "lib" prefix from the module
     set_target_properties(${MODULE_NAME} PROPERTIES PREFIX "")
     kv_install_bin(${MODULE_NAME})
@@ -116,7 +109,7 @@ if (BUILD_EXAMPLE_MODULES)
     add_subdirectory(modules)
 endif ()
 
-if (BUILD_UNIT_GTESTS)
+if (BUILD_UNIT_TESTS)
     add_subdirectory(unit)
 endif ()
 
@@ -127,4 +120,5 @@ add_custom_target(hint ALL
     COMMAND ${CMAKE_COMMAND} -E echo ""
     COMMAND ${CMAKE_COMMAND} -E echo "Hint: It is a good idea to run tests with your CMake-built binaries \\;\\)"
     COMMAND ${CMAKE_COMMAND} -E echo "      ./${_CMAKE_DIR_RELATIVE_PATH}/runtest"
-    COMMAND ${CMAKE_COMMAND} -E echo "")
+    COMMAND ${CMAKE_COMMAND} -E echo ""
+)

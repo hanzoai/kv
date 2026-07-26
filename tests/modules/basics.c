@@ -34,12 +34,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-/* Forward declarations of module API functions not publicly exposed */
-extern int VM_CallArgv(KVModuleCtx *ctx, KVModuleString **argv, int argc, int flags, const KVModuleReplyHandlers *resp_handlers, void *reply_ctx);
-extern int VM_ReplyRaw(KVModuleCtx *ctx, const char *proto, size_t proto_len);
-#define KVModule_CallArgv VM_CallArgv
-#define KVModule_ReplyRaw VM_ReplyRaw
-
 /* --------------------------------- Helpers -------------------------------- */
 
 /* Return true if the reply and the C null term string matches. */
@@ -907,7 +901,7 @@ int TestBasics(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
 
     T("test.string.append.am","");
     if (!TestAssertStringReply(ctx,reply,"foobar",6)) goto fail;
-
+    
     T("test.string.trim","");
     if (!TestAssertStringReply(ctx,reply,"OK",2)) goto fail;
 
