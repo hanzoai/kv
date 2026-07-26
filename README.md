@@ -20,7 +20,7 @@
 ## Features
 
 - **In-memory key-value store** -- sub-millisecond reads and writes
-- **Redis-compatible protocol** -- drop-in replacement for existing Redis clients
+- **RESP protocol** -- speaks RESP2 and RESP3, so existing clients connect unchanged
 - **Persistence** -- RDB snapshots and AOF (append-only file) for durability
 - **Replication** -- primary-replica with automatic failover via Sentinel
 - **Lua scripting** -- server-side scripting for atomic operations
@@ -50,7 +50,7 @@ OK
 "world"
 ```
 
-Any Redis-compatible CLI also works out of the box.
+Any RESP client also works out of the box.
 
 ### Build from Source
 
@@ -141,7 +141,7 @@ int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
 | Go | [hanzokv/go](https://github.com/hanzokv/go) | `go get github.com/hanzokv/go/v9` |
 | Node.js | [hanzokv/js](https://github.com/hanzokv/js) | `npm install @hanzo/kv` |
 
-Any Redis-compatible client library will also work.
+Any RESP client library will also work.
 
 ## Documentation
 
