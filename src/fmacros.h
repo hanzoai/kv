@@ -94,3 +94,5 @@ char *strcat(char *restrict dest, const char *restrict src)
 #endif
 
 #endif
+
+#endif

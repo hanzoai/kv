@@ -60,16 +60,16 @@
  *
  *     ReplyHandlersParserCallbacks – wires the replyHandlers* adapter
  *       functions; used by invokeReplyHandlers() to dispatch a live
- *       reply to the ValkeyModuleReplyHandlers provided by the module.
+ *       reply to the KVModuleReplyHandlers provided by the module.
  *
- * Level 2 – ValkeyModuleReplyHandlers (valkeymodule.h)
+ * Level 2 – KVModuleReplyHandlers (valkeymodule.h)
  *   The public module API.  These user-supplied callbacks receive only
  *   clean, parsed values (no raw RESP bytes, no ReplyParser pointer).
  *   Collection callbacks come in matched Start/End pairs so the module
  *   does not need to drive the parser itself.  The replyHandlers*
  *   adapters bridge Level 1 → Level 2: they accept Level-1 arguments,
  *   strip the parser internals, and call the corresponding
- *   ValkeyModuleReplyHandlers callback with just the value arguments.
+ *   KVModuleReplyHandlers callback with just the value arguments.
  * ============================================================ */
 
 
@@ -628,11 +628,11 @@ void enableParseExactReplyTypeFlag(CallReply *rep) {
 }
 
 /* Internal pairing of a const callback table with its associated context.
- * Created on the stack by callers so the public ValkeyModuleReplyHandlers
+ * Created on the stack by callers so the public KVModuleReplyHandlers
  * struct remains immutable (no context field). The recursive-descent parser
  * receives a pointer to one of these as its opaque `ctx` argument. */
 typedef struct {
-    const ValkeyModuleReplyHandlers *handlers;
+    const KVModuleReplyHandlers *handlers;
     void *context;
 } RespHandlersCtx;
 
@@ -810,7 +810,7 @@ static const ReplyParserCallbacks ReplyHandlersParserCallbacks = {
  *
  * The client's output buffer is consumed by this call (bufpos reset, reply
  * list drained). */
-void invokeReplyHandlers(ValkeyModuleCtx *ctx, client *c, const ValkeyModuleReplyHandlers *handlers, void *reply_ctx) {
+void invokeReplyHandlers(KVModuleCtx *ctx, client *c, const KVModuleReplyHandlers *handlers, void *reply_ctx) {
     char *buf = NULL;
     size_t buf_len = 0;
     int free_buffer = 0;

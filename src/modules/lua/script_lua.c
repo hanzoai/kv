@@ -46,10 +46,10 @@
 #include <time.h>
 
 /* Forward declarations of module API functions not publicly exposed */
-extern int VM_CallArgv(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc, int flags, const ValkeyModuleReplyHandlers *resp_handlers, void *reply_ctx);
-extern int VM_ReplyRaw(ValkeyModuleCtx *ctx, const char *proto, size_t proto_len);
-#define ValkeyModule_CallArgv VM_CallArgv
-#define ValkeyModule_ReplyRaw VM_ReplyRaw
+extern int VM_CallArgv(KVModuleCtx *ctx, KVModuleString **argv, int argc, int flags, const KVModuleReplyHandlers *resp_handlers, void *reply_ctx);
+extern int VM_ReplyRaw(KVModuleCtx *ctx, const char *proto, size_t proto_len);
+#define KVModule_CallArgv VM_CallArgv
+#define KVModule_ReplyRaw VM_ReplyRaw
 
 #define LUA_CMD_OBJCACHE_SIZE 32
 #define LUA_CMD_OBJCACHE_MAX_LEN 64
@@ -987,7 +987,7 @@ static void luaProcessReplyError(KVModuleCallReply *reply, lua_State *lua) {
          * code and doesn't prepend another "ERR" code. */
         char *err_with_dash = lm_asprintf("-%s", err);
         luaPushError(lua, err_with_dash);
-        ValkeyModule_Free(err_with_dash);
+        KVModule_Free(err_with_dash);
     }
     /* push a field indicate to ignore updating the stats on this error
      * because it was already updated when executing the command. */
@@ -1006,7 +1006,7 @@ enum CollectionType {
 
 typedef struct callCtx {
     lua_State *lua;
-    ValkeyModuleCtx *module_ctx;
+    KVModuleCtx *module_ctx;
     int error;
     int in_collection;
     size_t collection_item_count[MAX_NESTED_COLLECTIONS_DEPTH];
@@ -1139,7 +1139,7 @@ static void simpleStringCallback(void *ctx, const char *str, size_t len) {
 }
 
 static void errorCallback(void *ctx, const char *msg, size_t len) {
-    VALKEYMODULE_NOT_USED(len);
+    KVMODULE_NOT_USED(len);
 
     callCtx *call_ctx = ctx;
     lua_State *lua = call_ctx->lua;
@@ -1150,7 +1150,7 @@ static void errorCallback(void *ctx, const char *msg, size_t len) {
     }
 
     if (errno != 0) {
-        ValkeyModule_Log(call_ctx->module_ctx, "debug", "command returned an error: %s errno=%d", msg, errno);
+        KVModule_Log(call_ctx->module_ctx, "debug", "command returned an error: %s errno=%d", msg, errno);
         luaProcessReplyError(msg, lua);
     } else {
         /* The reply parser strips the leading '-' from the RESP error, so
@@ -1160,7 +1160,7 @@ static void errorCallback(void *ctx, const char *msg, size_t len) {
          * preserves the code instead of double-prefixing with "ERR ". */
         char *msg_with_dash = lm_asprintf("-%s", msg);
         luaPushErrorBuff(lua, msg_with_dash);
-        ValkeyModule_Free(msg_with_dash);
+        KVModule_Free(msg_with_dash);
         /* push a field indicate to ignore updating the stats on this error
          * because it was already updated when executing the command. */
         lua_pushstring(lua, "ignore_error_stats_update");
@@ -1305,21 +1305,21 @@ static void doubleCallback(void *ctx, double val) {
     processCollectionElementEnd(ctx);
 }
 
-static int callArgvOnAvailableCallback(void *ctx, ValkeyModuleCtx *mctx, const char *proto, size_t proto_len) {
-    VALKEYMODULE_NOT_USED(ctx);
-    VALKEYMODULE_NOT_USED(mctx);
-    VALKEYMODULE_NOT_USED(proto_len);
+static int callArgvOnAvailableCallback(void *ctx, KVModuleCtx *mctx, const char *proto, size_t proto_len) {
+    KVMODULE_NOT_USED(ctx);
+    KVMODULE_NOT_USED(mctx);
+    KVMODULE_NOT_USED(proto_len);
 
     /* If the debugger is active, log the reply from the server. */
     if (ldbIsEnabled()) {
-        ValkeyModule_ScriptingEngineDebuggerLogRespReplyStr(proto);
+        KVModule_ScriptingEngineDebuggerLogRespReplyStr(proto);
     }
 
     return 1;
 }
 
-static ValkeyModuleReplyHandlers handlers = {
-    .version = VALKEYMODULE_REPLY_HANDLERS_VERSION,
+static KVModuleReplyHandlers handlers = {
+    .version = KVMODULE_REPLY_HANDLERS_VERSION,
     .null = nullCallback,
     .nullArray = nullArrayCallback,
     .nullBulkString = nullBulkString,
@@ -1398,17 +1398,17 @@ static int luaServerGenericCommand(lua_State *lua, int raise_error) {
     }
 
     if (!(rctx->replication_flags & PROPAGATE_AOF)) {
-        flags |= VALKEYMODULE_CALL_ARGV_NO_AOF;
+        flags |= KVMODULE_CALL_ARGV_NO_AOF;
     }
     if (!(rctx->replication_flags & PROPAGATE_REPL)) {
-        flags |= VALKEYMODULE_CALL_ARGV_NO_REPLICAS;
+        flags |= KVMODULE_CALL_ARGV_NO_REPLICAS;
     }
     if (!rctx->replication_flags) {
         /* PROPAGATE_NONE case */
-        flags |= VALKEYMODULE_CALL_ARGV_NO_AOF | VALKEYMODULE_CALL_ARGV_NO_REPLICAS;
+        flags |= KVMODULE_CALL_ARGV_NO_AOF | KVMODULE_CALL_ARGV_NO_REPLICAS;
     }
     if (rctx->resp == 3) {
-        flags |= VALKEYMODULE_CALL_ARGV_RESP_3;
+        flags |= KVMODULE_CALL_ARGV_RESP_3;
     }
 
     const char *cmdname = KVModule_StringPtrLen(argv[0], NULL);
