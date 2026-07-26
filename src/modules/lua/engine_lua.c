@@ -22,7 +22,7 @@
 #define LUA_ENGINE_NAME "LUA"
 #define REGISTRY_ERROR_HANDLER_NAME "__ERROR_HANDLER__"
 
-static int isLuaInsecureAPIEnabled(ValkeyModuleCtx *module_ctx);
+static int isLuaInsecureAPIEnabled(KVModuleCtx *module_ctx);
 
 /* Adds server.debug() function used by lua debugger
  *
@@ -549,13 +549,13 @@ int KVModule_OnUnload(KVModuleCtx *ctx) {
 
 #if STATIC_LUA
 /* Unique entry points (Load and Unload) used by the Lua module when linked statically */
-int ValkeyModule_OnLoad_lua(ValkeyModuleCtx *ctx,
-                            ValkeyModuleString **argv,
+int KVModule_OnLoad_lua(KVModuleCtx *ctx,
+                            KVModuleString **argv,
                             int argc) {
-    return ValkeyModule_OnLoad(ctx, argv, argc);
+    return KVModule_OnLoad(ctx, argv, argc);
 }
 
-int ValkeyModule_OnUnload_lua(ValkeyModuleCtx *ctx) {
-    return ValkeyModule_OnUnload(ctx);
+int KVModule_OnUnload_lua(KVModuleCtx *ctx) {
+    return KVModule_OnUnload(ctx);
 }
 #endif

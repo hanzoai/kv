@@ -60,7 +60,7 @@ typedef enum {
 /* Command flags. Please don't forget to add command flag documentation in struct
  * serverCommand in server.h file. */
 
-/* Must be compatible with RedisModuleCommandArg. See moduleCopyCommandArgs. */
+/* Must be compatible with KVModuleCommandArg. See moduleCopyCommandArgs. */
 typedef struct serverCommandArg {
     const char *name;
     serverCommandArgType type;

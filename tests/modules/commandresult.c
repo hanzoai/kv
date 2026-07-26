@@ -1,9 +1,9 @@
 /* Test module for command result event API
  *
- * This module tests the VALKEYMODULE_EVENT_COMMAND_RESULT_SUCCESS,
- * VALKEYMODULE_EVENT_COMMAND_RESULT_FAILURE,
- * VALKEYMODULE_EVENT_COMMAND_RESULT_REJECTED, and
- * VALKEYMODULE_EVENT_COMMAND_RESULT_ACL_REJECTED server events.
+ * This module tests the KVMODULE_EVENT_COMMAND_RESULT_SUCCESS,
+ * KVMODULE_EVENT_COMMAND_RESULT_FAILURE,
+ * KVMODULE_EVENT_COMMAND_RESULT_REJECTED, and
+ * KVMODULE_EVENT_COMMAND_RESULT_ACL_REJECTED server events.
  *
  * Commands provided:
  * - CMDRESULT.REGISTER <mode> - Register event subscription
@@ -17,7 +17,7 @@
  * - CMDRESULT.RMCALL <command> [args...] - Call a command via RM_Call
  */
 
-#include "valkeymodule.h"
+#include "kvmodule.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -74,7 +74,7 @@ static void ResetState(void) {
 void LogResult(const char *cmd_name, int status, uint64_t subevent,
                long long duration, long long dirty,
                unsigned long long client_id, int is_module_client,
-               ValkeyModuleString **argv, int argc,
+               KVModuleString **argv, int argc,
                const char *rejection_context) {
   ResultLogEntry *entry = &result_log[log_head];
 
@@ -104,7 +104,7 @@ void LogResult(const char *cmd_name, int status, uint64_t subevent,
         continue;
       }
       size_t len;
-      const char *arg = ValkeyModule_StringPtrLen(argv[i], &len);
+      const char *arg = KVModule_StringPtrLen(argv[i], &len);
       if (arg == NULL) {
         strcpy(entry->argv[i], "(empty)");
         continue;
@@ -124,25 +124,25 @@ void LogResult(const char *cmd_name, int status, uint64_t subevent,
 
 /* Command result event callback — handles success, failure, and rejected
  * events */
-void CommandResultEventCallback(ValkeyModuleCtx *ctx, ValkeyModuleEvent eid,
+void CommandResultEventCallback(KVModuleCtx *ctx, KVModuleEvent eid,
                                 uint64_t subevent, void *data) {
-  VALKEYMODULE_NOT_USED(ctx);
+  KVMODULE_NOT_USED(ctx);
 
-  ValkeyModuleCommandResultInfo *info = (ValkeyModuleCommandResultInfo *)data;
+  KVModuleCommandResultInfo *info = (KVModuleCommandResultInfo *)data;
 
-  if (info->version != VALKEYMODULE_COMMANDRESULTINFO_VERSION)
+  if (info->version != KVMODULE_COMMANDRESULTINFO_VERSION)
     return;
 
   stats.total_callbacks++;
 
   int status;
-  if (eid.id == VALKEYMODULE_EVENT_COMMAND_RESULT_ACL_REJECTED) {
+  if (eid.id == KVMODULE_EVENT_COMMAND_RESULT_ACL_REJECTED) {
     status = 2;
     stats.acl_denied_count++;
-  } else if (eid.id == VALKEYMODULE_EVENT_COMMAND_RESULT_REJECTED) {
+  } else if (eid.id == KVMODULE_EVENT_COMMAND_RESULT_REJECTED) {
     status = 3;
     stats.rejected_count++;
-  } else if (eid.id == VALKEYMODULE_EVENT_COMMAND_RESULT_FAILURE) {
+  } else if (eid.id == KVMODULE_EVENT_COMMAND_RESULT_FAILURE) {
     status = 1;
     stats.failure_count++;
   } else {
@@ -162,19 +162,19 @@ void CommandResultEventCallback(ValkeyModuleCtx *ctx, ValkeyModuleEvent eid,
 /* CMDRESULT.REGISTER <mode>
  * Mode can be: "all", "success", "failure", "rejected"
  */
-int CmdResultRegister_ValkeyCommand(ValkeyModuleCtx *ctx,
-                                    ValkeyModuleString **argv, int argc) {
+int CmdResultRegister_ValkeyCommand(KVModuleCtx *ctx,
+                                    KVModuleString **argv, int argc) {
   if (argc != 2) {
-    return ValkeyModule_WrongArity(ctx);
+    return KVModule_WrongArity(ctx);
   }
 
   if (subscription_mode != 0) {
-    return ValkeyModule_ReplyWithError(
+    return KVModule_ReplyWithError(
         ctx, "ERR already subscribed to command result events");
   }
 
   size_t len;
-  const char *mode_str = ValkeyModule_StringPtrLen(argv[1], &len);
+  const char *mode_str = KVModule_StringPtrLen(argv[1], &len);
 
   int new_mode = 0;
   if (strcmp(mode_str, "all") == 0) {
@@ -188,127 +188,127 @@ int CmdResultRegister_ValkeyCommand(ValkeyModuleCtx *ctx,
   } else if (strcmp(mode_str, "acl_rejected") == 0) {
     new_mode = MODE_ACL_REJECTED;
   } else {
-    return ValkeyModule_ReplyWithError(ctx,
+    return KVModule_ReplyWithError(ctx,
                                        "ERR invalid mode. Use: all, success, "
                                        "failure, rejected, or acl_rejected");
   }
 
   if ((new_mode & MODE_SUCCESS) &&
-      ValkeyModule_SubscribeToServerEvent(
-          ctx, ValkeyModuleEvent_CommandResultSuccess,
-          CommandResultEventCallback) == VALKEYMODULE_ERR) {
-    return ValkeyModule_ReplyWithError(
+      KVModule_SubscribeToServerEvent(
+          ctx, KVModuleEvent_CommandResultSuccess,
+          CommandResultEventCallback) == KVMODULE_ERR) {
+    return KVModule_ReplyWithError(
         ctx, "ERR failed to subscribe to success event");
   }
 
   if ((new_mode & MODE_FAILURE) &&
-      ValkeyModule_SubscribeToServerEvent(
-          ctx, ValkeyModuleEvent_CommandResultFailure,
-          CommandResultEventCallback) == VALKEYMODULE_ERR) {
+      KVModule_SubscribeToServerEvent(
+          ctx, KVModuleEvent_CommandResultFailure,
+          CommandResultEventCallback) == KVMODULE_ERR) {
     if (new_mode & MODE_SUCCESS)
-      ValkeyModule_SubscribeToServerEvent(
-          ctx, ValkeyModuleEvent_CommandResultSuccess, NULL);
-    return ValkeyModule_ReplyWithError(
+      KVModule_SubscribeToServerEvent(
+          ctx, KVModuleEvent_CommandResultSuccess, NULL);
+    return KVModule_ReplyWithError(
         ctx, "ERR failed to subscribe to failure event");
   }
 
   if ((new_mode & MODE_REJECTED) &&
-      ValkeyModule_SubscribeToServerEvent(
-          ctx, ValkeyModuleEvent_CommandResultRejected,
-          CommandResultEventCallback) == VALKEYMODULE_ERR) {
+      KVModule_SubscribeToServerEvent(
+          ctx, KVModuleEvent_CommandResultRejected,
+          CommandResultEventCallback) == KVMODULE_ERR) {
     if (new_mode & MODE_SUCCESS)
-      ValkeyModule_SubscribeToServerEvent(
-          ctx, ValkeyModuleEvent_CommandResultSuccess, NULL);
+      KVModule_SubscribeToServerEvent(
+          ctx, KVModuleEvent_CommandResultSuccess, NULL);
     if (new_mode & MODE_FAILURE)
-      ValkeyModule_SubscribeToServerEvent(
-          ctx, ValkeyModuleEvent_CommandResultFailure, NULL);
-    return ValkeyModule_ReplyWithError(
+      KVModule_SubscribeToServerEvent(
+          ctx, KVModuleEvent_CommandResultFailure, NULL);
+    return KVModule_ReplyWithError(
         ctx, "ERR failed to subscribe to rejected event");
   }
 
   if ((new_mode & MODE_ACL_REJECTED) &&
-      ValkeyModule_SubscribeToServerEvent(
-          ctx, ValkeyModuleEvent_CommandResultACLRejected,
-          CommandResultEventCallback) == VALKEYMODULE_ERR) {
+      KVModule_SubscribeToServerEvent(
+          ctx, KVModuleEvent_CommandResultACLRejected,
+          CommandResultEventCallback) == KVMODULE_ERR) {
     if (new_mode & MODE_SUCCESS)
-      ValkeyModule_SubscribeToServerEvent(
-          ctx, ValkeyModuleEvent_CommandResultSuccess, NULL);
+      KVModule_SubscribeToServerEvent(
+          ctx, KVModuleEvent_CommandResultSuccess, NULL);
     if (new_mode & MODE_FAILURE)
-      ValkeyModule_SubscribeToServerEvent(
-          ctx, ValkeyModuleEvent_CommandResultFailure, NULL);
+      KVModule_SubscribeToServerEvent(
+          ctx, KVModuleEvent_CommandResultFailure, NULL);
     if (new_mode & MODE_REJECTED)
-      ValkeyModule_SubscribeToServerEvent(
-          ctx, ValkeyModuleEvent_CommandResultRejected, NULL);
-    return ValkeyModule_ReplyWithError(
+      KVModule_SubscribeToServerEvent(
+          ctx, KVModuleEvent_CommandResultRejected, NULL);
+    return KVModule_ReplyWithError(
         ctx, "ERR failed to subscribe to acl_rejected event");
   }
 
   subscription_mode = new_mode;
-  return ValkeyModule_ReplyWithSimpleString(ctx, "OK");
+  return KVModule_ReplyWithSimpleString(ctx, "OK");
 }
 
 /* CMDRESULT.UNSUBSCRIBE */
-int CmdResultUnsubscribe_ValkeyCommand(ValkeyModuleCtx *ctx,
-                                       ValkeyModuleString **argv, int argc) {
-  VALKEYMODULE_NOT_USED(argv);
+int CmdResultUnsubscribe_ValkeyCommand(KVModuleCtx *ctx,
+                                       KVModuleString **argv, int argc) {
+  KVMODULE_NOT_USED(argv);
   int had_subscription = (subscription_mode != 0);
 
   if (argc != 1) {
-    return ValkeyModule_WrongArity(ctx);
+    return KVModule_WrongArity(ctx);
   }
 
-  ValkeyModule_SubscribeToServerEvent(ctx, ValkeyModuleEvent_CommandResultSuccess, NULL);
-  ValkeyModule_SubscribeToServerEvent(ctx, ValkeyModuleEvent_CommandResultFailure, NULL);
-  ValkeyModule_SubscribeToServerEvent(ctx, ValkeyModuleEvent_CommandResultRejected, NULL);
-  ValkeyModule_SubscribeToServerEvent(ctx, ValkeyModuleEvent_CommandResultACLRejected, NULL);
+  KVModule_SubscribeToServerEvent(ctx, KVModuleEvent_CommandResultSuccess, NULL);
+  KVModule_SubscribeToServerEvent(ctx, KVModuleEvent_CommandResultFailure, NULL);
+  KVModule_SubscribeToServerEvent(ctx, KVModuleEvent_CommandResultRejected, NULL);
+  KVModule_SubscribeToServerEvent(ctx, KVModuleEvent_CommandResultACLRejected, NULL);
   subscription_mode = 0;
 
   if (!had_subscription) {
-    return ValkeyModule_ReplyWithError(
+    return KVModule_ReplyWithError(
         ctx, "ERR not subscribed to command result events");
   }
 
-  return ValkeyModule_ReplyWithSimpleString(ctx, "OK");
+  return KVModule_ReplyWithSimpleString(ctx, "OK");
 }
 
 /* CMDRESULT.STATS
  * Returns: total_callbacks, success_count, failure_count, rejected_count,
  *          total_duration_us, total_dirty
  */
-int CmdResultStats_ValkeyCommand(ValkeyModuleCtx *ctx,
-                                 ValkeyModuleString **argv, int argc) {
-  VALKEYMODULE_NOT_USED(argv);
+int CmdResultStats_ValkeyCommand(KVModuleCtx *ctx,
+                                 KVModuleString **argv, int argc) {
+  KVMODULE_NOT_USED(argv);
 
   if (argc != 1) {
-    return ValkeyModule_WrongArity(ctx);
+    return KVModule_WrongArity(ctx);
   }
 
-  ValkeyModule_ReplyWithArray(ctx, 14);
-  ValkeyModule_ReplyWithSimpleString(ctx, "total_callbacks");
-  ValkeyModule_ReplyWithLongLong(ctx, stats.total_callbacks);
-  ValkeyModule_ReplyWithSimpleString(ctx, "success_count");
-  ValkeyModule_ReplyWithLongLong(ctx, stats.success_count);
-  ValkeyModule_ReplyWithSimpleString(ctx, "failure_count");
-  ValkeyModule_ReplyWithLongLong(ctx, stats.failure_count);
-  ValkeyModule_ReplyWithSimpleString(ctx, "rejected_count");
-  ValkeyModule_ReplyWithLongLong(ctx, stats.rejected_count);
-  ValkeyModule_ReplyWithSimpleString(ctx, "acl_denied_count");
-  ValkeyModule_ReplyWithLongLong(ctx, stats.acl_denied_count);
-  ValkeyModule_ReplyWithSimpleString(ctx, "total_duration_us");
-  ValkeyModule_ReplyWithLongLong(ctx, stats.total_duration_us);
-  ValkeyModule_ReplyWithSimpleString(ctx, "total_dirty");
-  ValkeyModule_ReplyWithLongLong(ctx, stats.total_dirty);
+  KVModule_ReplyWithArray(ctx, 14);
+  KVModule_ReplyWithSimpleString(ctx, "total_callbacks");
+  KVModule_ReplyWithLongLong(ctx, stats.total_callbacks);
+  KVModule_ReplyWithSimpleString(ctx, "success_count");
+  KVModule_ReplyWithLongLong(ctx, stats.success_count);
+  KVModule_ReplyWithSimpleString(ctx, "failure_count");
+  KVModule_ReplyWithLongLong(ctx, stats.failure_count);
+  KVModule_ReplyWithSimpleString(ctx, "rejected_count");
+  KVModule_ReplyWithLongLong(ctx, stats.rejected_count);
+  KVModule_ReplyWithSimpleString(ctx, "acl_denied_count");
+  KVModule_ReplyWithLongLong(ctx, stats.acl_denied_count);
+  KVModule_ReplyWithSimpleString(ctx, "total_duration_us");
+  KVModule_ReplyWithLongLong(ctx, stats.total_duration_us);
+  KVModule_ReplyWithSimpleString(ctx, "total_dirty");
+  KVModule_ReplyWithLongLong(ctx, stats.total_dirty);
 
-  return VALKEYMODULE_OK;
+  return KVMODULE_OK;
 }
 
 /* CMDRESULT.RESET */
-int CmdResultReset_ValkeyCommand(ValkeyModuleCtx *ctx,
-                                 ValkeyModuleString **argv, int argc) {
-  VALKEYMODULE_NOT_USED(argv);
+int CmdResultReset_ValkeyCommand(KVModuleCtx *ctx,
+                                 KVModuleString **argv, int argc) {
+  KVMODULE_NOT_USED(argv);
 
   if (argc != 1) {
-    return ValkeyModule_WrongArity(ctx);
+    return KVModule_WrongArity(ctx);
   }
 
   stats.total_callbacks = 0;
@@ -322,22 +322,22 @@ int CmdResultReset_ValkeyCommand(ValkeyModuleCtx *ctx,
   log_head = 0;
   log_count = 0;
 
-  return ValkeyModule_ReplyWithSimpleString(ctx, "OK");
+  return KVModule_ReplyWithSimpleString(ctx, "OK");
 }
 
 /* CMDRESULT.GETLOG [count]
  * Returns the last N command results from the log
  */
-int CmdResultGetLog_ValkeyCommand(ValkeyModuleCtx *ctx,
-                                  ValkeyModuleString **argv, int argc) {
+int CmdResultGetLog_ValkeyCommand(KVModuleCtx *ctx,
+                                  KVModuleString **argv, int argc) {
   if (argc > 2) {
-    return ValkeyModule_WrongArity(ctx);
+    return KVModule_WrongArity(ctx);
   }
 
   long long count = log_count;
   if (argc == 2) {
-    if (ValkeyModule_StringToLongLong(argv[1], &count) != VALKEYMODULE_OK) {
-      return ValkeyModule_ReplyWithError(ctx, "ERR invalid count");
+    if (KVModule_StringToLongLong(argv[1], &count) != KVMODULE_OK) {
+      return KVModule_ReplyWithError(ctx, "ERR invalid count");
     }
     if (count < 0)
       count = 0;
@@ -345,7 +345,7 @@ int CmdResultGetLog_ValkeyCommand(ValkeyModuleCtx *ctx,
       count = log_count;
   }
 
-  ValkeyModule_ReplyWithArray(ctx, count);
+  KVModule_ReplyWithArray(ctx, count);
 
   /* Get entries from newest to oldest */
   for (int i = 0; i < count; i++) {
@@ -362,139 +362,139 @@ int CmdResultGetLog_ValkeyCommand(ValkeyModuleCtx *ctx,
     else
       status_str = "success";
 
-    ValkeyModule_ReplyWithArray(ctx, 18);
-    ValkeyModule_ReplyWithSimpleString(ctx, "command");
-    ValkeyModule_ReplyWithCString(ctx, entry->command_name);
-    ValkeyModule_ReplyWithSimpleString(ctx, "status");
-    ValkeyModule_ReplyWithCString(ctx, status_str);
-    ValkeyModule_ReplyWithSimpleString(ctx, "duration_us");
-    ValkeyModule_ReplyWithLongLong(ctx, entry->duration);
-    ValkeyModule_ReplyWithSimpleString(ctx, "dirty");
-    ValkeyModule_ReplyWithLongLong(ctx, entry->dirty);
-    ValkeyModule_ReplyWithSimpleString(ctx, "client_id");
-    ValkeyModule_ReplyWithLongLong(ctx, entry->client_id);
-    ValkeyModule_ReplyWithSimpleString(ctx, "is_module_client");
-    ValkeyModule_ReplyWithLongLong(ctx, entry->is_module_client);
-    ValkeyModule_ReplyWithSimpleString(ctx, "subevent");
-    ValkeyModule_ReplyWithLongLong(ctx, entry->subevent);
-    ValkeyModule_ReplyWithSimpleString(ctx, "rejection_context");
-    ValkeyModule_ReplyWithCString(ctx, entry->rejection_context);
-    ValkeyModule_ReplyWithSimpleString(ctx, "argv");
-    ValkeyModule_ReplyWithArray(ctx, entry->argc);
+    KVModule_ReplyWithArray(ctx, 18);
+    KVModule_ReplyWithSimpleString(ctx, "command");
+    KVModule_ReplyWithCString(ctx, entry->command_name);
+    KVModule_ReplyWithSimpleString(ctx, "status");
+    KVModule_ReplyWithCString(ctx, status_str);
+    KVModule_ReplyWithSimpleString(ctx, "duration_us");
+    KVModule_ReplyWithLongLong(ctx, entry->duration);
+    KVModule_ReplyWithSimpleString(ctx, "dirty");
+    KVModule_ReplyWithLongLong(ctx, entry->dirty);
+    KVModule_ReplyWithSimpleString(ctx, "client_id");
+    KVModule_ReplyWithLongLong(ctx, entry->client_id);
+    KVModule_ReplyWithSimpleString(ctx, "is_module_client");
+    KVModule_ReplyWithLongLong(ctx, entry->is_module_client);
+    KVModule_ReplyWithSimpleString(ctx, "subevent");
+    KVModule_ReplyWithLongLong(ctx, entry->subevent);
+    KVModule_ReplyWithSimpleString(ctx, "rejection_context");
+    KVModule_ReplyWithCString(ctx, entry->rejection_context);
+    KVModule_ReplyWithSimpleString(ctx, "argv");
+    KVModule_ReplyWithArray(ctx, entry->argc);
     for (int j = 0; j < entry->argc; j++) {
-      ValkeyModule_ReplyWithCString(ctx, entry->argv[j]);
+      KVModule_ReplyWithCString(ctx, entry->argv[j]);
     }
   }
 
-  return VALKEYMODULE_OK;
+  return KVMODULE_OK;
 }
 
 /* CMDRESULT.SUCCESS
  * A command that always succeeds
  */
-int CmdResultSuccess_ValkeyCommand(ValkeyModuleCtx *ctx,
-                                   ValkeyModuleString **argv, int argc) {
-  VALKEYMODULE_NOT_USED(argv);
-  VALKEYMODULE_NOT_USED(argc);
+int CmdResultSuccess_ValkeyCommand(KVModuleCtx *ctx,
+                                   KVModuleString **argv, int argc) {
+  KVMODULE_NOT_USED(argv);
+  KVMODULE_NOT_USED(argc);
 
-  return ValkeyModule_ReplyWithSimpleString(ctx, "OK");
+  return KVModule_ReplyWithSimpleString(ctx, "OK");
 }
 
 /* CMDRESULT.FAIL
  * A command that always fails
  */
-int CmdResultFail_ValkeyCommand(ValkeyModuleCtx *ctx, ValkeyModuleString **argv,
+int CmdResultFail_ValkeyCommand(KVModuleCtx *ctx, KVModuleString **argv,
                                 int argc) {
-  VALKEYMODULE_NOT_USED(argv);
-  VALKEYMODULE_NOT_USED(argc);
+  KVMODULE_NOT_USED(argv);
+  KVMODULE_NOT_USED(argc);
 
-  return ValkeyModule_ReplyWithError(ctx, "ERR intentional failure");
+  return KVModule_ReplyWithError(ctx, "ERR intentional failure");
 }
 
 /* CMDRESULT.RMCALL <command> [args...]
  * Test calling a command via RM_Call - allows testing is_module_client
  * detection
  */
-int CmdResultRMCall_ValkeyCommand(ValkeyModuleCtx *ctx,
-                                  ValkeyModuleString **argv, int argc) {
+int CmdResultRMCall_ValkeyCommand(KVModuleCtx *ctx,
+                                  KVModuleString **argv, int argc) {
   if (argc < 2) {
-    return ValkeyModule_WrongArity(ctx);
+    return KVModule_WrongArity(ctx);
   }
 
   /* Call the command via RM_Call */
-  ValkeyModuleCallReply *reply = ValkeyModule_Call(
-      ctx, ValkeyModule_StringPtrLen(argv[1], NULL), "v", argv + 2, argc - 2);
+  KVModuleCallReply *reply = KVModule_Call(
+      ctx, KVModule_StringPtrLen(argv[1], NULL), "v", argv + 2, argc - 2);
 
   if (!reply) {
-    return ValkeyModule_ReplyWithError(ctx, "ERR call failed");
+    return KVModule_ReplyWithError(ctx, "ERR call failed");
   }
 
   /* Forward the reply */
-  ValkeyModule_ReplyWithCallReply(ctx, reply);
-  ValkeyModule_FreeCallReply(reply);
+  KVModule_ReplyWithCallReply(ctx, reply);
+  KVModule_FreeCallReply(reply);
 
-  return VALKEYMODULE_OK;
+  return KVMODULE_OK;
 }
 
-int ValkeyModule_OnLoad(ValkeyModuleCtx *ctx, ValkeyModuleString **argv,
+int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv,
                         int argc) {
-  VALKEYMODULE_NOT_USED(argv);
-  VALKEYMODULE_NOT_USED(argc);
+  KVMODULE_NOT_USED(argv);
+  KVMODULE_NOT_USED(argc);
 
   ResetState();
 
-  if (ValkeyModule_Init(ctx, "commandresult", 1, VALKEYMODULE_APIVER_1) ==
-      VALKEYMODULE_ERR) {
-    return VALKEYMODULE_ERR;
+  if (KVModule_Init(ctx, "commandresult", 1, KVMODULE_APIVER_1) ==
+      KVMODULE_ERR) {
+    return KVMODULE_ERR;
   }
 
-  if (ValkeyModule_CreateCommand(ctx, "cmdresult.register",
+  if (KVModule_CreateCommand(ctx, "cmdresult.register",
                                  CmdResultRegister_ValkeyCommand, "admin", 0, 0,
-                                 0) == VALKEYMODULE_ERR) {
-    return VALKEYMODULE_ERR;
+                                 0) == KVMODULE_ERR) {
+    return KVMODULE_ERR;
   }
 
-  if (ValkeyModule_CreateCommand(ctx, "cmdresult.unsubscribe",
+  if (KVModule_CreateCommand(ctx, "cmdresult.unsubscribe",
                                  CmdResultUnsubscribe_ValkeyCommand, "admin", 0,
-                                 0, 0) == VALKEYMODULE_ERR) {
-    return VALKEYMODULE_ERR;
+                                 0, 0) == KVMODULE_ERR) {
+    return KVMODULE_ERR;
   }
 
-  if (ValkeyModule_CreateCommand(ctx, "cmdresult.stats",
+  if (KVModule_CreateCommand(ctx, "cmdresult.stats",
                                  CmdResultStats_ValkeyCommand, "readonly", 0, 0,
-                                 0) == VALKEYMODULE_ERR) {
-    return VALKEYMODULE_ERR;
+                                 0) == KVMODULE_ERR) {
+    return KVMODULE_ERR;
   }
 
-  if (ValkeyModule_CreateCommand(ctx, "cmdresult.reset",
+  if (KVModule_CreateCommand(ctx, "cmdresult.reset",
                                  CmdResultReset_ValkeyCommand, "admin", 0, 0,
-                                 0) == VALKEYMODULE_ERR) {
-    return VALKEYMODULE_ERR;
+                                 0) == KVMODULE_ERR) {
+    return KVMODULE_ERR;
   }
 
-  if (ValkeyModule_CreateCommand(ctx, "cmdresult.getlog",
+  if (KVModule_CreateCommand(ctx, "cmdresult.getlog",
                                  CmdResultGetLog_ValkeyCommand, "readonly", 0,
-                                 0, 0) == VALKEYMODULE_ERR) {
-    return VALKEYMODULE_ERR;
+                                 0, 0) == KVMODULE_ERR) {
+    return KVMODULE_ERR;
   }
 
-  if (ValkeyModule_CreateCommand(ctx, "cmdresult.success",
+  if (KVModule_CreateCommand(ctx, "cmdresult.success",
                                  CmdResultSuccess_ValkeyCommand, "readonly", 0,
-                                 0, 0) == VALKEYMODULE_ERR) {
-    return VALKEYMODULE_ERR;
+                                 0, 0) == KVMODULE_ERR) {
+    return KVMODULE_ERR;
   }
 
-  if (ValkeyModule_CreateCommand(ctx, "cmdresult.fail",
+  if (KVModule_CreateCommand(ctx, "cmdresult.fail",
                                  CmdResultFail_ValkeyCommand, "readonly", 0, 0,
-                                 0) == VALKEYMODULE_ERR) {
-    return VALKEYMODULE_ERR;
+                                 0) == KVMODULE_ERR) {
+    return KVMODULE_ERR;
   }
 
-  if (ValkeyModule_CreateCommand(ctx, "cmdresult.rmcall",
+  if (KVModule_CreateCommand(ctx, "cmdresult.rmcall",
                                  CmdResultRMCall_ValkeyCommand, "readonly", 0,
-                                 0, 0) == VALKEYMODULE_ERR) {
-    return VALKEYMODULE_ERR;
+                                 0, 0) == KVMODULE_ERR) {
+    return KVMODULE_ERR;
   }
 
-  return VALKEYMODULE_OK;
+  return KVMODULE_OK;
 }

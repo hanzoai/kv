@@ -31,7 +31,7 @@
 #define SRC_CALL_REPLY_H_
 
 #include "resp_parser.h"
-#include "valkeymodule.h"
+#include "kvmodule.h"
 
 typedef struct CallReply CallReply;
 typedef void (*KVModuleOnUnblocked)(void *ctx, CallReply *reply, void *private_data);
@@ -59,6 +59,6 @@ void freeCallReply(CallReply *rep);
 CallReply *callReplyCreatePromise(void *private_data);
 void enableParseExactReplyTypeFlag(CallReply *rep);
 
-void invokeReplyHandlers(ValkeyModuleCtx *ctx, client *c, const ValkeyModuleReplyHandlers *handlers, void *reply_ctx);
+void invokeReplyHandlers(KVModuleCtx *ctx, client *c, const KVModuleReplyHandlers *handlers, void *reply_ctx);
 
 #endif /* SRC_CALL_REPLY_H_ */

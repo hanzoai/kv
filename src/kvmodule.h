@@ -1,17 +1,13 @@
 /*
  * kvmodule.h
  *
- * This header file is forked from redismodule.h to reflect the new naming conventions adopted in KV.
+ * The KV module API. This is the only header a module includes.
  *
- * Key Changes:
- * - Symbolic names have been changed from containing RedisModule, REDISMODULE, etc. to KVModule, KVMODULE, etc.
- * to align with the new module naming convention. Developers must use these new symbolic names in their module
- *   implementations.
- * - Terminology has been updated to be more inclusive: "slave" is now "replica", and "master"
- *   is now "primary". These changes are part of an effort to use more accurate and inclusive language.
+ * Types are named KVModule*, macros KVMODULE_*, and API function pointers
+ * KVModule_*. The server resolves those names at load time, so a module
+ * exports KVModule_OnLoad() as its entry point.
  *
- * When developing modules for KV, ensure to include "kvmodule.h". This header file contains
- * the updated definitions and should be used to maintain compatibility with the changes made in KV.
+ * Replication terminology is "primary" and "replica" throughout.
  */
 
 #ifndef KVMODULE_H
@@ -148,6 +144,7 @@ typedef long long ustime_t;
 
 #define KVMODULE_CONFIG_MEMORY (1ULL << 7)   /* Indicates if this value can be set as a memory value */
 #define KVMODULE_CONFIG_BITFLAGS (1ULL << 8) /* Indicates if this value can be set as a multiple enum values */
+#define KVMODULE_CONFIG_UNSIGNED (1ULL << 9) /* Indicates if this value is an unsigned 64-bit number */
 
 /* StreamID type. */
 typedef struct KVModuleStreamID {
@@ -535,7 +532,11 @@ typedef void (*KVModuleEventLoopOneShotFunc)(void *user_data);
 #define KVMODULE_EVENT_KEY 17
 #define KVMODULE_EVENT_AUTHENTICATION_ATTEMPT 18
 #define KVMODULE_EVENT_ATOMIC_SLOT_MIGRATION 19
-#define _KVMODULE_EVENT_NEXT 20 /* Next event flag, should be updated if a new event added. */
+#define KVMODULE_EVENT_COMMAND_RESULT_SUCCESS 20
+#define KVMODULE_EVENT_COMMAND_RESULT_FAILURE 21
+#define KVMODULE_EVENT_COMMAND_RESULT_REJECTED 22
+#define KVMODULE_EVENT_COMMAND_RESULT_ACL_REJECTED 23
+#define _KVMODULE_EVENT_NEXT 24 /* Next event flag, should be updated if a new event added. */
 
 typedef struct KVModuleEvent {
     uint64_t id;      /* KVMODULE_EVENT_... defines. */
@@ -594,7 +595,11 @@ static const KVModuleEvent KVModuleEvent_ReplicationRoleChanged = {KVMODULE_EVEN
                                KVModuleEvent_Config = {KVMODULE_EVENT_CONFIG, 1},
                                KVModuleEvent_Key = {KVMODULE_EVENT_KEY, 1},
                                KVModuleEvent_AuthenticationAttempt = {KVMODULE_EVENT_AUTHENTICATION_ATTEMPT, 1},
-                               KVModuleEvent_AtomicSlotMigration = {KVMODULE_EVENT_ATOMIC_SLOT_MIGRATION, 1};
+                               KVModuleEvent_AtomicSlotMigration = {KVMODULE_EVENT_ATOMIC_SLOT_MIGRATION, 1},
+                               KVModuleEvent_CommandResultSuccess = {KVMODULE_EVENT_COMMAND_RESULT_SUCCESS, 1},
+                               KVModuleEvent_CommandResultFailure = {KVMODULE_EVENT_COMMAND_RESULT_FAILURE, 1},
+                               KVModuleEvent_CommandResultRejected = {KVMODULE_EVENT_COMMAND_RESULT_REJECTED, 1},
+                               KVModuleEvent_CommandResultACLRejected = {KVMODULE_EVENT_COMMAND_RESULT_ACL_REJECTED, 1};
 
 /* Those are values that are used for the 'subevent' callback argument. */
 #define KVMODULE_SUBEVENT_PERSISTENCE_RDB_START 0
@@ -847,6 +852,28 @@ typedef struct KVModuleAtomicSlotMigrationInfo {
 
 #define KVModuleAtomicSlotMigrationInfo KVModuleAtomicSlotMigrationInfoV1
 
+#define KVMODULE_COMMANDRESULTINFO_VERSION 1
+typedef struct KVModuleCommandResultInfo {
+    uint64_t version;              /* Version of this structure for ABI compat. */
+    const char *command_name;      /* Command name (e.g., "SET", "GET"). */
+    long long duration_us;         /* Execution duration in microseconds. */
+    long long dirty;               /* Number of keys modified. */
+    uint64_t client_id;            /* Client ID that executed the command. */
+    int is_module_client;          /* 1 if command was from RM_Call, 0 otherwise. */
+    int argc;                      /* Number of command arguments. */
+    KVModuleString **argv;         /* Command arguments array (zero-copy). */
+    const char *rejection_context; /* Context string; meaning depends on the event:
+                                    * KVModuleEvent_CommandResultRejected:
+                                    *   The full error reply string sent to the client
+                                    *   (e.g. "-OOM command not allowed when used memory > 'maxmemory'").
+                                    * KVModuleEvent_CommandResultACLRejected:
+                                    *   ACL_LOG_KEY (2): the denied key name.
+                                    *   ACL_LOG_CHANNEL (3): the denied channel name.
+                                    *   All other ACL subevents: NULL. */
+} KVModuleCommandResultInfoV1;
+
+#define KVModuleCommandResultInfo KVModuleCommandResultInfoV1
+
 #define KVMODULE_ATOMICSLOTMIGRATIONINFO_INITIALIZER_V1 {.version = 1}
 
 typedef enum {
@@ -863,12 +890,28 @@ typedef struct KVModuleIO KVModuleIO;
 typedef struct KVModuleDigest KVModuleDigest;
 typedef struct KVModuleInfoCtx KVModuleInfoCtx;
 typedef struct KVModuleDefragCtx KVModuleDefragCtx;
+typedef struct KVModuleAsyncRMCallPromise KVModuleCallArgvBlockedHandle;
 
 /* Function pointers needed by both the core and modules, these needs to be
  * exposed since you can't cast a function pointer to (void *). */
 typedef void (*KVModuleInfoFunc)(KVModuleInfoCtx *ctx, int for_crash_report);
 typedef void (*KVModuleDefragFunc)(KVModuleDefragCtx *ctx);
 typedef void (*KVModuleUserChangedFunc)(uint64_t client_id, void *privdata);
+
+/* KVModule_CallArgv Flags */
+#define KVMODULE_CALL_ARGV_REPLICATE (1 << 0)
+#define KVMODULE_CALL_ARGV_NO_AOF (1 << 1)
+#define KVMODULE_CALL_ARGV_NO_REPLICAS (1 << 2)
+#define KVMODULE_CALL_ARGV_RESP_3 (1 << 3)
+#define KVMODULE_CALL_ARGV_RESP_AUTO (1 << 4)
+#define KVMODULE_CALL_ARGV_RUN_AS_USER (1 << 5)
+#define KVMODULE_CALL_ARGV_SCRIPT_MODE (1 << 6)
+#define KVMODULE_CALL_ARGV_NO_WRITES (1 << 7)
+#define KVMODULE_CALL_ARGV_ERRORS_AS_REPLIES (1 << 8)
+#define KVMODULE_CALL_ARGV_RESPECT_DENY_OOM (1 << 9)
+#define KVMODULE_CALL_ARGV_DRY_RUN (1 << 10)
+#define KVMODULE_CALL_ARGV_ALLOW_BLOCK (1 << 11)
+#define KVMODULE_CALL_ARGV_REPLY_EXACT (1 << 12)
 
 /* Type definitions for implementing scripting engines modules. */
 typedef void KVModuleScriptingEngineCtx;
@@ -1300,6 +1343,55 @@ typedef struct KVModuleScriptingEngineMethodsV4 {
 
 #define KVModuleScriptingEngineMethods KVModuleScriptingEngineMethodsV4
 
+/* Current ABI version for CallArgv Reply Handlers structure */
+#define KVMODULE_REPLY_HANDLERS_VERSION 1UL
+
+/* Handler table for parsing RESP replies, used by KVModule_CallArgv.
+ * Set the function pointers for the types you want to handle; leave unused ones as NULL.
+ * The `context` pointer is passed as the first argument to every callback.
+ * The `proto` and `proto_len` arguments point to the raw RESP bytes for the parsed value.
+ * For collection types (array, map, set, attribute), separate start and end callbacks are
+ * provided. The `proto` in the end callback covers the entire collection including all its
+ * elements.
+ */
+typedef struct KVModuleReplyHandlersV1 {
+    uint64_t version; /* Version of this structure for ABI compat. */
+    void (*null)(void *ctx);
+    void (*nullBulkString)(void *ctx);
+    void (*nullArray)(void *ctx);
+    void (*bulkString)(void *ctx, const char *str, size_t len);
+    void (*simpleString)(void *ctx, const char *str, size_t len);
+    void (*verbatimString)(void *ctx, const char *str, size_t len, const char *fmt);
+    void (*error)(void *ctx, const char *msg, size_t len);
+    void (*integer)(void *ctx, long long val);
+    void (*doubleVal)(void *ctx, double val);
+    void (*bigNumber)(void *ctx, const char *str, size_t len);
+    void (*boolVal)(void *ctx, int val);
+    void (*attributeStart)(void *ctx, size_t len);
+    void (*attributeEnd)(void *ctx);
+    void (*arrayStart)(void *ctx, size_t len);
+    void (*arrayEnd)(void *ctx);
+    void (*mapStart)(void *ctx, size_t len);
+    void (*mapEnd)(void *ctx);
+    void (*setStart)(void *ctx, size_t len);
+    void (*setEnd)(void *ctx);
+    void (*replyParsingError)(void *ctx);
+
+    /* This callback is invoked when the client is blocked waiting for a reply.
+     * `handle` can be passed to KVModule_CallArgvAbort to cancel the
+     * pending call before a reply arrives. The handle is valid until either
+     * onRespAvailable is invoked or KVModule_CallArgvAbort is called. */
+    void (*onBlocked)(void *ctx, KVModuleCtx *module_ctx, KVModuleCallArgvBlockedHandle *handle);
+
+    /* This callback is invoked when a RESP reply is available for processing.
+     * The callback should return 1 if parsing should continue, or 0 if parsing should stop.
+     * `proto` and `proto_len` provide the raw RESP bytes for the entire reply.
+     */
+    int (*onRespAvailable)(void *ctx, KVModuleCtx *module_ctx, const char *proto, size_t proto_len);
+} KVModuleReplyHandlersV1;
+
+#define KVModuleReplyHandlers KVModuleReplyHandlersV1
+
 /* ------------------------- End of common defines ------------------------ */
 
 /* ----------- The rest of the defines are only for modules ----------------- */
@@ -1385,6 +1477,7 @@ typedef void (*KVModuleScanKeyCB)(KVModuleKey *key,
                                       void *privdata);
 typedef KVModuleString *(*KVModuleConfigGetStringFunc)(const char *name, void *privdata);
 typedef long long (*KVModuleConfigGetNumericFunc)(const char *name, void *privdata);
+typedef unsigned long long (*KVModuleConfigGetUnsignedNumericFunc)(const char *name, void *privdata);
 typedef int (*KVModuleConfigGetBoolFunc)(const char *name, void *privdata);
 typedef int (*KVModuleConfigGetEnumFunc)(const char *name, void *privdata);
 typedef int (*KVModuleConfigSetStringFunc)(const char *name,
@@ -1395,6 +1488,10 @@ typedef int (*KVModuleConfigSetNumericFunc)(const char *name,
                                                 long long val,
                                                 void *privdata,
                                                 KVModuleString **err);
+typedef int (*KVModuleConfigSetUnsignedNumericFunc)(const char *name,
+                                                        unsigned long long val,
+                                                        void *privdata,
+                                                        KVModuleString **err);
 typedef int (*KVModuleConfigSetBoolFunc)(const char *name, int val, void *privdata, KVModuleString **err);
 typedef int (*KVModuleConfigSetEnumFunc)(const char *name, int val, void *privdata, KVModuleString **err);
 typedef int (*KVModuleConfigApplyFunc)(KVModuleCtx *ctx, void *privdata, KVModuleString **err);
@@ -2136,6 +2233,16 @@ KVMODULE_API int (*KVModule_RegisterNumericConfig)(KVModuleCtx *ctx,
                                                            KVModuleConfigSetNumericFunc setfn,
                                                            KVModuleConfigApplyFunc applyfn,
                                                            void *privdata) KVMODULE_ATTR;
+KVMODULE_API int (*KVModule_RegisterUnsignedNumericConfig)(KVModuleCtx *ctx,
+                                                                   const char *name,
+                                                                   unsigned long long default_val,
+                                                                   unsigned int flags,
+                                                                   unsigned long long min,
+                                                                   unsigned long long max,
+                                                                   KVModuleConfigGetUnsignedNumericFunc getfn,
+                                                                   KVModuleConfigSetUnsignedNumericFunc setfn,
+                                                                   KVModuleConfigApplyFunc applyfn,
+                                                                   void *privdata) KVMODULE_ATTR;
 KVMODULE_API int (*KVModule_RegisterStringConfig)(KVModuleCtx *ctx,
                                                           const char *name,
                                                           const char *default_val,
@@ -2557,6 +2664,7 @@ static int KVModule_Init(KVModuleCtx *ctx, const char *name, int ver, int apiver
     KVMODULE_GET_API(EventLoopAddOneShot);
     KVMODULE_GET_API(RegisterBoolConfig);
     KVMODULE_GET_API(RegisterNumericConfig);
+    KVMODULE_GET_API(RegisterUnsignedNumericConfig);
     KVMODULE_GET_API(RegisterStringConfig);
     KVMODULE_GET_API(RegisterEnumConfig);
     KVMODULE_GET_API(LoadConfigs);

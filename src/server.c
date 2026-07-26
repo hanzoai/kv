@@ -4127,7 +4127,7 @@ void call(client *c, int flags) {
  * it aborts the transaction.
  * The duration is reset, since we reject the command, and it did not record.
  * Note: 'reply' is expected to end with \r\n.
- * If notify_modules is non-zero, fires ValkeyModuleEvent_CommandResultRejected. */
+ * If notify_modules is non-zero, fires KVModuleEvent_CommandResultRejected. */
 void rejectCommand(client *c, robj *reply, int notify_modules) {
     flagTransaction(c);
     c->duration = 0;
@@ -4141,7 +4141,7 @@ void rejectCommand(client *c, robj *reply, int notify_modules) {
     if (notify_modules) moduleFireCommandRejectedEvent(c, objectGetVal(reply));
 }
 
-/* notify_modules controls whether ValkeyModuleEvent_CommandResultRejected is fired.
+/* notify_modules controls whether KVModuleEvent_CommandResultRejected is fired.
  * The event is fired before 's' is consumed so the string remains valid for callbacks. */
 void rejectCommandSds(client *c, sds s, int notify_modules) {
     flagTransaction(c);
@@ -4351,7 +4351,7 @@ int processCommand(client *c) {
              * non-authenticated state. */
             if (!c->cmd || !(c->cmd->flags & CMD_NO_AUTH)) {
                 rejectCommand(c, shared.noautherr, 0);
-                moduleFireCommandACLRejectedEvent(c, VALKEYMODULE_ACL_LOG_AUTH, -1);
+                moduleFireCommandACLRejectedEvent(c, KVMODULE_ACL_LOG_AUTH, -1);
                 return C_OK;
             }
         }
@@ -4426,10 +4426,10 @@ int processCommand(client *c) {
         sdsfree(msg);
         uint64_t acl_subevent;
         switch (acl_retval) {
-        case ACL_DENIED_DB: acl_subevent = VALKEYMODULE_ACL_LOG_DB; break;
-        case ACL_DENIED_KEY: acl_subevent = VALKEYMODULE_ACL_LOG_KEY; break;
-        case ACL_DENIED_CHANNEL: acl_subevent = VALKEYMODULE_ACL_LOG_CHANNEL; break;
-        default: acl_subevent = VALKEYMODULE_ACL_LOG_CMD; break;
+        case ACL_DENIED_DB: acl_subevent = KVMODULE_ACL_LOG_DB; break;
+        case ACL_DENIED_KEY: acl_subevent = KVMODULE_ACL_LOG_KEY; break;
+        case ACL_DENIED_CHANNEL: acl_subevent = KVMODULE_ACL_LOG_CHANNEL; break;
+        default: acl_subevent = KVMODULE_ACL_LOG_CMD; break;
         }
         moduleFireCommandACLRejectedEvent(c, acl_subevent, acl_errpos);
         return C_OK;

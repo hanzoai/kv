@@ -110,15 +110,15 @@ int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
     if (KVModule_CreateCommand(ctx, "test.start_cluster_timer", test_start_cluster_timer, "", 0, 0, 0) == KVMODULE_ERR)
         return KVMODULE_ERR;
 
-    if (ValkeyModule_CreateCommand(ctx, "test.start_cluster_timer", test_start_cluster_timer, "", 0, 0, 0) == VALKEYMODULE_ERR)
-        return VALKEYMODULE_ERR;
+    if (KVModule_CreateCommand(ctx, "test.start_cluster_timer", test_start_cluster_timer, "", 0, 0, 0) == KVMODULE_ERR)
+        return KVMODULE_ERR;
 
-    if (ValkeyModule_CreateCommand(ctx, "test.register_receiver", test_register_receiver, "", 0, 0, 0) == VALKEYMODULE_ERR)
-        return VALKEYMODULE_ERR;
-    if (ValkeyModule_CreateCommand(ctx, "test.unregister_receiver", test_unregister_receiver, "", 0, 0, 0) == VALKEYMODULE_ERR)
-        return VALKEYMODULE_ERR;
-    if (ValkeyModule_CreateCommand(ctx, "test.send_msg_type3", test_send_msg_type3, "", 0, 0, 0) == VALKEYMODULE_ERR)
-        return VALKEYMODULE_ERR;
+    if (KVModule_CreateCommand(ctx, "test.register_receiver", test_register_receiver, "", 0, 0, 0) == KVMODULE_ERR)
+        return KVMODULE_ERR;
+    if (KVModule_CreateCommand(ctx, "test.unregister_receiver", test_unregister_receiver, "", 0, 0, 0) == KVMODULE_ERR)
+        return KVMODULE_ERR;
+    if (KVModule_CreateCommand(ctx, "test.send_msg_type3", test_send_msg_type3, "", 0, 0, 0) == KVMODULE_ERR)
+        return KVMODULE_ERR;
 
     /* Register our handlers for different message types. */
     KVModule_RegisterClusterMessageReceiver(ctx, MSGTYPE_DING, DingReceiver);
