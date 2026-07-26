@@ -138,8 +138,8 @@ int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
 | Language | Package | Install |
 |----------|---------|---------|
 | Python | [hanzo-kv](https://pypi.org/project/hanzo-kv) | `pip install hanzo-kv` |
-| Go | [hanzo/kv-go](https://github.com/hanzoai/kv-go) | `go get github.com/hanzoai/kv-go` |
-| Node.js | [@hanzo/kv](https://github.com/hanzoai/kv-client) | `npm install @hanzo/kv` |
+| Go | [hanzokv/go](https://github.com/hanzokv/go) | `go get github.com/hanzokv/go/v9` |
+| Node.js | [hanzokv/js](https://github.com/hanzokv/js) | `npm install @hanzo/kv` |
 
 Any Redis-compatible client library will also work.
 
