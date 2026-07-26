@@ -19,22 +19,18 @@ proc verify_sentinel_connect_sentinels {id} {
     return 1
 }
 
-proc verify_sentinel_auto_discovery { {primary_name {}} } {
-    if {$primary_name eq {}} {
-        set primary_name "mymaster"
-    }
-
+proc verify_sentinel_auto_discovery {} {
     set sentinels [llength $::sentinel_instances]
     foreach_sentinel_id id {
         wait_for_condition 1000 50 {
             [dict get [S $id SENTINEL PRIMARY mymaster] num-other-sentinels] == ($sentinels-1)
         } else {
-            fail "For primary $primary_name, at least some sentinel can't detect some other sentinel"
+            fail "At least some sentinel can't detect some other sentinel"
         }
         wait_for_condition 1000 50 {
             [verify_sentinel_connect_sentinels $id] == 1
         } else {
-            fail "For primary $primary_name, at least some sentinel can't connect to other sentinel"
+            fail "At least some sentinel can't connect to other sentinel"
         }
     }
 }

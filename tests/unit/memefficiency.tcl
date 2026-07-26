@@ -308,8 +308,7 @@ run_solo {defrag} {
                 # Even so, defrag can get starved for periods exceeding 100ms.  Using 200ms for test stability, and
                 # a 50% CPU requirement, we should allow up to 200ms latency
                 # (as total time = 200 non duty + 200 duty = 400ms, and 50% of 400ms is 200ms).
-                # Added buffer of 300ms to accommodate for slow CI runners
-                validate_latency 500
+                validate_latency 200
 
                 # Make sure we had defrag hits during AOF loading.  Note that we don't worry about
                 # the actual fragmentation ratio here.  It will vary based on when defrag stopped
@@ -440,8 +439,8 @@ run_solo {defrag} {
         }
     }
 
-    proc test_big_zset {type score} {
-        set title "Active Defrag big zset: $type $score-score"
+    proc test_big_zset {type} {
+        set title "Active Defrag big zset: $type"
         test $title {
             # number of total fields.  zsets are progressively increasing sizes.
             set n 200000
@@ -453,8 +452,7 @@ run_solo {defrag} {
                 set k 0
                 set f 0
                 for {set j 0} {$j < $n} {incr j} {
-                    set s [expr {$score eq "fixed" ? 0 : rand()}]
-                    $rd zadd k$k $s $val$f
+                    $rd zadd k$k [expr rand()] $val$f
                     lassign [next_exp_kf $k $f] k f
                     if {$j % 1000 == 999} {client_reply_off_wait_for_server $rd}
                 }
@@ -469,14 +467,6 @@ run_solo {defrag} {
                 $rd close
             }
         }
-    }
-
-    proc test_big_zset_random_score {type} {
-        test_big_zset $type random
-    }
-
-    proc test_big_zset_fixed_score {type} {
-        test_big_zset $type fixed
     }
 
     proc test_stream {type} {
@@ -589,8 +579,7 @@ run_solo {defrag} {
     lappend tests [list test_big_hash standalone $std_overrides]
     lappend tests [list test_big_list standalone $std_overrides]
     lappend tests [list test_big_set standalone $std_overrides]
-    lappend tests [list test_big_zset_random_score standalone $std_overrides]
-    lappend tests [list test_big_zset_fixed_score standalone $std_overrides]
+    lappend tests [list test_big_zset standalone $std_overrides]
     lappend tests [list test_stream standalone $std_overrides]
     lappend tests [list test_pubsub standalone $std_overrides]
 
@@ -599,8 +588,7 @@ run_solo {defrag} {
     lappend tests [list test_big_hash cluster $std_overrides]
     lappend tests [list test_big_list cluster $std_overrides]
     lappend tests [list test_big_set cluster $std_overrides]
-    lappend tests [list test_big_zset_random_score cluster $std_overrides]
-    lappend tests [list test_big_zset_fixed_score cluster $std_overrides]
+    lappend tests [list test_big_zset cluster $std_overrides]
     lappend tests [list test_stream cluster $std_overrides]
     lappend tests [list test_pubsub cluster $std_overrides]
 

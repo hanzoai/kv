@@ -15,10 +15,6 @@
             [
                 "7.0.0",
                 "Added additional networking metadata field."
-            ],
-            [
-                "9.1.0",
-                "Added `availability-zone` field inside the networking metadata."
             ]
         ],
         "command_flags": [
@@ -72,7 +68,7 @@
                                 "type": "string"
                             },
                             {
-                                "description": "Map of additional networking metadata fields.",
+                                "description": "Array of node descriptions.",
                                 "type": "object",
                                 "additionalProperties": false,
                                 "properties": {
@@ -80,9 +76,6 @@
                                         "type": "string"
                                     },
                                     "ip": {
-                                        "type": "string"
-                                    },
-                                    "availability-zone": {
                                         "type": "string"
                                     }
                                 }
@@ -118,7 +111,7 @@
                             "type": "string"
                         },
                         {
-                            "description": "Map of additional networking metadata fields.",
+                            "description": "Array of node descriptions.",
                             "type": "object",
                             "additionalProperties": false,
                             "properties": {
@@ -126,9 +119,6 @@
                                     "type": "string"
                                 },
                                 "ip": {
-                                    "type": "string"
-                                },
-                                "availability-zone": {
                                     "type": "string"
                                 }
                             }

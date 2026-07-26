@@ -37,19 +37,21 @@
 #include "hdr_histogram.h"
 
 /* Dictionary type for latency events. */
+int dictStringKeyCompare(const void *key1, const void *key2) {
+    return strcmp(key1, key2) == 0;
+}
 
-static void dictEntryDestructorHeapKeyValue(void *entry) {
-    dictEntry *de = entry;
-    zfree(dictGetKey(de));
-    zfree(dictGetVal(de));
-    zfree(de);
+uint64_t dictStringHash(const void *key) {
+    return dictGenHashFunction(key, strlen(key));
 }
 
 dictType latencyTimeSeriesDictType = {
-    .entryGetKey = dictEntryGetKey,
-    .hashFunction = dictCStrHash,
-    .keyCompare = dictCStrKeyCompare,
-    .entryDestructor = dictEntryDestructorHeapKeyValue,
+    dictStringHash,       /* hash function */
+    NULL,                 /* key dup */
+    dictStringKeyCompare, /* key compare */
+    dictVanillaFree,      /* key destructor */
+    dictVanillaFree,      /* val destructor */
+    NULL                  /* allow to expand */
 };
 
 /* ------------------------- Utility functions ------------------------------ */

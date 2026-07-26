@@ -46,6 +46,10 @@
 #define strncasecmp _strnicmp
 #endif
 
+#ifndef alloca
+#define alloca _alloca
+#endif
+
 #ifndef va_copy
 #define va_copy(d, s) ((d) = (s))
 #endif

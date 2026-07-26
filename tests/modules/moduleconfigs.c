@@ -1,6 +1,5 @@
 #include "kvmodule.h"
 #include <strings.h>
-#include <limits.h>
 int mutable_bool_val;
 int immutable_bool_val;
 long long longval;
@@ -167,9 +166,6 @@ int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
         return KVMODULE_ERR;
     }
     if (KVModule_RegisterNumericConfig(ctx, "numeric", -1, KVMODULE_CONFIG_DEFAULT, -5, 2000, getNumericConfigCommand, setNumericConfigCommand, longlongApplyFunc, &longval) == KVMODULE_ERR) {
-        return KVMODULE_ERR;
-    }
-    if (KVModule_RegisterUnsignedNumericConfig(ctx, "unsigned_numeric", 1, KVMODULE_CONFIG_DEFAULT | KVMODULE_CONFIG_UNSIGNED, 0, LLONG_MAX * 1ULL + 1000, getUnsignedNumericConfigCommand, setUnsignedNumericConfigCommand, NULL, &mutable_ull_val) == KVMODULE_ERR) {
         return KVMODULE_ERR;
     }
     size_t len;

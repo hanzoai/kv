@@ -163,11 +163,8 @@ start_server {tags {"dump"}} {
     } {} {external:skip}
 
     test {MIGRATE cached connections are released after some time} {
-        wait_for_condition 20 1000 {
-            [string match {*migrate_cached_sockets:0*} [r info]]
-        } else {
-            fail "MIGRATE cached connections were not released after some time"
-        }
+        after 15000
+        assert_match {*migrate_cached_sockets:0*} [r info]
     }
 
     test {MIGRATE is able to migrate a key between two instances} {

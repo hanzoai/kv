@@ -8,12 +8,6 @@
 
 #define UNUSED(x) (void)(x)
 
-/* Forward declarations of module API functions not publicly exposed */
-extern int VM_CallArgv(KVModuleCtx *ctx, KVModuleString **argv, int argc, int flags, const KVModuleReplyHandlers *resp_handlers, void *reply_ctx);
-extern int VM_ReplyRaw(KVModuleCtx *ctx, const char *proto, size_t proto_len);
-#define KVModule_CallArgv VM_CallArgv
-#define KVModule_ReplyRaw VM_ReplyRaw
-
 static int n_events = 0;
 
 static int KeySpace_NotificationModuleKeyMissExpired(KVModuleCtx *ctx, int type, const char *event, KVModuleString *key) {
@@ -488,7 +482,7 @@ int test_ull_conv(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
         KVModule_ReplyWithError(ctx, err);
         goto final;
     }
-
+    
     /* Make sure we can't convert a string more than ULLONG_MAX or less than 0 */
     ullstr = "18446744073709551616";
     KVModuleString *s3 = KVModule_CreateString(ctx, ullstr, strlen(ullstr));

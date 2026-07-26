@@ -1,7 +1,7 @@
 #ifndef KV_FMACRO_H
 #define KV_FMACRO_H
 
-#if !defined(_AIX) && !defined(__FreeBSD__)
+#ifndef _AIX
 #define _XOPEN_SOURCE 600
 #define _POSIX_C_SOURCE 200112L
 #endif

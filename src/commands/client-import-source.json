@@ -1,6 +1,6 @@
 {
     "IMPORT-SOURCE": {
-        "summary": "Marks this client as an import source when the server is in import mode.",
+        "summary": "Mark this client as an import source when server is in import mode.",
         "complexity": "O(1)",
         "group": "connection",
         "since": "8.1.0",

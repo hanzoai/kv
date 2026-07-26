@@ -22,8 +22,6 @@
 #define LUA_ENGINE_NAME "LUA"
 #define REGISTRY_ERROR_HANDLER_NAME "__ERROR_HANDLER__"
 
-static int isLuaInsecureAPIEnabled(KVModuleCtx *module_ctx);
-
 /* Adds server.debug() function used by lua debugger
  *
  * Log a string message into the output console.
@@ -203,7 +201,7 @@ static struct luaEngineCtx *createEngineContext(KVModuleCtx *ctx) {
                      &lua_engine_ctx->kv_version,
                      &lua_engine_ctx->kv_version_num);
 
-    lua_engine_ctx->lua_enable_insecure_api = isLuaInsecureAPIEnabled(ctx);
+    lua_engine_ctx->lua_enable_insecure_api = 0;
 
     initializeLuaState(lua_engine_ctx, VMSE_EVAL);
     initializeLuaState(lua_engine_ctx, VMSE_FUNCTION);
@@ -546,16 +544,3 @@ int KVModule_OnUnload(KVModuleCtx *ctx) {
 
     return KVMODULE_OK;
 }
-
-#if STATIC_LUA
-/* Unique entry points (Load and Unload) used by the Lua module when linked statically */
-int KVModule_OnLoad_lua(KVModuleCtx *ctx,
-                            KVModuleString **argv,
-                            int argc) {
-    return KVModule_OnLoad(ctx, argv, argc);
-}
-
-int KVModule_OnUnload_lua(KVModuleCtx *ctx) {
-    return KVModule_OnUnload(ctx);
-}
-#endif

@@ -788,7 +788,7 @@ int redis_check_rdb(char *rdbfilename, FILE *fp) {
         rdbstate.keys++;
         /* Read value */
         rdbstate.doing = RDB_CHECK_DOING_READ_OBJECT_VALUE;
-        if ((val = rdbLoadObject(type, &rdb, objectGetVal(key), selected_dbid, NULL, RDBFLAGS_NONE, 0)) == NULL) goto eoferr;
+        if ((val = rdbLoadObject(type, &rdb, objectGetVal(key), selected_dbid, NULL)) == NULL) goto eoferr;
         if (rdbCheckStats) {
             int max_stats_num = (rdbstate.databases + 1) * OBJ_TYPE_MAX;
             if (max_stats_num > rdbstate.stats_num) {
@@ -920,6 +920,7 @@ int redis_check_rdb_main(int argc, char **argv, FILE *fp) {
      * an already initialized server instance, check if we really need to. */
     if (shared.integers[0] == NULL) createSharedObjects();
     server.loading_process_events_interval_bytes = 0;
+    server.sanitize_dump_payload = SANITIZE_DUMP_YES;
     rdbCheckMode = 1;
     rdbCheckInfo("Checking RDB file %s", argv[1]);
     rdbCheckSetupSignals();

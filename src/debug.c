@@ -516,19 +516,13 @@ void debugCommand(client *c) {
             "    Grace period in seconds for replica main channel to establish psync.",
             "DICT-RESIZING <0|1>",
             "    Enable or disable the main dict and expire dict resizing.",
-            "HASHTABLE-CAN-ABORT-SHRINK <0|1>",
-            "    Enable or disable the hashtable shrink abort.",
             "CLIENT-ENFORCE-REPLY-LIST <0|1>",
-            "    When set to 1, it enforces the use of the client reply list directly",
+            "When set to 1, it enforces the use of the client reply list directly",
             "    and avoids using the client's static buffer.",
             "SLOTMIGRATION PREVENT-PAUSE <0|1>",
             "    When set to 1, slot migrations will be prevented from pausing on the source node.",
             "SLOTMIGRATION PREVENT-FAILOVER <0|1>",
             "    When set to 1, slot migrations will be prevented from performing the slot-level failover on the target node.",
-            "FORCE-FREE-PRIMARY-ASYNC <0|1>",
-            "    Force freeClient on primary to use async path.",
-            "PROTECT-CLIENT <id>",
-            "    Protect a client from being freed, forcing deferred close.",
             NULL};
         addExtendedReplyHelp(c, help, clusterDebugCommandExtendedHelp());
     } else if (!strcasecmp(objectGetVal(c->argv[1]), "segfault")) {
@@ -1064,30 +1058,9 @@ void debugCommand(client *c) {
         server.dict_resizing = atoi(objectGetVal(c->argv[2]));
         updateDictResizePolicy();
         addReply(c, shared.ok);
-    } else if (!strcasecmp(objectGetVal(c->argv[1]), "hashtable-can-abort-shrink") && c->argc == 3) {
-        hashtableSetCanAbortShrink(atoi(objectGetVal(c->argv[2])));
-        addReply(c, shared.ok);
     } else if (!strcasecmp(objectGetVal(c->argv[1]), "client-enforce-reply-list") && c->argc == 3) {
         server.debug_client_enforce_reply_list = atoi(objectGetVal(c->argv[2]));
         addReply(c, shared.ok);
-    } else if (!strcasecmp(objectGetVal(c->argv[1]), "force-free-primary-async") && c->argc == 3) {
-        server.debug_force_free_primary_async = atoi(objectGetVal(c->argv[2]));
-        addReply(c, shared.ok);
-    } else if (!strcasecmp(objectGetVal(c->argv[1]), "protect-client") && c->argc == 3) {
-        char *endptr;
-        errno = 0;
-        uint64_t id = strtoull(objectGetVal(c->argv[2]), &endptr, 10);
-        if (errno == ERANGE || endptr == objectGetVal(c->argv[2]) || *endptr != '\0') {
-            addReplyError(c, "Invalid client id");
-            return;
-        }
-        client *target = lookupClientByID(id);
-        if (target) {
-            protectClient(target);
-            addReply(c, shared.ok);
-        } else {
-            addReplyError(c, "No such client");
-        }
     } else if (!handleDebugClusterCommand(c)) {
         addReplySubcommandSyntaxError(c);
         return;
@@ -1139,7 +1112,7 @@ void _serverAssertPrintClientInfo(const client *c) {
 
     bugReportStart();
     serverLog(LL_WARNING, "=== ASSERTION FAILED CLIENT CONTEXT ===");
-    serverLog(LL_WARNING, "client->flags = %llu(0-63) %llu(64-127)", (unsigned long long)c->raw_flag1, (unsigned long long)c->raw_flag2);
+    serverLog(LL_WARNING, "client->flags = %llu", (unsigned long long)c->raw_flag);
     serverLog(LL_WARNING, "client->conn = %s", connGetInfo(c->conn, conninfo, sizeof(conninfo)));
     serverLog(LL_WARNING, "client->argc = %d", c->argc);
     for (j = 0; j < c->argc; j++) {
@@ -1234,7 +1207,7 @@ int bugReportStart(void) {
     pthread_mutex_lock(&bug_report_start_mutex);
     if (bug_report_start == 0) {
         serverLog(LL_WARNING | LL_RAW, "\n\n=== %s BUG REPORT START: Cut & paste starting from here ===\n",
-                  server.extended_redis_compat ? "REDIS" : "KV");
+                  "KV");
         bug_report_start = 1;
         pthread_mutex_unlock(&bug_report_start_mutex);
         return 1;
@@ -2084,11 +2057,7 @@ void logCurrentClient(client *cc, const char *title) {
         key = getDecodedObject(cc->argv[1]);
         val = dbFind(cc->db, objectGetVal(key));
         if (val) {
-            if (server.hide_user_data_from_log) {
-                serverLog(LL_WARNING, "key '*redacted*' found in DB containing the following object:");
-            } else {
-                serverLog(LL_WARNING, "key '%s' found in DB containing the following object:", (char *)objectGetVal(key));
-            }
+            serverLog(LL_WARNING, "key '%s' found in DB containing the following object:", (char *)objectGetVal(key));
             serverLogObjectDebugInfo(val);
         }
         decrRefCount(key);
@@ -2396,7 +2365,7 @@ void printCrashReport(void) {
     logConfigDebugInfo();
 
     /* Run memory test in case the crash was triggered by memory corruption. */
-    doFastMemoryTest();
+    // doFastMemoryTest();
 }
 
 void bugReportEnd(int killViaSignal, int sig) {
@@ -2409,7 +2378,7 @@ void bugReportEnd(int killViaSignal, int sig) {
                          "  If a module was involved, please open in the module's repo instead.\n\n"
                          "  Suspect RAM error? Use kv-server --test-memory to verify it.\n\n"
                          "  Some other issues could be detected by kv-server --check-system\n",
-                         server.extended_redis_compat ? "REDIS" : "KV");
+                         "KV");
 
     /* free(messages); Don't call free() with possibly corrupted memory. */
     if (server.daemonize && server.supervised == 0 && server.pidfile) unlink(server.pidfile);

@@ -268,18 +268,15 @@ static void activeDefragZsetNode(void *privdata, void *entry_ref) {
 
     /* find skiplist pointers that need to be updated if we end up moving the
      * skiplist node. */
-    sds ele = zslGetNodeElement(node);
     zskiplistNode *update[ZSKIPLIST_MAXLEVEL];
     zskiplistNode *x = zslGetHeader(zsl);
     for (int i = zslGetHeight(zsl) - 1; i >= 0; i--) {
         /* stop when we've reached the end of this level or the next node comes
-         * after our target in sorted order. Even though defrag replacements does not impact the skip list order,
-         * when scores are equal, we MUST compare elements lexicographically to maintain correct skip list ordering.
-         * Otherwise we might miss locating the entry. */
+         * after our target in sorted order */
         zskiplistNode *next = x->level[i].forward;
         while (next &&
                (next->score < score ||
-                (next->score == score && sdscmp(zslGetNodeElement(next), ele) < 0))) {
+                (next->score == score && next != node))) {
             x = next;
             next = x->level[i].forward;
         }
@@ -299,41 +296,16 @@ static void activeDefragZsetNode(void *privdata, void *entry_ref) {
 #define DEFRAG_SDS_DICT_VAL_VOID_PTR 3
 #define DEFRAG_SDS_DICT_VAL_LUA_SCRIPT 4
 
-typedef void *(dictDefragAllocFunction)(void *ptr);
-typedef struct {
-    dictDefragAllocFunction *defragKey;
-    dictDefragAllocFunction *defragVal;
-} dictDefragFunctions;
-
-static void activeDefragDictCallback(void *privdata, void *entry_ref) {
-    dictDefragFunctions *defragfns = privdata;
-    dictEntry **de_ref = (dictEntry **)entry_ref;
-    dictEntry *de = *de_ref;
-
-    /* Defrag the entry itself */
-    dictEntry *newentry = activeDefragAlloc(de);
-    if (newentry) {
-        de = newentry;
-        *de_ref = newentry;
-    }
-
-    /* Defrag the key */
-    if (defragfns->defragKey) {
-        void *newkey = defragfns->defragKey(de->key);
-        if (newkey) de->key = newkey;
-    }
-
-    /* Defrag the value */
-    if (defragfns->defragVal) {
-        void *newval = defragfns->defragVal(de->v.val);
-        if (newval) de->v.val = newval;
-    }
+static void activeDefragSdsDictCallback(void *privdata, const dictEntry *de) {
+    UNUSED(privdata);
+    UNUSED(de);
 }
 
 /* Defrag a dict with sds key and optional value (either ptr, sds or robj string) */
 static void activeDefragSdsDict(dict *d, int val_type) {
     unsigned long cursor = 0;
     dictDefragFunctions defragfns = {
+        .defragAlloc = activeDefragAlloc,
         .defragKey = (dictDefragAllocFunction *)activeDefragSds,
         .defragVal = (val_type == DEFRAG_SDS_DICT_VAL_IS_SDS       ? (dictDefragAllocFunction *)activeDefragSds
                       : val_type == DEFRAG_SDS_DICT_VAL_IS_STROB   ? (dictDefragAllocFunction *)activeDefragStringOb
@@ -341,8 +313,7 @@ static void activeDefragSdsDict(dict *d, int val_type) {
                       : val_type == DEFRAG_SDS_DICT_VAL_LUA_SCRIPT ? (dictDefragAllocFunction *)evalActiveDefragScript
                                                                    : NULL)};
     do {
-        cursor = hashtableScanDefrag(d, cursor, activeDefragDictCallback,
-                                     &defragfns, activeDefragAlloc, HASHTABLE_SCAN_EMIT_REF);
+        cursor = dictScanDefrag(d, cursor, activeDefragSdsDictCallback, &defragfns, NULL);
     } while (cursor != 0);
 }
 

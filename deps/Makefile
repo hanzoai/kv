@@ -42,6 +42,7 @@ distclean:
 	-(cd jemalloc && [ -f Makefile ] && $(MAKE) distclean) > /dev/null || true
 	-(cd hdr_histogram && $(MAKE) clean) > /dev/null || true
 	-(cd fpconv && $(MAKE) clean) > /dev/null || true
+	-(cd fast_float_c_interface && $(MAKE) clean) > /dev/null || true
 	-(rm -f .make-*)
 
 .PHONY: distclean
@@ -122,10 +123,8 @@ jemalloc: .make-prerequisites
 
 .PHONY: jemalloc
 
-gtest-parallel: .make-prerequisites
+fast_float_c_interface: .make-prerequisites
 	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
-	@if [ ! -f gtest-parallel/gtest_parallel.py ]; then \
-		echo "Downloading gtest-parallel..."; \
-		rm -rf gtest-parallel; \
-		git clone --depth 1 https://github.com/google/gtest-parallel.git gtest-parallel; \
-	fi
+	cd fast_float_c_interface && $(MAKE)
+
+.PHONY: fast_float_c_interface

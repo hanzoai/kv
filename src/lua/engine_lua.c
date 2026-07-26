@@ -167,7 +167,7 @@ static struct luaEngineCtx *createEngineContext(void) {
     return lua_engine_ctx;
 }
 
-static engineMemoryInfo luaEngineGetMemoryInfo(KVModuleCtx *module_ctx,
+static engineMemoryInfo luaEngineGetMemoryInfo(ValkeyModuleCtx *module_ctx,
                                                engineCtx *engine_ctx,
                                                subsystemType type) {
     /* The lua engine is implemented in the core, and not in a Valkey Module */
@@ -188,7 +188,7 @@ static engineMemoryInfo luaEngineGetMemoryInfo(KVModuleCtx *module_ctx,
     return mem_info;
 }
 
-static compiledFunction **luaEngineCompileCode(KVModuleCtx *module_ctx,
+static compiledFunction **luaEngineCompileCode(ValkeyModuleCtx *module_ctx,
                                                engineCtx *engine_ctx,
                                                subsystemType type,
                                                const char *code,
@@ -242,7 +242,7 @@ static compiledFunction **luaEngineCompileCode(KVModuleCtx *module_ctx,
     return functions;
 }
 
-static void luaEngineFunctionCall(KVModuleCtx *module_ctx,
+static void luaEngineFunctionCall(ValkeyModuleCtx *module_ctx,
                                   engineCtx *engine_ctx,
                                   serverRuntimeCtx *server_ctx,
                                   compiledFunction *compiled_function,
@@ -295,7 +295,7 @@ static void resetLuaContext(void *context) {
 #endif
 }
 
-static callableLazyEnvReset *luaEngineResetEvalEnv(KVModuleCtx *module_ctx,
+static callableLazyEnvReset *luaEngineResetEvalEnv(ValkeyModuleCtx *module_ctx,
                                                    engineCtx *engine_ctx,
                                                    subsystemType type,
                                                    int async) {
@@ -323,7 +323,7 @@ static callableLazyEnvReset *luaEngineResetEvalEnv(KVModuleCtx *module_ctx,
     return callback;
 }
 
-static size_t luaEngineFunctionMemoryOverhead(KVModuleCtx *module_ctx,
+static size_t luaEngineFunctionMemoryOverhead(ValkeyModuleCtx *module_ctx,
                                               compiledFunction *compiled_function) {
     /* The lua engine is implemented in the core, and not in a Valkey Module */
     serverAssert(module_ctx == NULL);
@@ -334,7 +334,7 @@ static size_t luaEngineFunctionMemoryOverhead(KVModuleCtx *module_ctx,
            zmalloc_size(compiled_function);
 }
 
-static void luaEngineFreeFunction(KVModuleCtx *module_ctx,
+static void luaEngineFreeFunction(ValkeyModuleCtx *module_ctx,
                                   engineCtx *engine_ctx,
                                   subsystemType type,
                                   compiledFunction *compiled_function) {
@@ -369,7 +369,7 @@ int luaEngineInitEngine(void) {
     ldbInit();
 
     engineMethods methods = {
-        .version = KVMODULE_SCRIPTING_ENGINE_ABI_VERSION,
+        .version = VALKEYMODULE_SCRIPTING_ENGINE_ABI_VERSION,
         .compile_code = luaEngineCompileCode,
         .free_function = luaEngineFreeFunction,
         .call_function = luaEngineFunctionCall,

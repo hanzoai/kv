@@ -1,6 +1,5 @@
 # Build test modules
 list(APPEND MODULES_LIST "commandfilter")
-list(APPEND MODULES_LIST "commandresult")
 list(APPEND MODULES_LIST "basics")
 list(APPEND MODULES_LIST "testrdb")
 list(APPEND MODULES_LIST "fork")
