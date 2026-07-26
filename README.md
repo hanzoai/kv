@@ -88,13 +88,20 @@ kv-server --port 6379 --maxmemory 256mb --appendonly yes
 
 ## ZAP Binary Protocol
 
-Hanzo KV speaks [ZAP](https://github.com/luxfi/zap) natively on port **9653** — no sidecar needed.
+Hanzo KV can speak [ZAP](https://github.com/luxfi/zap) natively on port **9653**
+via the module in `modules/zap` — no sidecar needed. ZAP is a zero-copy binary
+protocol that's 17x faster than JSON-RPC with 11x less memory usage.
 
-ZAP is a zero-copy binary protocol that's 17x faster than JSON-RPC with 11x less memory usage.
+> **Status: source-only, NOT in the published image.** `modules/zap` builds with
+> its own Makefile but is wired into no parent build, so `ghcr.io/hanzoai/kv:9`
+> ships without `zap.so` — a running instance reports an empty `MODULE LIST` and
+> listens on 6379 only. Enabling it means building the module in the image and
+> loading it as below. Until that lands, treat KV as RESP-only and do not write
+> clients against 9653.
 
 ### Enable ZAP
 
-ZAP is enabled by default. Load the module:
+Build `modules/zap`, then load it:
 
 ```bash
 kv-server --loadmodule /path/to/zap.so
