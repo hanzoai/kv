@@ -72,6 +72,16 @@ static inline bool rdbUseKVMagic(int rdbver) {
     return rdbver > RDB_FOREIGN_VERSION_MAX;
 }
 
+/* The 9-byte RDB header is MAGIC + "%03d" version, so the magic is exactly six
+ * bytes and readers find the version at offset 6. These name the *format*, not
+ * the vendor: they are the same bytes real Valkey and Redis write, and shrinking
+ * either one silently corrupts every file we produce. Keep them six bytes. */
+#define RDB_MAGIC_LEN 6
+#define RDB_MAGIC_NATIVE "VALKEY"
+#define RDB_MAGIC_FOREIGN "REDIS0"
+static_assert(sizeof(RDB_MAGIC_NATIVE) - 1 == RDB_MAGIC_LEN, "RDB native magic must be 6 bytes");
+static_assert(sizeof(RDB_MAGIC_FOREIGN) - 1 == RDB_MAGIC_LEN, "RDB foreign magic must be 6 bytes");
+
 /* Defines related to the dump file format. To store 32 bits lengths for short
  * keys requires a lot of space, so we check the most significant 2 bits of
  * the first byte to interpreter the length:

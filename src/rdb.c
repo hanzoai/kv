@@ -1476,7 +1476,7 @@ int rdbSaveRio(int req, int rdbver, rio *rdb, int *error, int rdbflags, rdbSaveI
     int j;
 
     if (server.rdb_checksum) rdb->update_cksum = rioGenericUpdateChecksum;
-    const char *magic_prefix = rdbUseKVMagic(rdbver) ? "KV" : "REDIS0";
+    const char *magic_prefix = rdbUseKVMagic(rdbver) ? RDB_MAGIC_NATIVE : RDB_MAGIC_FOREIGN;
     serverAssert(rdbver >= 0 && rdbver <= RDB_VERSION);
     snprintf(magic, sizeof(magic), "%s%03d", magic_prefix, rdbver);
     if (rdbWriteRaw(rdb, magic, 9) == -1) goto werr;
@@ -3118,9 +3118,9 @@ int rdbLoadRioWithLoadingCtx(rio *rdb, int rdbflags, rdbSaveInfo *rsi, rdbLoadin
     rdb->max_processing_chunk = server.loading_process_events_interval_bytes;
     if (rioRead(rdb, buf, 9) == 0) goto eoferr;
     buf[9] = '\0';
-    if (memcmp(buf, "REDIS0", 6) == 0) {
+    if (memcmp(buf, RDB_MAGIC_FOREIGN, RDB_MAGIC_LEN) == 0) {
         is_redis_magic = true;
-    } else if (memcmp(buf, "KV", 6) == 0) {
+    } else if (memcmp(buf, RDB_MAGIC_NATIVE, RDB_MAGIC_LEN) == 0) {
         is_kv_magic = true;
     } else {
         serverLog(LL_WARNING, "Wrong signature trying to load DB from file: %.9s", buf);

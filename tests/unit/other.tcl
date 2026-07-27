@@ -359,56 +359,24 @@ start_server {tags {"other"}} {
         assert_error {*unknown subcommand*} {r CONFIG GET_XX}
     }
 
-    test "Extended Redis Compatibility config" {
-        # This config is added in KV 8.0, shall be deprecated and have no
-        # effect in 9.x and be deleted in 10.0.
+    test "Extended Redis Compatibility config is absent by design" {
+        # Upstream's `extended-redis-compatibility` makes HELLO answer
+        # `server: redis, version: 7.2.x`, INFO emit `redis_mode:` and LOLWUT
+        # print "Redis ver.". Upstream itself deprecated it in 9.x and deletes
+        # it in 10.0; this engine never carried it, and will not — nothing here
+        # claims to be Redis.
+        assert_error "ERR Unknown*" {r config set extended-redis-compatibility yes}
+
+        # The identity it would have masked, asserted directly.
         set hello [r hello 3]
-        set version [dict get $hello version]
-        if {[string match "11.*" $version]} {
-            # Check that the config doesn't exist anymore.
-            assert_error "ERR Unknown*" {r config set extended-redis-compatibility yes}
-            error "We shall also delete this test case"
-        } elseif {[string match "10.*" $version]} {
-            # This config is scheduled for removal. In 10.x it should still
-            # exists but have no effect.
-            r config set extended-redis-compatibility yes
-            set hello [r hello 3]
-            assert_equal kv [dict get $hello server]
-            assert_equal $version [dict get $hello version]
-            r config set extended-redis-compatibility no
-        } elseif {[string match "8.*" $version] || [string match "9.*" $version] || ($version eq "255.255.255")} {
-            # In 8.x, the config shall work and affect HELLO server and version.
-            r config set extended-redis-compatibility yes
-            set hello [r hello 3]
-            assert_equal "redis" [dict get $hello server]
-            assert_match "7.2.*" [dict get $hello version]
-            set info [r info server]
-            assert_match "*redis_mode:*" $info
-            assert_no_match "*server_mode:*" $info
-            set lolwut_output [r lolwut version 5]
-            assert_match {*Redis ver.*} $lolwut_output
-            set lolwut_output [r lolwut version 6]
-            assert_match {*Redis ver.*} $lolwut_output
-            set lolwut_output [r lolwut version 9]
-            assert_match {*Redis ver.*} $lolwut_output
-            set lolwut_output [r lolwut]
-            assert_match {*Redis ver.*} $lolwut_output
-            r config set extended-redis-compatibility no
-            set hello [r hello 3]
-            assert_equal "kv" [dict get $hello server]
-            assert_equal $version [dict get $hello version]
-            set info [r info server]
-            assert_no_match "*redis_mode:*" $info
-            assert_match "*server_mode:*" $info
-            set lolwut_output [r lolwut]
-            assert_match {*KV ver.*} $lolwut_output
-            set lolwut_output [r lolwut version 5]
-            assert_match {*KV ver.*} $lolwut_output
-            set lolwut_output [r lolwut version 6]
-            assert_match {*KV ver.*} $lolwut_output
-            set lolwut_output [r lolwut version 9]
-            assert_match {*KV ver.*} $lolwut_output
+        assert_equal kv [dict get $hello server]
+        set info [r info server]
+        assert_match "*server_mode:*" $info
+        assert_no_match "*redis_mode:*" $info
+        foreach v {5 6 9} {
+            assert_match {*KV ver.*} [r lolwut version $v]
         }
+        assert_match {*KV ver.*} [r lolwut]
     }
 }
 

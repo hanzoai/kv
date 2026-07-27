@@ -359,8 +359,9 @@ int fileIsRDB(char *filepath) {
     }
 
     if (size >= 8) { /* There must be at least room for the RDB header. */
-        char sig[5];
-        int rdb_file = fread(sig, sizeof(sig), 1, fp) == 1 && memcmp(sig, "REDIS", sizeof(sig)) == 0;
+        char sig[RDB_MAGIC_LEN];
+        int rdb_file = fread(sig, sizeof(sig), 1, fp) == 1 && (memcmp(sig, RDB_MAGIC_FOREIGN, sizeof(sig)) == 0 ||
+                                                              memcmp(sig, RDB_MAGIC_NATIVE, sizeof(sig)) == 0);
         if (rdb_file) {
             fclose(fp);
             return 1;

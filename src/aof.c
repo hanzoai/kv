@@ -1437,8 +1437,9 @@ int loadSingleAppendOnlyFile(char *filename) {
     /* Check if the AOF file is in RDB format (it may be RDB encoded base AOF
      * or old style RDB-preamble AOF). In that case we need to load the RDB file
      * and later continue loading the AOF tail if it is an old style RDB-preamble AOF. */
-    char sig[6]; /* "REDIS" or "KV" */
-    if (fread(sig, 1, 6, fp) != 6 || (memcmp(sig, "REDIS0", 6) != 0 && memcmp(sig, "KV", 6) != 0)) {
+    char sig[RDB_MAGIC_LEN];
+    if (fread(sig, 1, RDB_MAGIC_LEN, fp) != RDB_MAGIC_LEN ||
+        (memcmp(sig, RDB_MAGIC_FOREIGN, RDB_MAGIC_LEN) != 0 && memcmp(sig, RDB_MAGIC_NATIVE, RDB_MAGIC_LEN) != 0)) {
         /* Not in RDB format, seek back at 0 offset. */
         if (fseek(fp, 0, SEEK_SET) == -1) goto readerr;
     } else {
