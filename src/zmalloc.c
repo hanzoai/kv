@@ -181,6 +181,17 @@ void *ztrymalloc_usable(size_t size, size_t *usable) {
 }
 
 /* Allocate memory or panic */
+/* Allocate `size` bytes aligned to a cache line. Used by the SPMC queue, whose
+ * cells must not share a line or the producer and consumers false-share. */
+void *zmalloc_cache_aligned(size_t size) {
+    void *ptr = NULL;
+    if (posix_memalign(&ptr, CACHE_LINE_SIZE, size) != 0) {
+        zmalloc_oom_handler(size);
+        return NULL;
+    }
+    return ptr;
+}
+
 void *zmalloc(size_t size) {
     void *ptr = ztrymalloc_usable_internal(size, NULL);
     if (!ptr) zmalloc_oom_handler(size);
