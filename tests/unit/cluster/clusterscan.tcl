@@ -68,7 +68,7 @@ start_cluster 1 0 {tags {external:skip cluster}} {
 # CLUSTERSCAN Tests - 3-node cluster tests
 start_cluster 3 0 {tags {external:skip cluster}} {
     test "CLUSTERSCAN basic functionality" {
-        set cluster [valkey_cluster 127.0.0.1:[srv 0 port]]
+        set cluster [kv_cluster 127.0.0.1:[srv 0 port]]
 
         # Populate keys
         set num_keys 100
@@ -113,7 +113,7 @@ start_cluster 3 0 {tags {external:skip cluster}} {
     }
 
     test "CLUSTERSCAN with MATCH pattern" {
-        set cluster [valkey_cluster 127.0.0.1:[srv 0 port]]
+        set cluster [kv_cluster 127.0.0.1:[srv 0 port]]
 
         $cluster set "user:100" "val"
         $cluster set "user:200" "val"
@@ -163,7 +163,7 @@ start_cluster 3 0 {tags {external:skip cluster}} {
     }
 
     test "CLUSTERSCAN with single slot MATCH bypasses cluster walk" {
-        set cluster [valkey_cluster 127.0.0.1:[srv 0 port]]
+        set cluster [kv_cluster 127.0.0.1:[srv 0 port]]
 
         for {set i 0} {$i < 100} {incr i} {
             $cluster set "{5L5}-$i" "test"
@@ -204,7 +204,7 @@ start_cluster 3 0 {tags {external:skip cluster}} {
     }
 
     test "CLUSTERSCAN Match slot redirects tests" {
-        set cluster [valkey_cluster 127.0.0.1:[srv 0 port]]
+        set cluster [kv_cluster 127.0.0.1:[srv 0 port]]
         # Test start from slot matching the Match Pattern
         set res [$cluster clusterscan "0" MATCH "{Qi}-*"]
         assert_equal [lindex $res 0] "0-{Qi}-0"
@@ -224,7 +224,7 @@ start_cluster 3 0 {tags {external:skip cluster}} {
     }
 
     test "CLUSTERSCAN concludes when SLOT and single slot MATCH mismatch" {
-        set cluster [valkey_cluster 127.0.0.1:[srv 0 port]]
+        set cluster [kv_cluster 127.0.0.1:[srv 0 port]]
 
         set res [$cluster clusterscan "0" SLOT 0 MATCH "{Qi}-*"]
         assert_equal [lindex $res 0] "0"
@@ -238,7 +238,7 @@ start_cluster 3 0 {tags {external:skip cluster}} {
     }
 
     test "CLUSTERSCAN with COUNT option" {
-        set cluster [valkey_cluster 127.0.0.1:[srv 0 port]]
+        set cluster [kv_cluster 127.0.0.1:[srv 0 port]]
         # COUNT is a hint, not a guarantee, but we can test it doesn't error
         set 0_slot_tag "{06S}"
         set 1_slot_tag "{Qi}"
@@ -282,7 +282,7 @@ start_cluster 3 0 {tags {external:skip cluster}} {
 
     test "CLUSTERSCAN with TYPE filter" {
         # Add different data types
-        set cluster [valkey_cluster 127.0.0.1:[srv 0 port]]
+        set cluster [kv_cluster 127.0.0.1:[srv 0 port]]
         $cluster  set "string:test" "val"
         $cluster lpush "list:test" "a" "b"
         $cluster sadd "set:test" "x" "y"
@@ -327,7 +327,7 @@ start_cluster 3 0 {tags {external:skip cluster}} {
     }
 
     test "CLUSTERSCAN empty result still returns valid cursor" {
-        set cluster [valkey_cluster 127.0.0.1:[srv 0 port]]
+        set cluster [kv_cluster 127.0.0.1:[srv 0 port]]
         set res [$cluster clusterscan 0]
         set cursor [lindex $res 0]
         # Cursor should match format: 0-{hashtag}-number
@@ -349,7 +349,7 @@ start_cluster 3 0 {tags {external:skip cluster}} {
     }
 
     test "CLUSTERSCAN fingerprint validation" {
-        set cluster [valkey_cluster 127.0.0.1:[srv 0 port]]
+        set cluster [kv_cluster 127.0.0.1:[srv 0 port]]
 
         # slot 0, 8192, 16000 are the three slots we will use for this test
         for {set i 0} {$i < 50} {incr i} {
@@ -400,7 +400,7 @@ start_cluster 3 0 {tags {external:skip cluster}} {
     # Verify CLUSTERSCAN range end at non 64-bit aligned slot boundary.
     # With 3 shards slot ownership is 0-5461, 5462-10922, 10923-16383.
     test "CLUSTERSCAN cursor advances to next shard at non 64 bit aligned boundary" {
-        set cluster [valkey_cluster 127.0.0.1:[srv 0 port]]
+        set cluster [kv_cluster 127.0.0.1:[srv 0 port]]
 
         set res [$cluster clusterscan 0-{06S}-0 COUNT 20000]
         set cur [lindex $res 0]
@@ -658,103 +658,18 @@ start_cluster 3 0 {tags {external:skip cluster}} {
         assert_equal [R 2 clusterscan "0-{6ZJ}-0"] {0 {}}
     }
 }
-
-proc scan_interleaved_clusterscan {primary replica args} {
-    set cursor "0-{06S}-0"
-    set keys {}
-    set toggle [randomInt 2]
-    while {1} {
-        if {$toggle == 0} {
-            set res [$primary clusterscan $cursor {*}$args]
-        } else {
-            set res [$replica clusterscan $cursor {*}$args]
-        }
-        lappend keys {*}[lindex $res 1]
-        set cursor [lindex $res 0]
-        if {$cursor eq "0"} break
-        set toggle [expr {1 - $toggle}]
-    }
-    return $keys
-}
-
-# Nodes with the same hash-seed produce the same fingerprint, so
-# CLUSTERSCAN cursors can be exchanged between primary and replica.
-start_cluster 1 1 {tags {external:skip cluster} overrides {hash-seed "fingerprint-seed"}} {
-    test "CLUSTERSCAN fingerprint is consistent across nodes with same hash-seed" {
-        set n 500
-        for {set i 0} {$i < $n} {incr i} {
-            R 0 set "{06S}:fp:$i" "val"
-        }
-        wait_for_condition 200 50 {
-            [R 1 dbsize] == $n
-        } else {
-            fail "Replica did not sync"
-        }
-
-        R 1 readonly
-
-        # Verify fingerprints match directly.
-        set primary_res [R 0 clusterscan "0-{06S}-0" SLOT 0 COUNT 1]
-        set replica_res [R 1 clusterscan "0-{06S}-0" SLOT 0 COUNT 1]
-        set primary_fp [string range [lindex $primary_res 0] 0 [expr {[string first "-" [lindex $primary_res 0]] - 1}]]
-        set replica_fp [string range [lindex $replica_res 0] 0 [expr {[string first "-" [lindex $replica_res 0]] - 1}]]
-        assert_equal $primary_fp $replica_fp
-
-        # Verify fingerprints match when interleaving primary and replica scans.
-        set keys [scan_interleaved_clusterscan [srv 0 client] [srv -1 client] SLOT 0]
-        set keys [lsort -unique $keys]
-        assert_equal $n [llength $keys]
-    }
-
-    test "CLUSTERSCAN cursor survives failover with same hash-seed" {
-        R 0 flushall
-        set n 500
-        for {set i 0} {$i < $n} {incr i} {
-            R 0 set "{06S}:fo:$i" "val"
-        }
-        wait_for_condition 200 50 {
-            [R 1 dbsize] == $n
-        } else {
-            fail "Replica did not sync"
-        }
-
-        # Partial scan on old primary.
-        set cursor "0-{06S}-0"
-        set keys_before {}
-        while {1} {
-            set res [R 0 clusterscan $cursor SLOT 0 COUNT 10]
-            set cursor [lindex $res 0]
-            lappend keys_before {*}[lindex $res 1]
-            if {[llength $keys_before] > 0 && $cursor ne "0"} break
-        }
-
-        # Extract fingerprint from old primary's cursor.
-        set old_primary_fp [string range $cursor 0 [expr {[string first "-" $cursor] - 1}]]
-
-        # Failover: replica becomes new primary.
-        R 1 cluster failover
-        wait_for_condition 1000 50 {
-            [s 0 role] == "slave" &&
-            [s -1 role] == "master"
-        } else {
-            fail "Failover did not happen"
-        }
-
-        # Verify new primary produces the same fingerprint.
-        set res [R 1 clusterscan "0-{06S}-0" SLOT 0 COUNT 1]
-        set new_primary_fp [string range [lindex $res 0] 0 [expr {[string first "-" [lindex $res 0]] - 1}]]
-        assert_equal $old_primary_fp $new_primary_fp
-
-        # Continue on new primary with the old cursor.
-        set keys_after {}
-        while {$cursor ne "0"} {
-            set res [R 1 clusterscan $cursor SLOT 0 COUNT 100]
-            set cursor [lindex $res 0]
-            lappend keys_after {*}[lindex $res 1]
-        }
-
-        # Verify all keys are present.
-        set all_keys [lsort -unique [concat $keys_before $keys_after]]
-        assert_equal $n [llength $all_keys]
-    }
-}
+# NOT PORTED: the cross-node fingerprint tests from upstream 80c5afd37
+# ("Fix CLUSTERSCAN fingerprint to use configurable_hash_seed", #3679) —
+# together with `proc scan_interleaved_clusterscan` and the
+# `start_cluster 1 1 {overrides {hash-seed ...}}` block that used it.
+#
+# They assert that a primary and its replica derive the SAME fingerprint from
+# a shared hash-seed, which requires getConfigurableHashSeed() from #3366
+# ("Replace dict with thin wrapper around hashtable"). This tree does not
+# carry #3366, so clusterscanFingerprint() reads the per-process random
+# hashtableGetHashFunctionSeed() — as upstream itself did until 80c5afd37.
+# The consequence is bounded and cluster-only: a cursor does not survive
+# failover, it restarts at 0.
+#
+# Restore this block in the same change that lands #3366. Do not restore it
+# on its own — the tests cannot pass without that dependency.
