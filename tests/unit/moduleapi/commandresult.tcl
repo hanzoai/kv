@@ -420,7 +420,7 @@ start_server {tags {"modules"}} {
 
         # Create a user with no command permissions and authenticate
         r acl setuser testuser_cmd on >testpass nocommands
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd auth testuser_cmd testpass
         $rd read
         $rd get somekey
@@ -450,7 +450,7 @@ start_server {tags {"modules"}} {
 
         # Create a user allowed to run GET but only on keys matching "allowed:*"
         r acl setuser testuser_key on >testpass allcommands ~allowed:* nopass
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd auth testuser_key testpass
         $rd read
         $rd get denied_key
@@ -477,7 +477,7 @@ start_server {tags {"modules"}} {
 
         # Create a user with allcommands but no pub/sub channel access
         r acl setuser testuser_chan on >testpass allcommands allkeys resetchannels nopass
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd auth testuser_chan testpass
         $rd read
         $rd subscribe secret_channel
@@ -503,7 +503,7 @@ start_server {tags {"modules"}} {
         r cmdresult.register failure
 
         r acl setuser testuser_nosub on >testpass nocommands nopass
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd auth testuser_nosub testpass
         $rd read
         $rd get somekey
@@ -526,7 +526,7 @@ start_server {tags {"modules"}} {
         r config set requirepass testpass
 
         # Open a raw unauthenticated connection and send a command without AUTH
-        set rd [valkey_deferring_client_by_addr [srv 0 host] [srv 0 port]]
+        set rd [kv_deferring_client_by_addr [srv 0 host] [srv 0 port]]
         $rd get somekey
         catch {$rd read} e
         $rd close
@@ -552,7 +552,7 @@ start_server {tags {"modules"}} {
         r cmdresult.register acl_rejected
 
         r acl setuser testuser_reset on >testpass nocommands nopass
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd auth testuser_reset testpass
         $rd read
         $rd get somekey
@@ -634,7 +634,7 @@ start_server {tags {"modules"}} {
         }
         r cmdresult.register rejected
 
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         $rd subscribe testchan
         $rd read
         $rd set foo bar

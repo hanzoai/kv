@@ -337,7 +337,7 @@ static long long activeExpireCycleJob(enum activeExpiryType jobType, int cycleTy
 
             while (data.sampled < num && checked_buckets < max_buckets) {
                 unsigned long cursor = db->expiry[jobType].cursor;
-                cursor = kvstoreScan(kvs, cursor, -1, scan_cb,
+                cursor = kvstoreScan(kvs, cursor, -1, -1, scan_cb,
                                      expireShouldSkipTableForSamplingCb, &data);
                 if (!data.has_more_expired_entries) db->expiry[jobType].cursor = cursor;
                 if (db->expiry[jobType].cursor == 0 && !data.has_more_expired_entries) {

@@ -6,7 +6,7 @@ start_server {tags {"modules logreqres:skip"}} {
     test {Deferred reply with postponed array length during active deferred reply buffer} {
         r deferred_reply.arm
 
-        set rd [valkey_deferring_client]
+        set rd [kv_deferring_client]
         # SET triggers NOTIFY_STRING.  The module callback blocks the client;
         # the reply callback builds a nested array using POSTPONED_LEN while
         # the deferred reply buffer is active.
