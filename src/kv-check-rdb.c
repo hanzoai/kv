@@ -618,9 +618,9 @@ int redis_check_rdb(char *rdbfilename, FILE *fp) {
     if (rioRead(&rdb, buf, 9) == 0) goto eoferr;
     buf[9] = '\0';
     bool is_kv_magic = false, is_redis_magic = false;
-    if (memcmp(buf, "REDIS0", 6) == 0) {
+    if (memcmp(buf, RDB_MAGIC_FOREIGN, RDB_MAGIC_LEN) == 0) {
         is_redis_magic = true;
-    } else if (memcmp(buf, "KV", 6) == 0) {
+    } else if (memcmp(buf, RDB_MAGIC_NATIVE, RDB_MAGIC_LEN) == 0) {
         is_kv_magic = true;
     } else {
         rdbCheckError("Wrong signature trying to load DB from file");
