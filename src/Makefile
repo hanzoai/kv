@@ -680,6 +680,7 @@ $(SERVER_NAME): $(ENGINE_SERVER_OBJ)
 
 # KV static library, used to compile against for unit testing
 $(ENGINE_LIB_NAME): $(ENGINE_SERVER_OBJ)
+	@rm -f $@
 	$(SERVER_AR) rcs $@ $^
 
 # kv-unit-tests
