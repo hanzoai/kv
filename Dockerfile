@@ -37,7 +37,12 @@ RUN apk add --no-cache libssl3 libcrypto3 \
 COPY --from=build /usr/local/bin/ /usr/local/bin/
 
 # `kv` is the interactive client, so `docker exec -it <c> kv` opens a shell.
-RUN ln -sf /usr/local/bin/kv-cli /usr/local/bin/kv
+# `kvd` is the daemon, matching luxd / hanzod / zood — the fleet names a
+# long-running server <thing>d, and kv-server was the one that did not. The
+# original name stays as a symlink so the in-image symlinks that already point
+# at it (kv-sentinel, kv-check-aof, kv-check-rdb) keep resolving.
+RUN ln -sf /usr/local/bin/kv-cli /usr/local/bin/kv \
+ && ln -sf /usr/local/bin/kv-server /usr/local/bin/kvd
 
 USER hanzo
 WORKDIR /data
@@ -47,5 +52,5 @@ EXPOSE 6379
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
     CMD kv ping | grep -q PONG || exit 1
 
-ENTRYPOINT ["kv-server"]
+ENTRYPOINT ["kvd"]
 CMD ["--bind", "0.0.0.0", "--dir", "/data", "--maxmemory-policy", "allkeys-lru", "--protected-mode", "no"]
