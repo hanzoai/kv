@@ -1,0 +1,13 @@
+# hanzoai/kv — the Valkey-derived key/value server. C, built with make.
+#
+# Gate only. The image is already built and pushed by the native builder in this
+# repo (.hanzo/workflows/deploy.yml → ghcr.io/hanzoai/kv), so declaring `images:`
+# here would publish a second copy of the same commit under a different tag.
+# What was missing is proof the source compiles, which is exactly what a C repo
+# needs and had none of.
+test:
+  - name: build
+    run: |
+      set -euo pipefail
+      make -j"$(nproc)"
+      ./src/valkey-server --version || ./src/redis-server --version
