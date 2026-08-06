@@ -5,9 +5,20 @@
 # here would publish a second copy of the same commit under a different tag.
 # What was missing is proof the source compiles, which is exactly what a C repo
 # needs and had none of.
+#
+# The compiler provision is part of the assertion, not setup around it: the
+# reusable installs gcc only for Go callers (it keys on go.mod), and this repo is
+# C, so without it the gate would be reporting on the runner image instead of on
+# the code. `make` builds deps/ (jemalloc, lua, fpconv, hdr_histogram) first, so
+# a broken vendored dep fails here too. The version probe is the proof the link
+# step actually produced a server, not just object files.
 test:
   - name: build
     run: |
       set -euo pipefail
+      command -v cc > /dev/null 2>&1 || {
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq build-essential
+      }
       make -j"$(nproc)"
-      ./src/valkey-server --version || ./src/redis-server --version
+      ./src/kv-server --version
