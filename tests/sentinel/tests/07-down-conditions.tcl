@@ -38,6 +38,7 @@ proc ensure_master_down {} {
 }
 
 test "Crash the majority of Sentinels to prevent failovers for this unit" {
+    set quorum [expr {[llength $::sentinel_instances] / 2 + 1}]
     for {set id 0} {$id < $quorum} {incr id} {
         kill_instance sentinel $id
     }
@@ -46,9 +47,9 @@ test "Crash the majority of Sentinels to prevent failovers for this unit" {
 test "SDOWN is triggered by non-responding but not crashed instance" {
     ensure_master_up
     set master_addr [S $::alive_sentinel SENTINEL GET-PRIMARY-ADDR-BY-NAME mymaster]
-    set master_id [get_instance_id_by_port kv [lindex $master_addr 1]]
+    set master_id [get_instance_id_by_port valkey [lindex $master_addr 1]]
 
-    set pid [get_instance_attrib kv $master_id pid]
+    set pid [get_instance_attrib valkey $master_id pid]
     pause_process $pid
     ensure_master_down
     resume_process $pid
@@ -58,9 +59,9 @@ test "SDOWN is triggered by non-responding but not crashed instance" {
 test "SDOWN is triggered by crashed instance" {
     lassign [S $::alive_sentinel SENTINEL GET-PRIMARY-ADDR-BY-NAME mymaster] host port
     ensure_master_up
-    kill_instance kv 0
+    kill_instance valkey 0
     ensure_master_down
-    restart_instance kv 0
+    restart_instance valkey 0
     ensure_master_up
 }
 

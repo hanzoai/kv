@@ -19,6 +19,164 @@ start_server {tags {"other"}} {
         assert_match "*MODULE <subcommand> *" [r MODULE HELP]
     }
 
+    test {CONFIG INFO with config name - enum type} {
+        set result [r CONFIG INFO repl-diskless-load]
+        assert_equal [llength $result] 1
+        set info [lindex $result 0]
+        assert_equal [dict get $info name] "repl-diskless-load"
+        assert_equal [dict get $info type] "enum"
+        assert_match "*disabled*" [dict get $info values]
+    }
+
+    test {CONFIG INFO with config name - numeric type} {
+        set result [r CONFIG INFO maxmemory]
+        assert_equal [llength $result] 1
+        set info [lindex $result 0]
+        assert_equal [dict get $info name] "maxmemory"
+        assert_equal [dict get $info type] "numeric"
+        assert_equal [llength [dict get $info range]] 2
+    }
+
+    test {CONFIG INFO with config name - bool type} {
+        set result [r CONFIG INFO activerehashing]
+        assert_equal [llength $result] 1
+        set info [lindex $result 0]
+        assert_equal [dict get $info name] "activerehashing"
+        assert_equal [dict get $info type] "bool"
+    }
+
+    test {CONFIG INFO with config name - string type} {
+        set result [r CONFIG INFO dbfilename]
+        assert_equal [llength $result] 1
+        set info [lindex $result 0]
+        assert_equal [dict get $info name] "dbfilename"
+        assert_equal [dict get $info type] "string"
+    }
+
+    test {CONFIG INFO with config name - special type} {
+        set result [r CONFIG INFO save]
+        assert_equal [llength $result] 1
+        set info [lindex $result 0]
+        assert_equal [dict get $info name] "save"
+        assert_equal [dict get $info type] "special"
+    }
+
+    test {CONFIG INFO with non-existent config} {
+        set result [r CONFIG INFO nonexistent]
+        assert_equal [llength $result] 0
+    }
+
+    test {CONFIG INFO with pattern matching multiple configs} {
+        set result [r CONFIG INFO max*]
+        assert {[llength $result] > 1}
+        set names [list]
+        foreach entry $result {
+            lappend names [dict get $entry name]
+        }
+        assert {[lsearch $names "maxmemory"] >= 0}
+        assert {[lsearch $names "maxclients"] >= 0}
+    }
+
+    test {CONFIG INFO with multiple patterns deduplicates results} {
+        set result [r CONFIG INFO max* maxmemory]
+        set names [list]
+        foreach entry $result {
+            lappend names [dict get $entry name]
+        }
+        # Count occurrences of maxmemory - should be exactly 1
+        set count 0
+        foreach name $names {
+            if {$name eq "maxmemory"} {
+                incr count
+            }
+        }
+        assert_equal $count 1
+    }
+
+    test {CONFIG INFO includes flags field} {
+        set result [r CONFIG INFO maxmemory]
+        set info [lindex $result 0]
+        assert {[dict exists $info flags]}
+    }
+
+    test {CONFIG INFO flags for immutable config} {
+        set result [r CONFIG INFO databases]
+        set info [lindex $result 0]
+        assert {[lsearch [dict get $info flags] "immutable"] >= 0}
+    }
+
+    test {CONFIG INFO flags for sensitive config} {
+        set result [r CONFIG INFO requirepass]
+        set info [lindex $result 0]
+        assert {[lsearch [dict get $info flags] "sensitive"] >= 0}
+    }
+
+    test {CONFIG INFO alias for config with alias} {
+        set result [r CONFIG INFO replicaof]
+        set info [lindex $result 0]
+        assert_equal [dict get $info alias] "slaveof"
+    }
+
+    test {CONFIG INFO looking up by alias name includes alias flag and points back to primary name} {
+        set result [r CONFIG INFO slaveof]
+        set info [lindex $result 0]
+        assert_equal [dict get $info name] "slaveof"
+        assert_equal [dict get $info alias] "replicaof"
+        assert {[lsearch [dict get $info flags] "alias"] >= 0}
+    }
+
+    test {CONFIG INFO config without alias omits alias field} {
+        set result [r CONFIG INFO maxmemory]
+        set info [lindex $result 0]
+        assert {![dict exists $info alias]}
+    }
+
+    test {CONFIG INFO ordering is consistent across calls} {
+        # Get initial ordering
+        set info1 [r CONFIG INFO a*]
+        set get1 [r CONFIG GET a*]
+        
+        set info_names1 [list]
+        foreach entry $info1 {
+            lappend info_names1 [dict get $entry name]
+        }
+        
+        set get_names1 [dict keys $get1]
+        
+        # Do some operations and call again
+        r SET foo bar
+        r GET foo
+        
+        set info2 [r CONFIG INFO a*]
+        set info_names2 [list]
+        foreach entry $info2 {
+            lappend info_names2 [dict get $entry name]
+        }
+        
+        # Restart server
+        if {!$::external} {
+            restart_server 0 true false
+            
+            set info3 [r CONFIG INFO a*]
+            set get3 [r CONFIG GET a*]
+            
+            set info_names3 [list]
+            foreach entry $info3 {
+                lappend info_names3 [dict get $entry name]
+            }
+            
+            set get_names3 [dict keys $get3]
+            
+            # Verify ordering after restart
+            assert_equal $info_names1 $info_names3
+            assert_equal $get_names1 $get_names3
+        }
+        
+        # All orderings should be identical
+        assert_equal $info_names1 $info_names2
+        assert_equal $info_names1 $get_names1
+    }
+
     test {Coverage: MEMORY MALLOC-STATS} {
         if {[string match {*jemalloc*} [s mem_allocator]]} {
             assert_match "*jemalloc*" [r memory malloc-stats]
@@ -82,17 +240,6 @@ start_server {tags {"other"}} {
         }
     }
 
-    test {BGSAVE} {
-        # Use FLUSHALL instead of FLUSHDB, FLUSHALL do a foreground save
-        # and reset the dirty counter to 0, so we won't trigger an unexpected bgsave.
-        r flushall
-        r save
-        r set x 10
-        r bgsave
-        waitForBgsave r
-        r debug reload
-        r get x
-    } {10} {needs:debug needs:save}
 
     test {SELECT an out of range DB} {
         catch {r select 1000000} err
@@ -153,21 +300,6 @@ start_server {tags {"other"}} {
         } {1} {needs:debug}
     }
 
-    test {EXPIRES after a reload (snapshot + append only file rewrite)} {
-        r flushdb
-        r set x 10
-        r expire x 1000
-        r save
-        r debug reload
-        set ttl [r ttl x]
-        set e1 [expr {$ttl > 900 && $ttl <= 1000}]
-        r bgrewriteaof
-        waitForBgrewriteaof r
-        r debug loadaof
-        set ttl [r ttl x]
-        set e2 [expr {$ttl > 900 && $ttl <= 1000}]
-        list $e1 $e2
-    } {1 1} {needs:debug needs:save}
 
     test {EXPIRES after AOF reload (without rewrite)} {
         r flushdb
@@ -188,7 +320,7 @@ start_server {tags {"other"}} {
 
         # Reload and check
         waitForBgrewriteaof r
-        # We need to wait two seconds to avoid false positives here, otherwise
+        # We need to wait two seconds to avoid false positives here; otherwise,
         # the DEBUG LOADAOF command may read a partial file.
         # Another solution would be to set the fsync policy to no, since this
         # prevents write() to be delayed by the completion of fsync().
@@ -313,7 +445,7 @@ start_server {tags {"other"}} {
     } {} {needs:reset}
 
     test {RESET clears MONITOR state} {
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
         $rd monitor
         assert_equal [$rd read] "OK"
 
@@ -359,24 +491,62 @@ start_server {tags {"other"}} {
         assert_error {*unknown subcommand*} {r CONFIG GET_XX}
     }
 
-    test "Extended Redis Compatibility config is absent by design" {
-        # Upstream's `extended-redis-compatibility` makes HELLO answer
-        # `server: redis, version: 7.2.x`, INFO emit `redis_mode:` and LOLWUT
-        # print "Redis ver.". Upstream itself deprecated it in 9.x and deletes
-        # it in 10.0; this engine never carried it, and will not — nothing here
-        # claims to be Redis.
-        assert_error "ERR Unknown*" {r config set extended-redis-compatibility yes}
+    test "DEBUG SLOTMIGRATION with missing arguments does not crash" {
+        assert_error {ERR *} {r DEBUG SLOTMIGRATION}
+        assert_error {ERR *} {r DEBUG SLOTMIGRATION PREVENT-PAUSE}
+        assert_equal PONG [r ping]
+    } {} {needs:debug}
 
-        # The identity it would have masked, asserted directly.
+    test "Extended Redis Compatibility config" {
+        # This config is added in Valkey 8.0, shall be deprecated and have no
+        # effect in 9.x and be deleted in 10.0.
         set hello [r hello 3]
-        assert_equal kv [dict get $hello server]
-        set info [r info server]
-        assert_match "*server_mode:*" $info
-        assert_no_match "*redis_mode:*" $info
-        foreach v {5 6 9} {
-            assert_match {*KV ver.*} [r lolwut version $v]
+        set version [dict get $hello version]
+        if {[string match "11.*" $version]} {
+            # Check that the config doesn't exist anymore.
+            assert_error "ERR Unknown*" {r config set extended-redis-compatibility yes}
+            error "We shall also delete this test case"
+        } elseif {[string match "10.*" $version]} {
+            # This config is scheduled for removal. In 10.x it should still
+            # exists but have no effect.
+            r config set extended-redis-compatibility yes
+            set hello [r hello 3]
+            assert_equal valkey [dict get $hello server]
+            assert_equal $version [dict get $hello version]
+            r config set extended-redis-compatibility no
+        } elseif {[string match "8.*" $version] || [string match "9.*" $version] || ($version eq "255.255.255")} {
+            # In 8.x, the config shall work and affect HELLO server and version.
+            r config set extended-redis-compatibility yes
+            set hello [r hello 3]
+            assert_equal "redis" [dict get $hello server]
+            assert_match "7.2.*" [dict get $hello version]
+            set info [r info server]
+            assert_match "*redis_mode:*" $info
+            assert_no_match "*server_mode:*" $info
+            set lolwut_output [r lolwut version 5]
+            assert_match {*Redis ver.*} $lolwut_output
+            set lolwut_output [r lolwut version 6]
+            assert_match {*Redis ver.*} $lolwut_output
+            set lolwut_output [r lolwut version 9]
+            assert_match {*Redis ver.*} $lolwut_output
+            set lolwut_output [r lolwut]
+            assert_match {*Redis ver.*} $lolwut_output
+            r config set extended-redis-compatibility no
+            set hello [r hello 3]
+            assert_equal "valkey" [dict get $hello server]
+            assert_equal $version [dict get $hello version]
+            set info [r info server]
+            assert_no_match "*redis_mode:*" $info
+            assert_match "*server_mode:*" $info
+            set lolwut_output [r lolwut]
+            assert_match {*Valkey ver.*} $lolwut_output
+            set lolwut_output [r lolwut version 5]
+            assert_match {*Valkey ver.*} $lolwut_output
+            set lolwut_output [r lolwut version 6]
+            assert_match {*Valkey ver.*} $lolwut_output
+            set lolwut_output [r lolwut version 9]
+            assert_match {*Valkey ver.*} $lolwut_output
         }
-        assert_match {*KV ver.*} [r lolwut]
     }
 }
 
@@ -438,7 +608,7 @@ start_server {tags {"other external:skip"}} {
             set cmdline [read_proc_title [srv 0 pid]]
 
             assert_equal "TEST" [lindex $cmdline 0]
-            assert_match "*/kv-server" [lindex $cmdline 1]
+            assert_match "*/valkey-server" [lindex $cmdline 1]
 
             if {$::tls} {
                 set expect_port [srv 0 pport]
@@ -454,7 +624,7 @@ start_server {tags {"other external:skip"}} {
             assert_equal $expect_port [lindex $cmdline 3]
             assert_equal $expect_tls_port [lindex $cmdline 4]
             assert_match "*/tests/tmp/server.*/socket" [lindex $cmdline 5]
-            assert_match "*/tests/tmp/kv.conf.*" [lindex $cmdline 6]
+            assert_match "*/tests/tmp/valkey.conf.*" [lindex $cmdline 6]
 
             # Try setting a bad template
             catch {r config set "proc-title-template" "{invalid-var}"} err
@@ -553,8 +723,10 @@ start_server {tags {"other external:skip"}} {
 
 start_server {tags {"other external:skip"}} {
     test "test io-threads are runtime modifiable" {
+        # Each toggle spawns/joins real pthreads; too slow for 100 iterations under Valgrind.
+        set iterations [expr {$::valgrind ? 10 : 100}]
         # Randomly set the number of threads between 1 and 5
-        for {set i 0} {$i < 100} {incr i} {
+        for {set i 0} {$i < $iterations} {incr i} {
             set random_num [expr {int(rand() * 5) + 1}]
             r config set io-threads $random_num
             set thread_num [lindex [r config get io-threads] 1]
@@ -586,3 +758,40 @@ if {$::verbose} {
 }
 close $tempFileId
 file delete $tempFileName
+
+start_server {overrides {forkless-infrastructure-enabled yes} tags {"other" "external:skip"}} {
+    foreach bgsave_type {"fork" "forkless"} {
+        test "BGSAVE $bgsave_type" {
+            r flushall
+            r save
+            r set x 10
+            r config set forkless-policy [expr {$bgsave_type eq "forkless" ? "prefer-forkless" : "require-fork"}]
+            r bgsave
+            waitForBgsave r
+
+            set expected_type [expr {$bgsave_type eq "forkless" ? "forkless" : "fork"}]
+            assert_equal [s rdb_last_bgsave_type] $expected_type
+
+            r debug reload
+            r get x
+        } {10} {needs:debug needs:save}
+
+        test "EXPIRES after a reload ($bgsave_type snapshot + append only file rewrite)" {
+            r flushdb
+            r set x 10
+            r expire x 1000
+            r config set forkless-policy [expr {$bgsave_type eq "forkless" ? "prefer-forkless" : "require-fork"}]
+            r bgsave
+            waitForBgsave r
+            r debug reload
+            set ttl [r ttl x]
+            set e1 [expr {$ttl > 900 && $ttl <= 1000}]
+            r bgrewriteaof
+            waitForBgrewriteaof r
+            r debug loadaof
+            set ttl [r ttl x]
+            set e2 [expr {$ttl > 900 && $ttl <= 1000}]
+            list $e1 $e2
+        } {1 1} {needs:debug needs:save}
+    }
+}

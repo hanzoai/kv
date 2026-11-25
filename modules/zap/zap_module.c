@@ -6,7 +6,7 @@
  *
  * Load with: MODULE LOAD /path/to/zap.so [PORT 9653]
  */
-#include "kvmodule.h"
+#include "valkeymodule.h"
 #include "zap_protocol.h"
 
 #include <pthread.h>
@@ -21,7 +21,7 @@ static int zap_port = 9653;
 static volatile int zap_running = 0;
 static pthread_t zap_thread;
 static int zap_server_fd = -1;
-static KVModuleCtx *module_ctx = NULL;
+static ValkeyModuleCtx *module_ctx = NULL;
 
 /*
  * Extract a string value for a given key from a JSON object.
@@ -145,7 +145,7 @@ static void handle_message(int client_fd, const uint8_t *data, size_t len) {
     uint32_t status = 200;
     char result_buf[65536];
 
-    KVModuleCtx *ctx = KVModule_GetThreadSafeContext(NULL);
+    ValkeyModuleCtx *ctx = ValkeyModule_GetThreadSafeContext(NULL);
 
     if (strcmp(path_buf, "/get") == 0) {
         /* GET — body is JSON: {"key":"mykey"} */
@@ -156,13 +156,13 @@ static void handle_message(int client_fd, const uint8_t *data, size_t len) {
         }
 
         if (key_str && strlen(key_str) > 0) {
-            KVModuleString *key = KVModule_CreateString(ctx, key_str, strlen(key_str));
-            KVModuleCallReply *reply = KVModule_Call(ctx, "GET", "s", key);
-            KVModule_FreeString(ctx, key);
+            ValkeyModuleString *key = ValkeyModule_CreateString(ctx, key_str, strlen(key_str));
+            ValkeyModuleCallReply *reply = ValkeyModule_Call(ctx, "GET", "s", key);
+            ValkeyModule_FreeString(ctx, key);
 
-            if (reply && KVModule_CallReplyType(reply) == KVMODULE_REPLY_STRING) {
+            if (reply && ValkeyModule_CallReplyType(reply) == VALKEYMODULE_REPLY_STRING) {
                 size_t rlen;
-                const char *rval = KVModule_CallReplyStringPtr(reply, &rlen);
+                const char *rval = ValkeyModule_CallReplyStringPtr(reply, &rlen);
                 snprintf(result_buf, sizeof(result_buf),
                          "{\"value\":\"%.*s\"}", (int)rlen, rval);
                 result = result_buf;
@@ -170,7 +170,7 @@ static void handle_message(int client_fd, const uint8_t *data, size_t len) {
                 result = "{\"error\":\"not found\"}";
                 status = 404;
             }
-            if (reply) KVModule_FreeCallReply(reply);
+            if (reply) ValkeyModule_FreeCallReply(reply);
         } else {
             result = "{\"error\":\"key required\"}";
             status = 400;
@@ -183,12 +183,12 @@ static void handle_message(int client_fd, const uint8_t *data, size_t len) {
         char *val_str = json_extract_string(body_buf, "value");
 
         if (key_str && val_str) {
-            KVModuleString *key = KVModule_CreateString(ctx, key_str, strlen(key_str));
-            KVModuleString *val = KVModule_CreateString(ctx, val_str, strlen(val_str));
-            KVModuleCallReply *reply = KVModule_Call(ctx, "SET", "ss", key, val);
-            KVModule_FreeString(ctx, key);
-            KVModule_FreeString(ctx, val);
-            if (reply) KVModule_FreeCallReply(reply);
+            ValkeyModuleString *key = ValkeyModule_CreateString(ctx, key_str, strlen(key_str));
+            ValkeyModuleString *val = ValkeyModule_CreateString(ctx, val_str, strlen(val_str));
+            ValkeyModuleCallReply *reply = ValkeyModule_Call(ctx, "SET", "ss", key, val);
+            ValkeyModule_FreeString(ctx, key);
+            ValkeyModule_FreeString(ctx, val);
+            if (reply) ValkeyModule_FreeCallReply(reply);
             result = "{\"status\":\"ok\"}";
         } else {
             result = "{\"error\":\"key and value required in JSON body\"}";
@@ -205,14 +205,14 @@ static void handle_message(int client_fd, const uint8_t *data, size_t len) {
         }
 
         if (key_str && strlen(key_str) > 0) {
-            KVModuleString *key = KVModule_CreateString(ctx, key_str, strlen(key_str));
-            KVModuleCallReply *reply = KVModule_Call(ctx, "DEL", "s", key);
-            KVModule_FreeString(ctx, key);
+            ValkeyModuleString *key = ValkeyModule_CreateString(ctx, key_str, strlen(key_str));
+            ValkeyModuleCallReply *reply = ValkeyModule_Call(ctx, "DEL", "s", key);
+            ValkeyModule_FreeString(ctx, key);
 
             long long deleted = 0;
-            if (reply && KVModule_CallReplyType(reply) == KVMODULE_REPLY_INTEGER)
-                deleted = KVModule_CallReplyInteger(reply);
-            if (reply) KVModule_FreeCallReply(reply);
+            if (reply && ValkeyModule_CallReplyType(reply) == VALKEYMODULE_REPLY_INTEGER)
+                deleted = ValkeyModule_CallReplyInteger(reply);
+            if (reply) ValkeyModule_FreeCallReply(reply);
 
             snprintf(result_buf, sizeof(result_buf),
                      "{\"status\":\"ok\",\"deleted\":%lld}", deleted);
@@ -233,23 +233,23 @@ static void handle_message(int client_fd, const uint8_t *data, size_t len) {
 
             if (argc == 0) {
                 /* No args — call command with no arguments */
-                KVModuleCallReply *reply = KVModule_Call(ctx, cmd_str, "");
+                ValkeyModuleCallReply *reply = ValkeyModule_Call(ctx, cmd_str, "");
                 if (reply) {
-                    int rtype = KVModule_CallReplyType(reply);
-                    if (rtype == KVMODULE_REPLY_STRING) {
+                    int rtype = ValkeyModule_CallReplyType(reply);
+                    if (rtype == VALKEYMODULE_REPLY_STRING) {
                         size_t rlen;
-                        const char *rval = KVModule_CallReplyStringPtr(reply, &rlen);
+                        const char *rval = ValkeyModule_CallReplyStringPtr(reply, &rlen);
                         snprintf(result_buf, sizeof(result_buf),
                                  "{\"result\":\"%.*s\"}", (int)rlen, rval);
                         result = result_buf;
-                    } else if (rtype == KVMODULE_REPLY_INTEGER) {
-                        long long ival = KVModule_CallReplyInteger(reply);
+                    } else if (rtype == VALKEYMODULE_REPLY_INTEGER) {
+                        long long ival = ValkeyModule_CallReplyInteger(reply);
                         snprintf(result_buf, sizeof(result_buf),
                                  "{\"result\":%lld}", ival);
                         result = result_buf;
-                    } else if (rtype == KVMODULE_REPLY_ERROR) {
+                    } else if (rtype == VALKEYMODULE_REPLY_ERROR) {
                         size_t rlen;
-                        const char *rval = KVModule_CallReplyStringPtr(reply, &rlen);
+                        const char *rval = ValkeyModule_CallReplyStringPtr(reply, &rlen);
                         snprintf(result_buf, sizeof(result_buf),
                                  "{\"error\":\"%.*s\"}", (int)rlen, rval);
                         result = result_buf;
@@ -257,25 +257,25 @@ static void handle_message(int client_fd, const uint8_t *data, size_t len) {
                     } else {
                         result = "{\"result\":\"ok\"}";
                     }
-                    KVModule_FreeCallReply(reply);
+                    ValkeyModule_FreeCallReply(reply);
                 } else {
                     result = "{\"error\":\"command failed\"}";
                     status = 500;
                 }
             } else {
-                /* Build KVModuleString array for args */
-                KVModuleString **rm_args = malloc(sizeof(KVModuleString *) * argc);
+                /* Build ValkeyModuleString array for args */
+                ValkeyModuleString **rm_args = malloc(sizeof(ValkeyModuleString *) * argc);
                 if (rm_args) {
                     /* Build format string: "sss..." one 's' per arg */
                     char *fmt = malloc(argc + 1);
                     int i;
                     for (i = 0; i < argc; i++) {
-                        rm_args[i] = KVModule_CreateString(ctx, args[i], strlen(args[i]));
+                        rm_args[i] = ValkeyModule_CreateString(ctx, args[i], strlen(args[i]));
                         fmt[i] = 's';
                     }
                     fmt[argc] = '\0';
 
-                    KVModuleCallReply *reply = KVModule_Call(ctx, cmd_str, fmt,
+                    ValkeyModuleCallReply *reply = ValkeyModule_Call(ctx, cmd_str, fmt,
                         argc >= 1 ? rm_args[0] : NULL,
                         argc >= 2 ? rm_args[1] : NULL,
                         argc >= 3 ? rm_args[2] : NULL,
@@ -286,26 +286,26 @@ static void handle_message(int client_fd, const uint8_t *data, size_t len) {
                         argc >= 8 ? rm_args[7] : NULL);
 
                     for (i = 0; i < argc; i++)
-                        KVModule_FreeString(ctx, rm_args[i]);
+                        ValkeyModule_FreeString(ctx, rm_args[i]);
                     free(rm_args);
                     free(fmt);
 
                     if (reply) {
-                        int rtype = KVModule_CallReplyType(reply);
-                        if (rtype == KVMODULE_REPLY_STRING) {
+                        int rtype = ValkeyModule_CallReplyType(reply);
+                        if (rtype == VALKEYMODULE_REPLY_STRING) {
                             size_t rlen;
-                            const char *rval = KVModule_CallReplyStringPtr(reply, &rlen);
+                            const char *rval = ValkeyModule_CallReplyStringPtr(reply, &rlen);
                             snprintf(result_buf, sizeof(result_buf),
                                      "{\"result\":\"%.*s\"}", (int)rlen, rval);
                             result = result_buf;
-                        } else if (rtype == KVMODULE_REPLY_INTEGER) {
-                            long long ival = KVModule_CallReplyInteger(reply);
+                        } else if (rtype == VALKEYMODULE_REPLY_INTEGER) {
+                            long long ival = ValkeyModule_CallReplyInteger(reply);
                             snprintf(result_buf, sizeof(result_buf),
                                      "{\"result\":%lld}", ival);
                             result = result_buf;
-                        } else if (rtype == KVMODULE_REPLY_ERROR) {
+                        } else if (rtype == VALKEYMODULE_REPLY_ERROR) {
                             size_t rlen;
-                            const char *rval = KVModule_CallReplyStringPtr(reply, &rlen);
+                            const char *rval = ValkeyModule_CallReplyStringPtr(reply, &rlen);
                             snprintf(result_buf, sizeof(result_buf),
                                      "{\"error\":\"%.*s\"}", (int)rlen, rval);
                             result = result_buf;
@@ -313,7 +313,7 @@ static void handle_message(int client_fd, const uint8_t *data, size_t len) {
                         } else {
                             result = "{\"result\":\"ok\"}";
                         }
-                        KVModule_FreeCallReply(reply);
+                        ValkeyModule_FreeCallReply(reply);
                     } else {
                         result = "{\"error\":\"command failed\"}";
                         status = 500;
@@ -339,7 +339,7 @@ static void handle_message(int client_fd, const uint8_t *data, size_t len) {
         status = 400;
     }
 
-    KVModule_FreeThreadSafeContext(ctx);
+    ValkeyModule_FreeThreadSafeContext(ctx);
 
     /* Send ZAP response */
     uint32_t resp_size;
@@ -398,42 +398,42 @@ static void *zap_listener_thread(void *arg) {
 /*
  * Module load — start ZAP listener.
  */
-int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
-    if (KVModule_Init(ctx, "zap", 1, KVMODULE_APIVER_1) == KVMODULE_ERR)
-        return KVMODULE_ERR;
+int ValkeyModule_OnLoad(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
+    if (ValkeyModule_Init(ctx, "zap", 1, VALKEYMODULE_APIVER_1) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
 
     module_ctx = ctx;
 
     /* Parse optional PORT argument */
     if (argc >= 2) {
-        const char *arg0 = KVModule_StringPtrLen(argv[0], NULL);
+        const char *arg0 = ValkeyModule_StringPtrLen(argv[0], NULL);
         if (strcasecmp(arg0, "PORT") == 0) {
             long long port;
-            if (KVModule_StringToLongLong(argv[1], &port) == KVMODULE_OK)
+            if (ValkeyModule_StringToLongLong(argv[1], &port) == VALKEYMODULE_OK)
                 zap_port = (int)port;
         }
     }
 
     zap_running = 1;
     if (pthread_create(&zap_thread, NULL, zap_listener_thread, NULL) != 0) {
-        KVModule_Log(ctx, "warning", "zap: failed to start listener thread");
-        return KVMODULE_ERR;
+        ValkeyModule_Log(ctx, "warning", "zap: failed to start listener thread");
+        return VALKEYMODULE_ERR;
     }
 
-    KVModule_Log(ctx, "notice", "zap: listening on port %d", zap_port);
-    return KVMODULE_OK;
+    ValkeyModule_Log(ctx, "notice", "zap: listening on port %d", zap_port);
+    return VALKEYMODULE_OK;
 }
 
 /*
  * Module unload — stop ZAP listener.
  */
-int KVModule_OnUnload(KVModuleCtx *ctx) {
+int ValkeyModule_OnUnload(ValkeyModuleCtx *ctx) {
     zap_running = 0;
     if (zap_server_fd >= 0) {
         shutdown(zap_server_fd, SHUT_RDWR);
         close(zap_server_fd);
     }
     pthread_join(zap_thread, NULL);
-    KVModule_Log(ctx, "notice", "zap: listener stopped");
-    return KVMODULE_OK;
+    ValkeyModule_Log(ctx, "notice", "zap: listener stopped");
+    return VALKEYMODULE_OK;
 }

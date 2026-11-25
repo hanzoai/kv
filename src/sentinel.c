@@ -29,27 +29,28 @@
  */
 
 #include "server.h"
-#include <kv/kv.h>
+#include <valkey/valkey.h>
 #if defined(USE_OPENSSL) && USE_OPENSSL == 1 /* BUILD_YES */
 #include "openssl/ssl.h"
-#include <kv/tls.h>
+#include <valkey/tls.h>
 #endif
-#include <kv/async.h>
+#include <valkey/async.h>
 
 #include <ctype.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <libgen.h>
 
 extern char **environ;
 
 #if defined(USE_OPENSSL) && USE_OPENSSL == 1 /* BUILD_YES */
-extern SSL_CTX *kv_tls_ctx;
-extern SSL_CTX *kv_tls_client_ctx;
+extern SSL_CTX *valkey_tls_ctx;
+extern SSL_CTX *valkey_tls_client_ctx;
 #endif
 
-#define KV_SENTINEL_PORT 26379
+#define VALKEY_SENTINEL_PORT 26379
 
 /* ======================== Sentinel global state =========================== */
 
@@ -78,7 +79,7 @@ typedef struct sentinelAddr {
 #define SRI_SCRIPT_KILL_SENT (1 << 12)    /* SCRIPT KILL already sent on -BUSY */
 #define SRI_PRIMARY_REBOOT (1 << 13)      /* Primary was detected as rebooting */
 #define SRI_COORD_FAILOVER (1 << 14)      /* Coordinated failover with primary up. */
-/* Note: when adding new flags, please check the flags section in addReplySentinelKVInstance. */
+/* Note: when adding new flags, please check the flags section in addReplySentinelValkeyInstance. */
 
 /* Note: times are in milliseconds. */
 #define SENTINEL_PING_PERIOD 1000
@@ -139,7 +140,7 @@ static mstime_t sentinel_default_failover_timeout = 60 * 3 * 1000;
 #define SENTINEL_SIMFAILURE_CRASH_AFTER_ELECTION (1 << 0)
 #define SENTINEL_SIMFAILURE_CRASH_AFTER_PROMOTION (1 << 1)
 
-/* The failover status of a monitored KV instance */
+/* The failover status of a monitored Valkey instance */
 #define SENTINEL_MONITORED_INSTANCE_FAILOVER_NS 0 /* Not supported*/
 #define SENTINEL_MONITORED_INSTANCE_NO_FAILOVER 1 /* Failover supported, no failover ongoing */
 #define SENTINEL_MONITORED_INSTANCE_FAILOVER 2    /* Failover supported, failover ongoing */
@@ -147,14 +148,14 @@ static mstime_t sentinel_default_failover_timeout = 60 * 3 * 1000;
 /* sentinelAskPrimaryStateToOtherSentinels flags */
 #define SENTINEL_ASK_FORCED (1 << 0)
 
-/* The link to a sentinelKVInstance. When we have the same set of Sentinels
+/* The link to a sentinelValkeyInstance. When we have the same set of Sentinels
  * monitoring many primaries, we have different instances representing the
- * same Sentinels, one per primary, and we need to share the libkv connections
- * among them. Otherwise if 5 Sentinels are monitoring 100 primaries we create
+ * same Sentinels, one per primary, and we need to share the libvalkey connections
+ * among them. Otherwise, if 5 Sentinels are monitoring 100 primaries we create
  * 500 outgoing connections instead of 5.
  *
  * So this structure represents a reference counted link in terms of the two
- * libkv connections for commands and Pub/Sub, and the fields needed for
+ * libvalkey connections for commands and Pub/Sub, and the fields needed for
  * failure detection, since the ping/pong time are now local to the link: if
  * the link is available, the instance is available. This way we don't just
  * have 5 connections instead of 500, we also send 5 pings instead of 500.
@@ -162,11 +163,11 @@ static mstime_t sentinel_default_failover_timeout = 60 * 3 * 1000;
  * Links are shared only for Sentinels: primary and replica instances have
  * a link with refcount = 1, always. */
 typedef struct instanceLink {
-    int refcount;              /* Number of sentinelKVInstance owners. */
+    int refcount;              /* Number of sentinelValkeyInstance owners. */
     int disconnected;          /* Non-zero if we need to reconnect cc or pc. */
     int pending_commands;      /* Number of commands sent waiting for a reply. */
-    kvAsyncContext *cc;    /* Libkv context for commands. */
-    kvAsyncContext *pc;    /* Libkv context for Pub / Sub. */
+    valkeyAsyncContext *cc;    /* Libvalkey context for commands. */
+    valkeyAsyncContext *pc;    /* Libvalkey context for Pub / Sub. */
     mstime_t cc_conn_time;     /* cc connection time. */
     mstime_t pc_conn_time;     /* pc connection time. */
     mstime_t pc_last_activity; /* Last time we received any message. */
@@ -188,10 +189,10 @@ typedef struct instanceLink {
                                   the link was down. */
 } instanceLink;
 
-typedef struct sentinelKVInstance {
+typedef struct sentinelValkeyInstance {
     int flags;                                 /* See SRI_... defines */
     char *name;                                /* Primary name from the point of view of this sentinel. */
-    char *runid;                               /* Run ID of this instance, or unique ID if is a Sentinel.*/
+    sds runid;                                 /* Run ID of this instance, or unique ID if is a Sentinel.*/
     uint64_t config_epoch;                     /* Configuration epoch. */
     sentinelAddr *addr;                        /* Primary host. */
     instanceLink *link;                        /* Link to the instance, may be shared for Sentinels. */
@@ -221,7 +222,7 @@ typedef struct sentinelKVInstance {
     mstime_t role_reported_time;
     mstime_t replica_conf_change_time; /* Last time replica primary addr changed. */
 
-    int monitored_instance_failover_state;            /* Whether the KV instance supports/reports a failover in "master_failover_state" */
+    int monitored_instance_failover_state;            /* Whether the Valkey instance supports/reports a failover in "master_failover_state" */
     mstime_t monitored_instance_failover_change_time; /* Last time monitored_instance_failover_state changed. */
 
     /* Primary specific. */
@@ -229,15 +230,15 @@ typedef struct sentinelKVInstance {
     dict *replicas;      /* Replicas for this primary instance. */
     unsigned int quorum; /* Number of sentinels that need to agree on failure. */
     int parallel_syncs;  /* How many replicas to reconfigure at same time. */
-    char *auth_pass;     /* Password to use for AUTH against primary & replica. */
-    char *auth_user;     /* Username for ACLs AUTH against primary & replica. */
+    sds auth_pass;       /* Password to use for AUTH against primary & replica. */
+    sds auth_user;       /* Username for ACLs AUTH against primary & replica. */
 
     /* Replica specific. */
     mstime_t primary_link_down_time;        /* Replica replication link down time. */
     int replica_priority;                   /* Replica priority according to its INFO output. */
     int replica_announced;                  /* Replica announcing according to its INFO output. */
     mstime_t replica_reconf_sent_time;      /* Time at which we sent REPLICA OF <new> */
-    struct sentinelKVInstance *primary; /* Primary instance if it's replica. */
+    struct sentinelValkeyInstance *primary; /* Primary instance if it's replica. */
     char *replica_primary_host;             /* Primary host as reported by INFO */
     int replica_primary_port;               /* Primary port as reported by INFO */
     int replica_primary_link_status;        /* Primary link status as reported by INFO */
@@ -255,25 +256,25 @@ typedef struct sentinelKVInstance {
     mstime_t failover_timeout;                       /* Max time to refresh failover state. */
     mstime_t failover_delay_logged;                  /* For what failover_start_time value we
                                                       * logged the failover delay. */
-    struct sentinelKVInstance *promoted_replica; /* Promoted replica instance. */
+    struct sentinelValkeyInstance *promoted_replica; /* Promoted replica instance. */
     /* Scripts executed to notify admin or reconfigure clients: when they
      * are set to NULL no script is executed. */
-    char *notification_script;
-    char *client_reconfig_script;
+    sds notification_script;
+    sds client_reconfig_script;
     sds info; /* cached INFO output */
-} sentinelKVInstance;
+} sentinelValkeyInstance;
 
 /* Main state. */
 struct sentinelState {
     char myid[CONFIG_RUN_ID_SIZE + 1]; /* This sentinel ID. */
     uint64_t current_epoch;            /* Current epoch. */
-    dict *primaries;                   /* Dictionary of primary sentinelKVInstances.
+    dict *primaries;                   /* Dictionary of primary sentinelValkeyInstances.
                                         Key is the instance name, value is the
-                                        sentinelKVInstance structure pointer. */
+                                        sentinelValkeyInstance structure pointer. */
     int tilt;                          /* Are we in TILT mode? */
     int total_tilt;                    /* Number of tilt. */
     int running_scripts;               /* Number of scripts in execution right now. */
-    mstime_t tilt_start_time;          /* When TITL started. */
+    mstime_t tilt_start_time;          /* When TILT started. */
     mstime_t previous_time;            /* Last time we ran the time handler. */
     list *scripts_queue;               /* Queue of user scripts to execute. */
     char *announce_ip;                 /* IP addr that is gossiped to other sentinels if
@@ -283,8 +284,8 @@ struct sentinelState {
     unsigned long simfailure_flags;    /* Failures simulation. */
     int deny_scripts_reconfig;         /* Allow SENTINEL SET ... to change script
                                           paths at runtime? */
-    char *sentinel_auth_pass;          /* Password to use for AUTH against other sentinel */
-    char *sentinel_auth_user;          /* Username for ACLs AUTH against other sentinel. */
+    sds sentinel_auth_pass;            /* Password to use for AUTH against other sentinel */
+    sds sentinel_auth_user;            /* Username for ACLs AUTH against other sentinel. */
     int resolve_hostnames;             /* Support use of hostnames, assuming DNS is well configured. */
     int announce_hostnames;            /* Announce hostnames instead of IPs when we have them. */
 } sentinel;
@@ -302,47 +303,47 @@ typedef struct sentinelScriptJob {
     pid_t pid;           /* Script execution pid. */
 } sentinelScriptJob;
 
-/* ======================= libkv ae.c adapters =============================
- * Note: this implementation is taken from kv/adapters/ae.h, however
+/* ======================= libvalkey ae.c adapters =============================
+ * Note: this implementation is taken from valkey/adapters/ae.h, however
  * we have our modified copy for Sentinel in order to use our allocator
  * and to have full control over how the adapter works. */
 
-typedef struct KVAeEvents {
-    kvAsyncContext *context;
+typedef struct ValkeyAeEvents {
+    valkeyAsyncContext *context;
     aeEventLoop *loop;
     int fd;
     int reading, writing;
-} KVAeEvents;
+} ValkeyAeEvents;
 
-static void kvAeReadEvent(aeEventLoop *el, int fd, void *privdata, int mask) {
+static void valkeyAeReadEvent(aeEventLoop *el, int fd, void *privdata, int mask) {
     ((void)el);
     ((void)fd);
     ((void)mask);
 
-    KVAeEvents *e = (KVAeEvents *)privdata;
-    kvAsyncHandleRead(e->context);
+    ValkeyAeEvents *e = (ValkeyAeEvents *)privdata;
+    valkeyAsyncHandleRead(e->context);
 }
 
-static void kvAeWriteEvent(aeEventLoop *el, int fd, void *privdata, int mask) {
+static void valkeyAeWriteEvent(aeEventLoop *el, int fd, void *privdata, int mask) {
     ((void)el);
     ((void)fd);
     ((void)mask);
 
-    KVAeEvents *e = (KVAeEvents *)privdata;
-    kvAsyncHandleWrite(e->context);
+    ValkeyAeEvents *e = (ValkeyAeEvents *)privdata;
+    valkeyAsyncHandleWrite(e->context);
 }
 
-static void kvAeAddRead(void *privdata) {
-    KVAeEvents *e = (KVAeEvents *)privdata;
+static void valkeyAeAddRead(void *privdata) {
+    ValkeyAeEvents *e = (ValkeyAeEvents *)privdata;
     aeEventLoop *loop = e->loop;
     if (!e->reading) {
         e->reading = 1;
-        aeCreateFileEvent(loop, e->fd, AE_READABLE, kvAeReadEvent, e);
+        aeCreateFileEvent(loop, e->fd, AE_READABLE, valkeyAeReadEvent, e);
     }
 }
 
-static void kvAeDelRead(void *privdata) {
-    KVAeEvents *e = (KVAeEvents *)privdata;
+static void valkeyAeDelRead(void *privdata) {
+    ValkeyAeEvents *e = (ValkeyAeEvents *)privdata;
     aeEventLoop *loop = e->loop;
     if (e->reading) {
         e->reading = 0;
@@ -350,17 +351,17 @@ static void kvAeDelRead(void *privdata) {
     }
 }
 
-static void kvAeAddWrite(void *privdata) {
-    KVAeEvents *e = (KVAeEvents *)privdata;
+static void valkeyAeAddWrite(void *privdata) {
+    ValkeyAeEvents *e = (ValkeyAeEvents *)privdata;
     aeEventLoop *loop = e->loop;
     if (!e->writing) {
         e->writing = 1;
-        aeCreateFileEvent(loop, e->fd, AE_WRITABLE, kvAeWriteEvent, e);
+        aeCreateFileEvent(loop, e->fd, AE_WRITABLE, valkeyAeWriteEvent, e);
     }
 }
 
-static void kvAeDelWrite(void *privdata) {
-    KVAeEvents *e = (KVAeEvents *)privdata;
+static void valkeyAeDelWrite(void *privdata) {
+    ValkeyAeEvents *e = (ValkeyAeEvents *)privdata;
     aeEventLoop *loop = e->loop;
     if (e->writing) {
         e->writing = 0;
@@ -368,33 +369,33 @@ static void kvAeDelWrite(void *privdata) {
     }
 }
 
-static void kvAeCleanup(void *privdata) {
-    KVAeEvents *e = (KVAeEvents *)privdata;
-    kvAeDelRead(privdata);
-    kvAeDelWrite(privdata);
+static void valkeyAeCleanup(void *privdata) {
+    ValkeyAeEvents *e = (ValkeyAeEvents *)privdata;
+    valkeyAeDelRead(privdata);
+    valkeyAeDelWrite(privdata);
     zfree(e);
 }
 
-static int kvAeAttach(aeEventLoop *loop, kvAsyncContext *ac) {
-    kvContext *c = &(ac->c);
-    KVAeEvents *e;
+static int valkeyAeAttach(aeEventLoop *loop, valkeyAsyncContext *ac) {
+    valkeyContext *c = &(ac->c);
+    ValkeyAeEvents *e;
 
     /* Nothing should be attached when something is already attached */
     if (ac->ev.data != NULL) return C_ERR;
 
     /* Create container for context and r/w events */
-    e = (KVAeEvents *)zmalloc(sizeof(*e));
+    e = (ValkeyAeEvents *)zmalloc(sizeof(*e));
     e->context = ac;
     e->loop = loop;
     e->fd = c->fd;
     e->reading = e->writing = 0;
 
     /* Register functions to start/stop listening for events */
-    ac->ev.addRead = kvAeAddRead;
-    ac->ev.delRead = kvAeDelRead;
-    ac->ev.addWrite = kvAeAddWrite;
-    ac->ev.delWrite = kvAeDelWrite;
-    ac->ev.cleanup = kvAeCleanup;
+    ac->ev.addRead = valkeyAeAddRead;
+    ac->ev.delRead = valkeyAeDelRead;
+    ac->ev.addWrite = valkeyAeAddWrite;
+    ac->ev.delWrite = valkeyAeDelWrite;
+    ac->ev.cleanup = valkeyAeCleanup;
     ac->ev.data = e;
 
     return C_OK;
@@ -402,50 +403,55 @@ static int kvAeAttach(aeEventLoop *loop, kvAsyncContext *ac) {
 
 /* ============================= Prototypes ================================= */
 
-void sentinelLinkEstablishedCallback(kvAsyncContext *c, int status);
-void sentinelDisconnectCallback(const kvAsyncContext *c, int status);
-void sentinelReceiveHelloMessages(kvAsyncContext *c, void *reply, void *privdata);
-sentinelKVInstance *sentinelGetPrimaryByName(char *name);
-char *sentinelGetSubjectiveLeader(sentinelKVInstance *primary);
-char *sentinelGetObjectiveLeader(sentinelKVInstance *primary);
-void instanceLinkConnectionError(const kvAsyncContext *c);
-const char *sentinelKVInstanceTypeStr(sentinelKVInstance *ri);
-void sentinelAbortFailover(sentinelKVInstance *ri);
-void sentinelEvent(int level, char *type, sentinelKVInstance *ri, const char *fmt, ...);
-sentinelKVInstance *sentinelSelectReplica(sentinelKVInstance *primary);
+void sentinelLinkEstablishedCallback(valkeyAsyncContext *c, int status);
+void sentinelDisconnectCallback(const valkeyAsyncContext *c, int status);
+void sentinelReceiveHelloMessages(valkeyAsyncContext *c, void *reply, void *privdata);
+sentinelValkeyInstance *sentinelGetPrimaryByName(char *name);
+char *sentinelGetSubjectiveLeader(sentinelValkeyInstance *primary);
+char *sentinelGetObjectiveLeader(sentinelValkeyInstance *primary);
+void instanceLinkConnectionError(const valkeyAsyncContext *c);
+const char *sentinelValkeyInstanceTypeStr(sentinelValkeyInstance *ri);
+void sentinelAbortFailover(sentinelValkeyInstance *ri);
+void sentinelEvent(int level, char *type, sentinelValkeyInstance *ri, const char *fmt, ...);
+sentinelValkeyInstance *sentinelSelectReplica(sentinelValkeyInstance *primary);
 void sentinelScheduleScriptExecution(char *path, ...);
-void sentinelStartFailover(sentinelKVInstance *primary);
-void sentinelDiscardReplyCallback(kvAsyncContext *c, void *reply, void *privdata);
-int sentinelKillClients(sentinelKVInstance *ri);
-int sentinelSendReplicaOf(sentinelKVInstance *ri, const sentinelAddr *addr);
-char *sentinelVoteLeader(sentinelKVInstance *primary, uint64_t req_epoch, char *req_runid, uint64_t *leader_epoch);
+void sentinelStartFailover(sentinelValkeyInstance *primary);
+void sentinelDiscardReplyCallback(valkeyAsyncContext *c, void *reply, void *privdata);
+int sentinelKillClients(sentinelValkeyInstance *ri);
+int sentinelSendReplicaOf(sentinelValkeyInstance *ri, const sentinelAddr *addr);
+char *sentinelVoteLeader(sentinelValkeyInstance *primary, uint64_t req_epoch, char *req_runid, uint64_t *leader_epoch);
 int sentinelFlushConfig(void);
 void sentinelGenerateInitialMonitorEvents(void);
-int sentinelSendPing(sentinelKVInstance *ri);
-int sentinelForceHelloUpdateForPrimary(sentinelKVInstance *primary);
-sentinelKVInstance *getSentinelKVInstanceByAddrAndRunID(dict *instances, char *ip, int port, char *runid);
+int sentinelSendPing(sentinelValkeyInstance *ri);
+int sentinelForceHelloUpdateForPrimary(sentinelValkeyInstance *primary);
+sentinelValkeyInstance *getSentinelValkeyInstanceByAddrAndRunID(dict *instances, char *ip, int port, char *runid);
 void sentinelSimFailureCrash(void);
-void sentinelAskPrimaryStateToOtherSentinels(sentinelKVInstance *primary, int flags);
+void sentinelAskPrimaryStateToOtherSentinels(sentinelValkeyInstance *primary, int flags);
 
 /* ========================= Dictionary types =============================== */
 
-void releaseSentinelKVInstance(sentinelKVInstance *ri);
+void releaseSentinelValkeyInstance(sentinelValkeyInstance *ri);
 
 void dictInstancesValDestructor(void *obj) {
-    releaseSentinelKVInstance(obj);
+    releaseSentinelValkeyInstance(obj);
 }
 
-/* Instance name (sds) -> instance (sentinelKVInstance pointer)
+/* Instance name (sds) -> instance (sentinelValkeyInstance pointer)
  *
- * also used for: sentinelKVInstance->sentinels dictionary that maps
+ * also used for: sentinelValkeyInstance->sentinels dictionary that maps
  * sentinels ip:port to last seen time in Pub/Sub hello message. */
+
+static void dictEntryDestructorInstancesValue(void *entry) {
+    dictEntry *de = entry;
+    dictInstancesValDestructor(dictGetVal(de));
+    zfree(de);
+}
+
 dictType instancesDictType = {
-    dictSdsHash,                /* hash function */
-    NULL,                       /* key dup */
-    dictSdsKeyCompare,          /* key compare */
-    NULL,                       /* key destructor */
-    dictInstancesValDestructor, /* val destructor */
-    NULL                        /* allow to expand */
+    .entryGetKey = dictEntryGetKey,
+    .hashFunction = dictSdsHash,
+    .keyCompare = dictSdsKeyCompare,
+    .entryDestructor = dictEntryDestructorInstancesValue,
 };
 
 /* Instance runid (sds) -> votes (long casted to void*)
@@ -453,22 +459,18 @@ dictType instancesDictType = {
  * This is useful into sentinelGetObjectiveLeader() function in order to
  * count the votes and understand who is the leader. */
 dictType leaderVotesDictType = {
-    dictSdsHash,       /* hash function */
-    NULL,              /* key dup */
-    dictSdsKeyCompare, /* key compare */
-    NULL,              /* key destructor */
-    NULL,              /* val destructor */
-    NULL               /* allow to expand */
+    .entryGetKey = dictEntryGetKey,
+    .hashFunction = dictSdsHash,
+    .keyCompare = dictSdsKeyCompare,
+    .entryDestructor = zfree,
 };
 
 /* Instance renamed commands table. */
 dictType renamedCommandsDictType = {
-    dictSdsCaseHash,       /* hash function */
-    NULL,                  /* key dup */
-    dictSdsKeyCaseCompare, /* key compare */
-    dictSdsDestructor,     /* key destructor */
-    dictSdsDestructor,     /* val destructor */
-    NULL                   /* allow to expand */
+    .entryGetKey = dictEntryGetKey,
+    .hashFunction = dictSdsCaseHash,
+    .keyCompare = dictSdsKeyCaseCompare,
+    .entryDestructor = dictEntryDestructorSdsKeyValue,
 };
 
 /* =========================== Initialization =============================== */
@@ -494,7 +496,7 @@ const char *preMonitorCfgName[] = {
 /* This function overwrites a few normal server config default with Sentinel
  * specific defaults. */
 void initSentinelConfig(void) {
-    server.port = KV_SENTINEL_PORT;
+    server.port = VALKEY_SENTINEL_PORT;
     server.protected_mode = 0; /* Sentinel must be exposed. */
 }
 
@@ -523,15 +525,49 @@ void initSentinel(void) {
     server.sentinel_config = NULL;
 }
 
-/* This function is for checking whether sentinel config file has been set,
- * also checking whether we have write permissions. */
+/* Check that the config file is set and that we can save state to it.
+ * A read-only config file is refused on purpose: we won't overwrite it.
+ * The directory must also allow what rewriteConfigOverwriteFile() does:
+ * create a temp file, and open the directory to fsync it. */
 void sentinelCheckConfigFile(void) {
     if (server.configfile == NULL) {
         serverLog(LL_WARNING, "Sentinel needs config file on disk to save state. Exiting...");
         exit(1);
-    } else if (access(server.configfile, W_OK) == -1) {
+    }
+
+    if (access(server.configfile, W_OK) == -1) {
         serverLog(LL_WARNING, "Sentinel config file %s is not writable: %s. Exiting...", server.configfile,
                   strerror(errno));
+        exit(1);
+    }
+
+    /* Same temp name and length check as rewriteConfigOverwriteFile(). */
+    char tmp_conffile[PATH_MAX];
+    int tmp_path_len = snprintf(tmp_conffile, sizeof(tmp_conffile), "%s%s", server.configfile, ".XXXXXX");
+    if (tmp_path_len <= 0 || (unsigned int)tmp_path_len >= sizeof(tmp_conffile)) {
+        serverLog(LL_WARNING, "Sentinel config file path %s is too long. Exiting...", server.configfile);
+        exit(1);
+    }
+
+    /* For logging only. Fits per the check above; dirname() may modify it. */
+    char dir_buf[PATH_MAX];
+    memcpy(dir_buf, server.configfile, strlen(server.configfile) + 1);
+    const char *dir = dirname(dir_buf);
+
+#if defined(_GNU_SOURCE) && !defined(__HAIKU__)
+    int fd = mkostemp(tmp_conffile, O_CLOEXEC);
+#else
+    int fd = mkstemp(tmp_conffile);
+#endif
+    if (fd == -1) {
+        serverLog(LL_WARNING, "Sentinel config dir %s is not writable: %s. Exiting...", dir, strerror(errno));
+        exit(1);
+    }
+    close(fd);
+    unlink(tmp_conffile);
+
+    if (fsyncFileDir(server.configfile) == -1) {
+        serverLog(LL_WARNING, "Sentinel config dir %s cannot be synced: %s. Exiting...", dir, strerror(errno));
         exit(1);
     }
 }
@@ -675,21 +711,21 @@ sds announceSentinelAddrAndPort(const sentinelAddr *a) {
  *
  *  Any other specifier after "%@" is processed by printf itself.
  */
-void sentinelEvent(int level, char *type, sentinelKVInstance *ri, const char *fmt, ...) {
+void sentinelEvent(int level, char *type, sentinelValkeyInstance *ri, const char *fmt, ...) {
     va_list ap;
     char msg[LOG_MAX_LEN];
     robj *channel, *payload;
 
     /* Handle %@ */
     if (fmt[0] == '%' && fmt[1] == '@') {
-        sentinelKVInstance *primary = (ri->flags & SRI_PRIMARY) ? NULL : ri->primary;
+        sentinelValkeyInstance *primary = (ri->flags & SRI_PRIMARY) ? NULL : ri->primary;
 
         if (primary) {
-            snprintf(msg, sizeof(msg), "%s %s %s %d @ %s %s %d", sentinelKVInstanceTypeStr(ri), ri->name,
+            snprintf(msg, sizeof(msg), "%s %s %s %d @ %s %s %d", sentinelValkeyInstanceTypeStr(ri), ri->name,
                      announceSentinelAddr(ri->addr), ri->addr->port, primary->name, announceSentinelAddr(primary->addr),
                      primary->addr->port);
         } else {
-            snprintf(msg, sizeof(msg), "%s %s %s %d", sentinelKVInstanceTypeStr(ri), ri->name,
+            snprintf(msg, sizeof(msg), "%s %s %s %d", sentinelValkeyInstanceTypeStr(ri), ri->name,
                      announceSentinelAddr(ri->addr), ri->addr->port);
         }
         fmt += 2;
@@ -718,7 +754,7 @@ void sentinelEvent(int level, char *type, sentinelKVInstance *ri, const char *fm
 
     /* Call the notification script if applicable. */
     if (level == LL_WARNING && ri != NULL) {
-        sentinelKVInstance *primary = (ri->flags & SRI_PRIMARY) ? ri : ri->primary;
+        sentinelValkeyInstance *primary = (ri->flags & SRI_PRIMARY) ? ri : ri->primary;
         if (primary && primary->notification_script) {
             sentinelScheduleScriptExecution(primary->notification_script, type, msg, NULL);
         }
@@ -735,7 +771,7 @@ void sentinelGenerateInitialMonitorEvents(void) {
 
     di = dictGetIterator(sentinel.primaries);
     while ((de = dictNext(di)) != NULL) {
-        sentinelKVInstance *ri = dictGetVal(de);
+        sentinelValkeyInstance *ri = dictGetVal(de);
         sentinelEvent(LL_WARNING, "+monitor", ri, "%@ quorum %d", ri->quorum);
     }
     dictReleaseIterator(di);
@@ -836,7 +872,7 @@ void sentinelRunPendingScripts(void) {
         sj->flags |= SENTINEL_SCRIPT_RUNNING;
         sj->start_time = mstime();
         sj->retry_num++;
-        pid = kv_fork();
+        pid = valkey_fork();
 
         if (pid == -1) {
             /* Parent (fork error).
@@ -906,7 +942,7 @@ void sentinelCollectTerminatedScripts(void) {
             sj->pid = 0;
             sj->start_time = mstime() + sentinelScriptRetryDelay(sj->retry_num);
         } else {
-            /* Otherwise let's remove the script, but log the event if the
+            /* Otherwise, let's remove the script, but log the event if the
              * execution did not terminated in the best of the ways. */
             if (bysignal || exitcode != 0) {
                 sentinelEvent(LL_WARNING, "-script-error", NULL, "%s %d %d", sj->argv[0], bysignal, exitcode);
@@ -920,7 +956,7 @@ void sentinelCollectTerminatedScripts(void) {
 
 /* Kill scripts in timeout, they'll be collected by the
  * sentinelCollectTerminatedScripts() function. */
-void sentinelKillTimedoutScripts(void) {
+void sentinelKillTimedOutScripts(void) {
     listNode *ln;
     listIter li;
     mstime_t now = mstime();
@@ -988,7 +1024,7 @@ void sentinelPendingScriptsCommand(client *c) {
  *
  * from/to fields are respectively primary -> promoted replica addresses for
  * "start" and "end". */
-void sentinelCallClientReconfScript(sentinelKVInstance *primary,
+void sentinelCallClientReconfScript(sentinelValkeyInstance *primary,
                                     int role,
                                     char *state,
                                     sentinelAddr *from,
@@ -1029,8 +1065,8 @@ instanceLink *createInstanceLink(void) {
     return link;
 }
 
-/* Disconnect a libkv connection in the context of an instance link. */
-void instanceLinkCloseConnection(instanceLink *link, kvAsyncContext *c) {
+/* Disconnect a libvalkey connection in the context of an instance link. */
+void instanceLinkCloseConnection(instanceLink *link, valkeyAsyncContext *c) {
     if (c == NULL) return;
 
     if (link->cc == c) {
@@ -1040,29 +1076,29 @@ void instanceLinkCloseConnection(instanceLink *link, kvAsyncContext *c) {
     if (link->pc == c) link->pc = NULL;
     c->data = NULL;
     link->disconnected = 1;
-    kvAsyncFree(c);
+    valkeyAsyncFree(c);
 }
 
 /* Decrement the refcount of a link object, if it drops to zero, actually
- * free it and return NULL. Otherwise don't do anything and return the pointer
+ * free it and return NULL. Otherwise, don't do anything and return the pointer
  * to the object.
  *
  * If we are not going to free the link and ri is not NULL, we rebind all the
- * pending requests in link->cc (libkv connection for commands) to a
+ * pending requests in link->cc (libvalkey connection for commands) to a
  * callback that will just ignore them. This is useful to avoid processing
  * replies for an instance that no longer exists. */
-instanceLink *releaseInstanceLink(instanceLink *link, sentinelKVInstance *ri) {
+instanceLink *releaseInstanceLink(instanceLink *link, sentinelValkeyInstance *ri) {
     serverAssert(link->refcount > 0);
     link->refcount--;
     if (link->refcount != 0) {
         if (ri && ri->link->cc) {
-            /* This instance may have pending callbacks in the libkv async
+            /* This instance may have pending callbacks in the libvalkey async
              * context, having as 'privdata' the instance that we are going to
              * free. Let's rewrite the callback list, directly exploiting
-             * libkv internal data structures, in order to bind them with
+             * libvalkey internal data structures, in order to bind them with
              * a callback that will ignore the reply at all. */
-            kvCallback *cb;
-            kvCallbackList *callbacks = &link->cc->replies;
+            valkeyCallback *cb;
+            valkeyCallbackList *callbacks = &link->cc->replies;
 
             cb = callbacks->head;
             while (cb) {
@@ -1092,9 +1128,9 @@ instanceLink *releaseInstanceLink(instanceLink *link, sentinelKVInstance *ri) {
  * detection and so forth.
  *
  * Return C_OK if a matching Sentinel was found in the context of a
- * different primary and sharing was performed. Otherwise C_ERR
+ * different primary and sharing was performed. Otherwise, C_ERR
  * is returned. */
-int sentinelTryConnectionSharing(sentinelKVInstance *ri) {
+int sentinelTryConnectionSharing(sentinelValkeyInstance *ri) {
     serverAssert(ri->flags & SRI_SENTINEL);
     dictIterator *di;
     dictEntry *de;
@@ -1104,11 +1140,11 @@ int sentinelTryConnectionSharing(sentinelKVInstance *ri) {
 
     di = dictGetIterator(sentinel.primaries);
     while ((de = dictNext(di)) != NULL) {
-        sentinelKVInstance *primary = dictGetVal(de), *match;
+        sentinelValkeyInstance *primary = dictGetVal(de), *match;
         /* We want to share with the same physical Sentinel referenced
          * in other primaries, so skip our primary. */
         if (primary == ri->primary) continue;
-        match = getSentinelKVInstanceByAddrAndRunID(primary->sentinels, NULL, 0, ri->runid);
+        match = getSentinelValkeyInstanceByAddrAndRunID(primary->sentinels, NULL, 0, ri->runid);
         if (match == NULL) continue; /* No match. */
         if (match == ri) continue;   /* Should never happen but... safer. */
 
@@ -1125,7 +1161,7 @@ int sentinelTryConnectionSharing(sentinelKVInstance *ri) {
 }
 
 /* Disconnect the relevant primary and its replicas. */
-void dropInstanceConnections(sentinelKVInstance *ri) {
+void dropInstanceConnections(sentinelValkeyInstance *ri) {
     serverAssert(ri->flags & SRI_PRIMARY);
 
     /* Disconnect with the primary. */
@@ -1135,7 +1171,7 @@ void dropInstanceConnections(sentinelKVInstance *ri) {
     /* Disconnect with all replicas. */
     dictIterator *di;
     dictEntry *de;
-    sentinelKVInstance *repl_ri;
+    sentinelValkeyInstance *repl_ri;
     di = dictGetIterator(ri->replicas);
     while ((de = dictNext(di)) != NULL) {
         repl_ri = dictGetVal(de);
@@ -1157,10 +1193,10 @@ int sentinelDropConnections(void) {
         dictIterator *sdi;
         dictEntry *sde;
 
-        sentinelKVInstance *ri = dictGetVal(de);
+        sentinelValkeyInstance *ri = dictGetVal(de);
         sdi = dictGetIterator(ri->sentinels);
         while ((sde = dictNext(sdi)) != NULL) {
-            sentinelKVInstance *si = dictGetVal(sde);
+            sentinelValkeyInstance *si = dictGetVal(sde);
             if (!si->link->disconnected) {
                 instanceLinkCloseConnection(si->link, si->link->pc);
                 instanceLinkCloseConnection(si->link, si->link->cc);
@@ -1180,7 +1216,7 @@ int sentinelDropConnections(void) {
  * will be updated.
  *
  * Return the number of updated Sentinel addresses. */
-int sentinelUpdateSentinelAddressInAllPrimaries(sentinelKVInstance *ri) {
+int sentinelUpdateSentinelAddressInAllPrimaries(sentinelValkeyInstance *ri) {
     serverAssert(ri->flags & SRI_SENTINEL);
     dictIterator *di;
     dictEntry *de;
@@ -1188,8 +1224,8 @@ int sentinelUpdateSentinelAddressInAllPrimaries(sentinelKVInstance *ri) {
 
     di = dictGetIterator(sentinel.primaries);
     while ((de = dictNext(di)) != NULL) {
-        sentinelKVInstance *primary = dictGetVal(de), *match;
-        match = getSentinelKVInstanceByAddrAndRunID(primary->sentinels, NULL, 0, ri->runid);
+        sentinelValkeyInstance *primary = dictGetVal(de), *match;
+        match = getSentinelValkeyInstanceByAddrAndRunID(primary->sentinels, NULL, 0, ri->runid);
         /* If there is no match, this primary does not know about this
          * Sentinel, try with the next one. */
         if (match == NULL) continue;
@@ -1212,13 +1248,13 @@ int sentinelUpdateSentinelAddressInAllPrimaries(sentinelKVInstance *ri) {
     return reconfigured;
 }
 
-/* This function is called when a libkv connection reported an error.
+/* This function is called when a libvalkey connection reported an error.
  * We set it to NULL and mark the link as disconnected so that it will be
  * reconnected again.
  *
- * Note: we don't free the libkv context as libkv will do it for us
+ * Note: we don't free the libvalkey context as libvalkey will do it for us
  * for async connections. */
-void instanceLinkConnectionError(const kvAsyncContext *c) {
+void instanceLinkConnectionError(const valkeyAsyncContext *c) {
     instanceLink *link = c->data;
     int pubsub;
 
@@ -1232,18 +1268,18 @@ void instanceLinkConnectionError(const kvAsyncContext *c) {
     link->disconnected = 1;
 }
 
-/* Libkv connection established / disconnected callbacks. We need them
+/* Libvalkey connection established / disconnected callbacks. We need them
  * just to cleanup our link state. */
-void sentinelLinkEstablishedCallback(kvAsyncContext *c, int status) {
+void sentinelLinkEstablishedCallback(valkeyAsyncContext *c, int status) {
     if (status != C_OK) instanceLinkConnectionError(c);
 }
 
-void sentinelDisconnectCallback(const kvAsyncContext *c, int status) {
+void sentinelDisconnectCallback(const valkeyAsyncContext *c, int status) {
     UNUSED(status);
     instanceLinkConnectionError(c);
 }
 
-/* ========================== sentinelKVInstance ========================= */
+/* ========================== sentinelValkeyInstance ========================= */
 
 /* Create an instance of the server, the following fields must be populated by the
  * caller if needed:
@@ -1267,13 +1303,13 @@ void sentinelDisconnectCallback(const kvAsyncContext *c, int status) {
  * a primary with the same name, a replica with the same address, or a sentinel
  * with the same ID already exists. */
 
-sentinelKVInstance *createSentinelKVInstance(char *name,
+sentinelValkeyInstance *createSentinelValkeyInstance(char *name,
                                                      int flags,
                                                      char *hostname,
                                                      int port,
                                                      int quorum,
-                                                     sentinelKVInstance *primary) {
-    sentinelKVInstance *ri;
+                                                     sentinelValkeyInstance *primary) {
+    sentinelValkeyInstance *ri;
     sentinelAddr *addr;
     dict *table = NULL;
     sds sdsname;
@@ -1370,11 +1406,11 @@ sentinelKVInstance *createSentinelKVInstance(char *name,
     return ri;
 }
 
-/* Release this instance and all its replicas, sentinels, libkv connections.
+/* Release this instance and all its replicas, sentinels, libvalkey connections.
  * This function does not take care of unlinking the instance from the main
  * primaries table (if it is a primary) or from its primary sentinels/replicas table
  * if it is a replica or sentinel. */
-void releaseSentinelKVInstance(sentinelKVInstance *ri) {
+void releaseSentinelValkeyInstance(sentinelValkeyInstance *ri) {
     /* Release all its replicas or sentinels if any. */
     dictRelease(ri->sentinels);
     dictRelease(ri->replicas);
@@ -1402,9 +1438,9 @@ void releaseSentinelKVInstance(sentinelKVInstance *ri) {
 }
 
 /* Lookup a replica in a primary instance, by ip and port. */
-sentinelKVInstance *sentinelKVInstanceLookupReplica(sentinelKVInstance *ri, char *replica_addr, int port) {
+sentinelValkeyInstance *sentinelValkeyInstanceLookupReplica(sentinelValkeyInstance *ri, char *replica_addr, int port) {
     sds key;
-    sentinelKVInstance *replica;
+    sentinelValkeyInstance *replica;
     sentinelAddr *addr;
 
     serverAssert(ri->flags & SRI_PRIMARY);
@@ -1424,7 +1460,7 @@ sentinelKVInstance *sentinelKVInstanceLookupReplica(sentinelKVInstance *ri, char
 }
 
 /* Return the name of the type of the instance as a string. */
-const char *sentinelKVInstanceTypeStr(sentinelKVInstance *ri) {
+const char *sentinelValkeyInstanceTypeStr(sentinelValkeyInstance *ri) {
     if (ri->flags & SRI_PRIMARY)
         return "master";
     else if (ri->flags & SRI_REPLICA)
@@ -1444,9 +1480,9 @@ const char *sentinelKVInstanceTypeStr(sentinelKVInstance *ri) {
  * remove our old entry and add a new one for the same ID but with the new
  * address.
  *
- * The function returns 1 if the matching Sentinel was removed, otherwise
+ * The function returns 1 if the matching Sentinel was removed; otherwise,
  * 0 if there was no Sentinel with this ID. */
-int removeMatchingSentinelFromPrimary(sentinelKVInstance *primary, char *runid) {
+int removeMatchingSentinelFromPrimary(sentinelValkeyInstance *primary, char *runid) {
     dictIterator *di;
     dictEntry *de;
     int removed = 0;
@@ -1455,7 +1491,7 @@ int removeMatchingSentinelFromPrimary(sentinelKVInstance *primary, char *runid) 
 
     di = dictGetSafeIterator(primary->sentinels);
     while ((de = dictNext(di)) != NULL) {
-        sentinelKVInstance *ri = dictGetVal(de);
+        sentinelValkeyInstance *ri = dictGetVal(de);
 
         if (ri->runid && strcmp(ri->runid, runid) == 0) {
             dictDelete(primary->sentinels, ri->name);
@@ -1467,28 +1503,28 @@ int removeMatchingSentinelFromPrimary(sentinelKVInstance *primary, char *runid) 
 }
 
 /* Search an instance with the same runid, ip and port into a dictionary
- * of instances. Return NULL if not found, otherwise return the instance
+ * of instances. Return NULL if not found; otherwise, return the instance
  * pointer.
  *
  * runid or addr can be NULL. In such a case the search is performed only
  * by the non-NULL field. */
-sentinelKVInstance *getSentinelKVInstanceByAddrAndRunID(dict *instances, char *addr, int port, char *runid) {
+sentinelValkeyInstance *getSentinelValkeyInstanceByAddrAndRunID(dict *instances, char *addr, int port, char *runid) {
     dictIterator *di;
     dictEntry *de;
-    sentinelKVInstance *instance = NULL;
+    sentinelValkeyInstance *instance = NULL;
     sentinelAddr *ri_addr = NULL;
 
     serverAssert(addr || runid); /* User must pass at least one search param. */
     if (addr != NULL) {
         /* Try to resolve addr. If hostnames are used, we're accepting an ri_addr
-         * that contains an hostname only and can still be matched based on that.
+         * that contains a hostname only and can still be matched based on that.
          */
         ri_addr = createSentinelAddr(addr, port, 1);
         if (!ri_addr) return NULL;
     }
     di = dictGetIterator(instances);
     while ((de = dictNext(di)) != NULL) {
-        sentinelKVInstance *ri = dictGetVal(de);
+        sentinelValkeyInstance *ri = dictGetVal(de);
 
         if (runid && !ri->runid) continue;
         if ((runid == NULL || strcmp(ri->runid, runid) == 0) &&
@@ -1504,8 +1540,8 @@ sentinelKVInstance *getSentinelKVInstanceByAddrAndRunID(dict *instances, char *a
 }
 
 /* Primary lookup by name */
-sentinelKVInstance *sentinelGetPrimaryByName(char *name) {
-    sentinelKVInstance *ri;
+sentinelValkeyInstance *sentinelGetPrimaryByName(char *name) {
+    sentinelValkeyInstance *ri;
     sds sdsname = sdsnew(name);
 
     ri = dictFetchValue(sentinel.primaries, sdsname);
@@ -1525,7 +1561,7 @@ sentinelKVInstance *sentinelGetPrimaryByName(char *name) {
  */
 
 #define SENTINEL_RESET_NO_SENTINELS (1 << 0)
-void sentinelResetPrimary(sentinelKVInstance *ri, int flags) {
+void sentinelResetPrimary(sentinelValkeyInstance *ri, int flags) {
     serverAssert(ri->flags & SRI_PRIMARY);
     dictRelease(ri->replicas);
     ri->replicas = dictCreate(&instancesDictType);
@@ -1566,7 +1602,7 @@ int sentinelResetPrimariesByPattern(char *pattern, int flags) {
 
     di = dictGetIterator(sentinel.primaries);
     while ((de = dictNext(di)) != NULL) {
-        sentinelKVInstance *ri = dictGetVal(de);
+        sentinelValkeyInstance *ri = dictGetVal(de);
 
         if (ri->name) {
             if (stringmatch(pattern, ri->name, 0)) {
@@ -1585,8 +1621,8 @@ int sentinelResetPrimariesByPattern(char *pattern, int flags) {
  * This is used to handle the +switch-primary event.
  *
  * The function returns C_ERR if the address can't be resolved for some
- * reason. Otherwise C_OK is returned.  */
-int sentinelResetPrimaryAndChangeAddress(sentinelKVInstance *primary, char *hostname, int port) {
+ * reason. Otherwise, C_OK is returned.  */
+int sentinelResetPrimaryAndChangeAddress(sentinelValkeyInstance *primary, char *hostname, int port) {
     sentinelAddr *oldaddr, *newaddr;
     sentinelAddr **replicas = NULL;
     int num_replicas = 0, j;
@@ -1604,7 +1640,7 @@ int sentinelResetPrimaryAndChangeAddress(sentinelKVInstance *primary, char *host
     /* Don't include the one having the address we are switching to. */
     di = dictGetIterator(primary->replicas);
     while ((de = dictNext(di)) != NULL) {
-        sentinelKVInstance *replica = dictGetVal(de);
+        sentinelValkeyInstance *replica = dictGetVal(de);
 
         if (sentinelAddrOrHostnameEqual(replica->addr, newaddr)) continue;
         replicas[num_replicas++] = dupSentinelAddr(replica->addr);
@@ -1627,9 +1663,9 @@ int sentinelResetPrimaryAndChangeAddress(sentinelKVInstance *primary, char *host
 
     /* Add replicas back. */
     for (j = 0; j < num_replicas; j++) {
-        sentinelKVInstance *replica;
+        sentinelValkeyInstance *replica;
 
-        replica = createSentinelKVInstance(NULL, SRI_REPLICA, replicas[j]->hostname, replicas[j]->port,
+        replica = createSentinelValkeyInstance(NULL, SRI_REPLICA, replicas[j]->hostname, replicas[j]->port,
                                                primary->quorum, primary);
         releaseSentinelAddr(replicas[j]);
         if (replica) sentinelEvent(LL_NOTICE, "+slave", replica, "%@");
@@ -1645,7 +1681,7 @@ int sentinelResetPrimaryAndChangeAddress(sentinelKVInstance *primary, char *host
 
 /* Return non-zero if there was no SDOWN or ODOWN error associated to this
  * instance in the latest 'ms' milliseconds. */
-int sentinelKVInstanceNoDownFor(sentinelKVInstance *ri, mstime_t ms) {
+int sentinelValkeyInstanceNoDownFor(sentinelValkeyInstance *ri, mstime_t ms) {
     mstime_t most_recent;
 
     most_recent = ri->s_down_since_time;
@@ -1655,7 +1691,7 @@ int sentinelKVInstanceNoDownFor(sentinelKVInstance *ri, mstime_t ms) {
 
 /* Return the current primary address, that is, its address or the address
  * of the promoted replica if already operational. */
-sentinelAddr *sentinelGetCurrentPrimaryAddress(sentinelKVInstance *primary) {
+sentinelAddr *sentinelGetCurrentPrimaryAddress(sentinelValkeyInstance *primary) {
     /* If we are failing over the primary, and the state is already
      * SENTINEL_FAILOVER_STATE_RECONF_REPLICAS or greater, it means that we
      * already have the new configuration epoch in the primary, and the
@@ -1671,7 +1707,7 @@ sentinelAddr *sentinelGetCurrentPrimaryAddress(sentinelKVInstance *primary) {
 
 /* This function sets the down_after_period field value in 'primary' to all
  * the replicas and sentinel instances connected to this primary. */
-void sentinelPropagateDownAfterPeriod(sentinelKVInstance *primary) {
+void sentinelPropagateDownAfterPeriod(sentinelValkeyInstance *primary) {
     dictIterator *di;
     dictEntry *de;
     int j;
@@ -1680,7 +1716,7 @@ void sentinelPropagateDownAfterPeriod(sentinelKVInstance *primary) {
     for (j = 0; d[j]; j++) {
         di = dictGetIterator(d[j]);
         while ((de = dictNext(di)) != NULL) {
-            sentinelKVInstance *ri = dictGetVal(de);
+            sentinelValkeyInstance *ri = dictGetVal(de);
             ri->down_after_period = primary->down_after_period;
         }
         dictReleaseIterator(di);
@@ -1694,7 +1730,7 @@ void sentinelPropagateDownAfterPeriod(sentinelKVInstance *primary) {
  * we check the one of the primary), and map the command that we should send
  * to the set of renamed commands. However, if the command was not renamed,
  * we just return "command" itself. */
-char *sentinelInstanceMapCommand(sentinelKVInstance *ri, char *command) {
+char *sentinelInstanceMapCommand(sentinelValkeyInstance *ri, char *command) {
     sds sc = sdsnew(command);
     if (ri->primary) ri = ri->primary;
     char *retval = dictFetchValue(ri->renamed_commands, sc);
@@ -1826,7 +1862,7 @@ void loadSentinelConfigFromQueue(void) {
     return;
 
 loaderr:
-    fprintf(stderr, "\n*** FATAL CONFIG FILE ERROR (Version %s) ***\n", KV_VERSION);
+    fprintf(stderr, "\n*** FATAL CONFIG FILE ERROR (Version %s) ***\n", VALKEY_VERSION);
     fprintf(stderr, "Reading the configuration file, at line %d\n", linenum);
     fprintf(stderr, ">>> '%s'\n", line);
     fprintf(stderr, "%s\n", err);
@@ -1834,14 +1870,14 @@ loaderr:
 }
 
 const char *sentinelHandleConfiguration(char **argv, int argc) {
-    sentinelKVInstance *ri;
+    sentinelValkeyInstance *ri;
 
     if (!strcasecmp(argv[0], "monitor") && argc == 5) {
         /* monitor <name> <host> <port> <quorum> */
         int quorum = atoi(argv[4]);
 
         if (quorum <= 0) return "Quorum must be 1 or greater.";
-        if (createSentinelKVInstance(argv[1], SRI_PRIMARY, argv[2], atoi(argv[3]), quorum, NULL) == NULL) {
+        if (createSentinelValkeyInstance(argv[1], SRI_PRIMARY, argv[2], atoi(argv[3]), quorum, NULL) == NULL) {
             return sentinelCheckCreateInstanceErrors(SRI_PRIMARY);
         }
     } else if (!strcasecmp(argv[0], "down-after-milliseconds") && argc == 3) {
@@ -1908,23 +1944,23 @@ const char *sentinelHandleConfiguration(char **argv, int argc) {
         if (!ri) return "No such master with specified name.";
         ri->leader_epoch = strtoull(argv[2], NULL, 10);
     } else if ((!strcasecmp(argv[0], "known-slave") || !strcasecmp(argv[0], "known-replica")) && argc == 4) {
-        sentinelKVInstance *replica;
+        sentinelValkeyInstance *replica;
 
         /* known-replica <name> <ip> <port> */
         ri = sentinelGetPrimaryByName(argv[1]);
         if (!ri) return "No such master with specified name.";
-        if ((replica = createSentinelKVInstance(NULL, SRI_REPLICA, argv[2], atoi(argv[3]), ri->quorum, ri)) ==
+        if ((replica = createSentinelValkeyInstance(NULL, SRI_REPLICA, argv[2], atoi(argv[3]), ri->quorum, ri)) ==
             NULL) {
             return sentinelCheckCreateInstanceErrors(SRI_REPLICA);
         }
     } else if (!strcasecmp(argv[0], "known-sentinel") && (argc == 4 || argc == 5)) {
-        sentinelKVInstance *si;
+        sentinelValkeyInstance *si;
 
         if (argc == 5) { /* Ignore the old form without runid. */
             /* known-sentinel <name> <ip> <port> [runid] */
             ri = sentinelGetPrimaryByName(argv[1]);
             if (!ri) return "No such master with specified name.";
-            if ((si = createSentinelKVInstance(argv[4], SRI_SENTINEL, argv[2], atoi(argv[3]), ri->quorum, ri)) ==
+            if ((si = createSentinelValkeyInstance(argv[4], SRI_SENTINEL, argv[2], atoi(argv[3]), ri->quorum, ri)) ==
                 NULL) {
                 return sentinelCheckCreateInstanceErrors(SRI_SENTINEL);
             }
@@ -2019,7 +2055,7 @@ void rewriteConfigSentinelOption(struct rewriteConfigState *state) {
     /* For every primary emit a "sentinel monitor" config entry. */
     di = dictGetIterator(sentinel.primaries);
     while ((de = dictNext(di)) != NULL) {
-        sentinelKVInstance *primary, *ri;
+        sentinelValkeyInstance *primary, *ri;
         sentinelAddr *primary_addr;
 
         /* sentinel monitor */
@@ -2055,29 +2091,31 @@ void rewriteConfigSentinelOption(struct rewriteConfigState *state) {
 
         /* sentinel notification-script */
         if (primary->notification_script) {
-            line = sdscatprintf(sdsempty(), "sentinel notification-script %s %s", primary->name,
-                                primary->notification_script);
+            line = sdscatprintf(sdsempty(), "sentinel notification-script %s ", primary->name);
+            line = sdscatrepr(line, primary->notification_script, sdslen(primary->notification_script));
             rewriteConfigRewriteLine(state, "sentinel notification-script", line, 1);
             /* rewriteConfigMarkAsProcessed is handled after the loop */
         }
 
         /* sentinel client-reconfig-script */
         if (primary->client_reconfig_script) {
-            line = sdscatprintf(sdsempty(), "sentinel client-reconfig-script %s %s", primary->name,
-                                primary->client_reconfig_script);
+            line = sdscatprintf(sdsempty(), "sentinel client-reconfig-script %s ", primary->name);
+            line = sdscatrepr(line, primary->client_reconfig_script, sdslen(primary->client_reconfig_script));
             rewriteConfigRewriteLine(state, "sentinel client-reconfig-script", line, 1);
             /* rewriteConfigMarkAsProcessed is handled after the loop */
         }
 
         /* sentinel auth-pass & auth-user */
         if (primary->auth_pass) {
-            line = sdscatprintf(sdsempty(), "sentinel auth-pass %s %s", primary->name, primary->auth_pass);
+            line = sdscatprintf(sdsempty(), "sentinel auth-pass %s ", primary->name);
+            line = sdscatrepr(line, primary->auth_pass, sdslen(primary->auth_pass));
             rewriteConfigRewriteLine(state, "sentinel auth-pass", line, 1);
             /* rewriteConfigMarkAsProcessed is handled after the loop */
         }
 
         if (primary->auth_user) {
-            line = sdscatprintf(sdsempty(), "sentinel auth-user %s %s", primary->name, primary->auth_user);
+            line = sdscatprintf(sdsempty(), "sentinel auth-user %s ", primary->name);
+            line = sdscatrepr(line, primary->auth_user, sdslen(primary->auth_user));
             rewriteConfigRewriteLine(state, "sentinel auth-user", line, 1);
             /* rewriteConfigMarkAsProcessed is handled after the loop */
         }
@@ -2134,8 +2172,9 @@ void rewriteConfigSentinelOption(struct rewriteConfigState *state) {
         while ((de = dictNext(di2)) != NULL) {
             ri = dictGetVal(de);
             if (ri->runid == NULL) continue;
-            line = sdscatprintf(sdsempty(), "sentinel known-sentinel %s %s %d %s", primary->name,
-                                announceSentinelAddr(ri->addr), ri->addr->port, ri->runid);
+            line = sdscatprintf(sdsempty(), "sentinel known-sentinel %s %s %d ", primary->name,
+                                announceSentinelAddr(ri->addr), ri->addr->port);
+            line = sdscatrepr(line, ri->runid, sdslen(ri->runid));
             rewriteConfigRewriteLine(state, "sentinel known-sentinel", line, 1);
             /* rewriteConfigMarkAsProcessed is handled after the loop */
         }
@@ -2146,7 +2185,10 @@ void rewriteConfigSentinelOption(struct rewriteConfigState *state) {
         while ((de = dictNext(di2)) != NULL) {
             sds oldname = dictGetKey(de);
             sds newname = dictGetVal(de);
-            line = sdscatprintf(sdsempty(), "sentinel rename-command %s %s %s", primary->name, oldname, newname);
+            line = sdscatprintf(sdsempty(), "sentinel rename-command %s ", primary->name);
+            line = sdscatrepr(line, oldname, sdslen(oldname));
+            line = sdscatlen(line, " ", 1);
+            line = sdscatrepr(line, newname, sdslen(newname));
             rewriteConfigRewriteLine(state, "sentinel rename-command", line, 1);
             /* rewriteConfigMarkAsProcessed is handled after the loop */
         }
@@ -2176,7 +2218,8 @@ void rewriteConfigSentinelOption(struct rewriteConfigState *state) {
 
     /* sentinel sentinel-user. */
     if (sentinel.sentinel_auth_user) {
-        line = sdscatprintf(sdsempty(), "sentinel sentinel-user %s", sentinel.sentinel_auth_user);
+        line = sdsnew("sentinel sentinel-user ");
+        line = sdscatrepr(line, sentinel.sentinel_auth_user, sdslen(sentinel.sentinel_auth_user));
         rewriteConfigRewriteLine(state, "sentinel sentinel-user", line, 1);
     } else {
         rewriteConfigMarkAsProcessed(state, "sentinel sentinel-user");
@@ -2184,7 +2227,8 @@ void rewriteConfigSentinelOption(struct rewriteConfigState *state) {
 
     /* sentinel sentinel-pass. */
     if (sentinel.sentinel_auth_pass) {
-        line = sdscatprintf(sdsempty(), "sentinel sentinel-pass %s", sentinel.sentinel_auth_pass);
+        line = sdsnew("sentinel sentinel-pass ");
+        line = sdscatrepr(line, sentinel.sentinel_auth_pass, sdslen(sentinel.sentinel_auth_pass));
         rewriteConfigRewriteLine(state, "sentinel sentinel-pass", line, 1);
     } else {
         rewriteConfigMarkAsProcessed(state, "sentinel sentinel-pass");
@@ -2245,7 +2289,7 @@ static void sentinelFlushConfigAndReply(client *c) {
         addReply(c, shared.ok);
 }
 
-/* ====================== libkv connection handling ======================= */
+/* ====================== libvalkey connection handling ======================= */
 
 /* Send the AUTH command with the specified primary password if needed.
  * Note that for replicas the password set for the primary is used.
@@ -2259,7 +2303,7 @@ static void sentinelFlushConfigAndReply(client *c) {
  * We don't check at all if the command was successfully transmitted
  * to the instance as if it fails Sentinel will detect the instance down,
  * will disconnect and reconnect the link and so forth. */
-void sentinelSendAuthIfNeeded(sentinelKVInstance *ri, kvAsyncContext *c) {
+void sentinelSendAuthIfNeeded(sentinelValkeyInstance *ri, valkeyAsyncContext *c) {
     char *auth_pass = NULL;
     char *auth_user = NULL;
 
@@ -2284,13 +2328,13 @@ void sentinelSendAuthIfNeeded(sentinelKVInstance *ri, kvAsyncContext *c) {
     }
 
     if (auth_pass && auth_user == NULL) {
-        if (kvAsyncCommand(c, sentinelDiscardReplyCallback, ri, "%s %s", sentinelInstanceMapCommand(ri, "AUTH"),
+        if (valkeyAsyncCommand(c, sentinelDiscardReplyCallback, ri, "%s %s", sentinelInstanceMapCommand(ri, "AUTH"),
                                auth_pass) == C_OK)
             ri->link->pending_commands++;
     } else if (auth_pass && auth_user) {
         /* If we also have an username, use the ACL-style AUTH command
          * with two arguments, username and password. */
-        if (kvAsyncCommand(c, sentinelDiscardReplyCallback, ri, "%s %s %s", sentinelInstanceMapCommand(ri, "AUTH"),
+        if (valkeyAsyncCommand(c, sentinelDiscardReplyCallback, ri, "%s %s %s", sentinelInstanceMapCommand(ri, "AUTH"),
                                auth_user, auth_pass) == C_OK)
             ri->link->pending_commands++;
     }
@@ -2302,23 +2346,23 @@ void sentinelSendAuthIfNeeded(sentinelKVInstance *ri, kvAsyncContext *c) {
  *
  * This makes it possible to list all the sentinel instances connected
  * to a server with CLIENT LIST, grepping for a specific name format. */
-void sentinelSetClientName(sentinelKVInstance *ri, kvAsyncContext *c, char *type) {
+void sentinelSetClientName(sentinelValkeyInstance *ri, valkeyAsyncContext *c, char *type) {
     char name[64];
 
     snprintf(name, sizeof(name), "sentinel-%.8s-%s", sentinel.myid, type);
-    if (kvAsyncCommand(c, sentinelDiscardReplyCallback, ri, "%s SETNAME %s",
+    if (valkeyAsyncCommand(c, sentinelDiscardReplyCallback, ri, "%s SETNAME %s",
                            sentinelInstanceMapCommand(ri, "CLIENT"), name) == C_OK) {
         ri->link->pending_commands++;
     }
 }
 
-static int instanceLinkNegotiateTLS(kvAsyncContext *context) {
+static int instanceLinkNegotiateTLS(valkeyAsyncContext *context) {
 #if defined(USE_OPENSSL) && USE_OPENSSL == 1 /* BUILD_YES */
-    if (!kv_tls_ctx) return C_ERR;
-    SSL *ssl = SSL_new(kv_tls_client_ctx ? kv_tls_client_ctx : kv_tls_ctx);
+    if (!valkey_tls_ctx) return C_ERR;
+    SSL *ssl = SSL_new(valkey_tls_client_ctx ? valkey_tls_client_ctx : valkey_tls_ctx);
     if (!ssl) return C_ERR;
 
-    if (kvInitiateTLS(&context->c, ssl) == KV_ERR) {
+    if (valkeyInitiateTLS(&context->c, ssl) == VALKEY_ERR) {
         SSL_free(ssl);
         return C_ERR;
     }
@@ -2331,7 +2375,7 @@ static int instanceLinkNegotiateTLS(kvAsyncContext *context) {
 /* Create the async connections for the instance link if the link
  * is disconnected. Note that link->disconnected is true even if just
  * one of the two links (commands and pub/sub) is missing. */
-void sentinelReconnectInstance(sentinelKVInstance *ri) {
+void sentinelReconnectInstance(sentinelValkeyInstance *ri) {
     if (ri->link->disconnected == 0) return;
     if (ri->addr->port == 0) return; /* port == 0 means invalid address. */
     instanceLink *link = ri->link;
@@ -2354,7 +2398,7 @@ void sentinelReconnectInstance(sentinelKVInstance *ri) {
             }
         }
 
-        link->cc = kvAsyncConnectBind(ri->addr->ip, ri->addr->port, server.bind_source_addr);
+        link->cc = valkeyAsyncConnectBind(ri->addr->ip, ri->addr->port, server.bind_source_addr);
 
         if (link->cc && !link->cc->err) anetCloexec(link->cc->c.fd);
         if (!link->cc) {
@@ -2369,9 +2413,9 @@ void sentinelReconnectInstance(sentinelKVInstance *ri) {
             link->pending_commands = 0;
             link->cc_conn_time = mstime();
             link->cc->data = link;
-            kvAeAttach(server.el, link->cc);
-            kvAsyncSetConnectCallback(link->cc, sentinelLinkEstablishedCallback);
-            kvAsyncSetDisconnectCallback(link->cc, sentinelDisconnectCallback);
+            valkeyAeAttach(server.el, link->cc);
+            valkeyAsyncSetConnectCallback(link->cc, sentinelLinkEstablishedCallback);
+            valkeyAsyncSetDisconnectCallback(link->cc, sentinelDisconnectCallback);
             sentinelSendAuthIfNeeded(ri, link->cc);
             sentinelSetClientName(ri, link->cc, "cmd");
 
@@ -2381,7 +2425,7 @@ void sentinelReconnectInstance(sentinelKVInstance *ri) {
     }
     /* Pub / Sub */
     if ((ri->flags & (SRI_PRIMARY | SRI_REPLICA)) && link->pc == NULL) {
-        link->pc = kvAsyncConnectBind(ri->addr->ip, ri->addr->port, server.bind_source_addr);
+        link->pc = valkeyAsyncConnectBind(ri->addr->ip, ri->addr->port, server.bind_source_addr);
         if (link->pc && !link->pc->err) anetCloexec(link->pc->c.fd);
         if (!link->pc) {
             sentinelEvent(LL_DEBUG, "-pubsub-link-reconnection", ri, "%@ #Failed to establish connection");
@@ -2394,13 +2438,13 @@ void sentinelReconnectInstance(sentinelKVInstance *ri) {
             int retval;
             link->pc_conn_time = mstime();
             link->pc->data = link;
-            kvAeAttach(server.el, link->pc);
-            kvAsyncSetConnectCallback(link->pc, sentinelLinkEstablishedCallback);
-            kvAsyncSetDisconnectCallback(link->pc, sentinelDisconnectCallback);
+            valkeyAeAttach(server.el, link->pc);
+            valkeyAsyncSetConnectCallback(link->pc, sentinelLinkEstablishedCallback);
+            valkeyAsyncSetDisconnectCallback(link->pc, sentinelDisconnectCallback);
             sentinelSendAuthIfNeeded(ri, link->pc);
             sentinelSetClientName(ri, link->pc, "pubsub");
             /* Now we subscribe to the Sentinels "Hello" channel. */
-            retval = kvAsyncCommand(link->pc, sentinelReceiveHelloMessages, ri, "%s %s",
+            retval = valkeyAsyncCommand(link->pc, sentinelReceiveHelloMessages, ri, "%s %s",
                                         sentinelInstanceMapCommand(ri, "SUBSCRIBE"), SENTINEL_HELLO_CHANNEL);
             if (retval != C_OK) {
                 /* If we can't subscribe, the Pub/Sub connection is useless
@@ -2422,14 +2466,14 @@ void sentinelReconnectInstance(sentinelKVInstance *ri) {
  * 2) It reports itself as a primary.
  * 3) It is not SDOWN or ODOWN.
  * 4) We obtained last INFO no more than two times the INFO period time ago. */
-int sentinelPrimaryLooksSane(sentinelKVInstance *primary) {
+int sentinelPrimaryLooksSane(sentinelValkeyInstance *primary) {
     return primary->flags & SRI_PRIMARY && primary->role_reported == SRI_PRIMARY &&
            (primary->flags & (SRI_S_DOWN | SRI_O_DOWN)) == 0 &&
            (mstime() - primary->info_refresh) < sentinel_info_period * 2;
 }
 
 /* Process the INFO output from primaries. */
-void sentinelRefreshInstanceInfo(sentinelKVInstance *ri, const char *info) {
+void sentinelRefreshInstanceInfo(sentinelValkeyInstance *ri, const char *info) {
     sds *lines;
     int numlines, j;
     int role = 0;
@@ -2445,7 +2489,7 @@ void sentinelRefreshInstanceInfo(sentinelKVInstance *ri, const char *info) {
     /* Process line by line. */
     lines = sdssplitlen(info, strlen(info), "\r\n", 2, &numlines);
     for (j = 0; j < numlines; j++) {
-        sentinelKVInstance *replica;
+        sentinelValkeyInstance *replica;
         sds l = lines[j];
 
         /* run_id:<40 hex chars>*/
@@ -2501,8 +2545,8 @@ void sentinelRefreshInstanceInfo(sentinelKVInstance *ri, const char *info) {
 
             /* Check if we already have this replica into our table,
              * otherwise add it. */
-            if (sentinelKVInstanceLookupReplica(ri, ip, atoi(port)) == NULL) {
-                if ((replica = createSentinelKVInstance(NULL, SRI_REPLICA, ip, atoi(port), ri->quorum, ri)) !=
+            if (sentinelValkeyInstanceLookupReplica(ri, ip, atoi(port)) == NULL) {
+                if ((replica = createSentinelValkeyInstance(NULL, SRI_REPLICA, ip, atoi(port), ri->quorum, ri)) !=
                     NULL) {
                     sentinelEvent(LL_NOTICE, "+slave", replica, "%@");
                     sentinelFlushConfig();
@@ -2627,7 +2671,7 @@ void sentinelRefreshInstanceInfo(sentinelKVInstance *ri, const char *info) {
             mstime_t wait_time = sentinel_publish_period * 4;
 
             if (!(ri->flags & SRI_PROMOTED) && sentinelPrimaryLooksSane(ri->primary) &&
-                sentinelKVInstanceNoDownFor(ri, wait_time) && mstime() - ri->role_reported_time > wait_time) {
+                sentinelValkeyInstanceNoDownFor(ri, wait_time) && mstime() - ri->role_reported_time > wait_time) {
                 int retval = sentinelSendReplicaOf(ri, ri->primary->addr);
                 if (retval == C_OK) sentinelEvent(LL_NOTICE, "+convert-to-slave", ri, "%@");
             }
@@ -2639,7 +2683,7 @@ void sentinelRefreshInstanceInfo(sentinelKVInstance *ri, const char *info) {
         mstime_t wait_time = ri->primary->failover_timeout;
 
         /* Make sure the primary is sane before reconfiguring this instance */
-        if (sentinelPrimaryLooksSane(ri->primary) && sentinelKVInstanceNoDownFor(ri, wait_time) &&
+        if (sentinelPrimaryLooksSane(ri->primary) && sentinelValkeyInstanceNoDownFor(ri, wait_time) &&
             mstime() - ri->monitored_instance_failover_change_time > wait_time) {
             int retval = sentinelSendReplicaOf(ri, ri->primary->addr);
             if (retval == C_OK) sentinelEvent(LL_NOTICE, "+fix-slave-config", ri, "%@");
@@ -2649,12 +2693,13 @@ void sentinelRefreshInstanceInfo(sentinelKVInstance *ri, const char *info) {
     /* Handle replicas replicating to a different primary address. */
     if ((ri->flags & SRI_REPLICA) && role == SRI_REPLICA &&
         (ri->replica_primary_port != ri->primary->addr->port ||
-         !sentinelAddrEqualsHostname(ri->primary->addr, ri->replica_primary_host))) {
+         (ri->replica_primary_host &&
+          !sentinelAddrEqualsHostname(ri->primary->addr, ri->replica_primary_host)))) {
         mstime_t wait_time = ri->primary->failover_timeout;
 
         /* Make sure the primary is sane before reconfiguring this instance
          * into a replica. */
-        if (sentinelPrimaryLooksSane(ri->primary) && sentinelKVInstanceNoDownFor(ri, wait_time) &&
+        if (sentinelPrimaryLooksSane(ri->primary) && sentinelValkeyInstanceNoDownFor(ri, wait_time) &&
             mstime() - ri->replica_conf_change_time > wait_time) {
             int retval = sentinelSendReplicaOf(ri, ri->primary->addr);
             if (retval == C_OK) sentinelEvent(LL_NOTICE, "+fix-slave-config", ri, "%@");
@@ -2682,10 +2727,10 @@ void sentinelRefreshInstanceInfo(sentinelKVInstance *ri, const char *info) {
     }
 }
 
-void sentinelInfoReplyCallback(kvAsyncContext *c, void *reply, void *privdata) {
-    sentinelKVInstance *ri = privdata;
+void sentinelInfoReplyCallback(valkeyAsyncContext *c, void *reply, void *privdata) {
+    sentinelValkeyInstance *ri = privdata;
     instanceLink *link = c->data;
-    kvReply *r;
+    valkeyReply *r;
 
     if (!reply || !link) return;
     link->pending_commands--;
@@ -2693,12 +2738,12 @@ void sentinelInfoReplyCallback(kvAsyncContext *c, void *reply, void *privdata) {
 
     /* INFO reply type is verbatim in resp3. Normally, sentinel will not use
      * resp3 but this is required for testing (see logreqres.c). */
-    if (r->type == KV_REPLY_STRING || r->type == KV_REPLY_VERB) sentinelRefreshInstanceInfo(ri, r->str);
+    if (r->type == VALKEY_REPLY_STRING || r->type == VALKEY_REPLY_VERB) sentinelRefreshInstanceInfo(ri, r->str);
 }
 
 /* Just discard the reply. We use this when we are not monitoring the return
  * value of the command but its effects directly. */
-void sentinelDiscardReplyCallback(kvAsyncContext *c, void *reply, void *privdata) {
+void sentinelDiscardReplyCallback(valkeyAsyncContext *c, void *reply, void *privdata) {
     instanceLink *link = c->data;
     UNUSED(reply);
     UNUSED(privdata);
@@ -2706,16 +2751,16 @@ void sentinelDiscardReplyCallback(kvAsyncContext *c, void *reply, void *privdata
     if (link) link->pending_commands--;
 }
 
-void sentinelPingReplyCallback(kvAsyncContext *c, void *reply, void *privdata) {
-    sentinelKVInstance *ri = privdata;
+void sentinelPingReplyCallback(valkeyAsyncContext *c, void *reply, void *privdata) {
+    sentinelValkeyInstance *ri = privdata;
     instanceLink *link = c->data;
-    kvReply *r;
+    valkeyReply *r;
 
     if (!reply || !link) return;
     link->pending_commands--;
     r = reply;
 
-    if (r->type == KV_REPLY_STATUS || r->type == KV_REPLY_ERROR) {
+    if (r->type == VALKEY_REPLY_STATUS || r->type == VALKEY_REPLY_ERROR) {
         /* Update the "instance available" field only if this is an
          * acceptable reply. */
         if (strncmp(r->str, "PONG", 4) == 0 || strncmp(r->str, "LOADING", 7) == 0 ||
@@ -2729,7 +2774,7 @@ void sentinelPingReplyCallback(kvAsyncContext *c, void *reply, void *privdata) {
             /* Send a SCRIPT KILL command if the instance appears to be
              * down because of a busy script. */
             if (strncmp(r->str, "BUSY", 4) == 0 && (ri->flags & SRI_S_DOWN) && !(ri->flags & SRI_SCRIPT_KILL_SENT)) {
-                if (kvAsyncCommand(ri->link->cc, sentinelDiscardReplyCallback, ri, "%s KILL",
+                if (valkeyAsyncCommand(ri->link->cc, sentinelDiscardReplyCallback, ri, "%s KILL",
                                        sentinelInstanceMapCommand(ri, "SCRIPT")) == C_OK) {
                     ri->link->pending_commands++;
                 }
@@ -2742,10 +2787,10 @@ void sentinelPingReplyCallback(kvAsyncContext *c, void *reply, void *privdata) {
 
 /* This is called when we get the reply about the PUBLISH command we send
  * to the primary to advertise this sentinel. */
-void sentinelPublishReplyCallback(kvAsyncContext *c, void *reply, void *privdata) {
-    sentinelKVInstance *ri = privdata;
+void sentinelPublishReplyCallback(valkeyAsyncContext *c, void *reply, void *privdata) {
+    sentinelValkeyInstance *ri = privdata;
     instanceLink *link = c->data;
-    kvReply *r;
+    valkeyReply *r;
 
     if (!reply || !link) return;
     link->pending_commands--;
@@ -2753,7 +2798,7 @@ void sentinelPublishReplyCallback(kvAsyncContext *c, void *reply, void *privdata
 
     /* Only update pub_time if we actually published our message. Otherwise
      * we'll retry again in 100 milliseconds. */
-    if (r->type != KV_REPLY_ERROR) ri->last_pub_time = mstime();
+    if (r->type != VALKEY_REPLY_ERROR) ri->last_pub_time = mstime();
 }
 
 /* Process a hello message received via Pub/Sub in primary or replica instance,
@@ -2768,7 +2813,7 @@ void sentinelProcessHelloMessage(char *hello, int hello_len) {
     int numtokens, port, removed, primary_port;
     uint64_t current_epoch, primary_config_epoch;
     char **token = sdssplitlen(hello, hello_len, ",", 1, &numtokens);
-    sentinelKVInstance *si, *primary;
+    sentinelValkeyInstance *si, *primary;
 
     if (numtokens == 8) {
         /* Obtain a reference to the primary this hello message is about */
@@ -2778,7 +2823,7 @@ void sentinelProcessHelloMessage(char *hello, int hello_len) {
         /* First, try to see if we already have this sentinel. */
         port = atoi(token[1]);
         primary_port = atoi(token[6]);
-        si = getSentinelKVInstanceByAddrAndRunID(primary->sentinels, token[0], port, token[2]);
+        si = getSentinelValkeyInstanceByAddrAndRunID(primary->sentinels, token[0], port, token[2]);
         current_epoch = strtoull(token[3], NULL, 10);
         primary_config_epoch = strtoull(token[7], NULL, 10);
 
@@ -2795,8 +2840,8 @@ void sentinelProcessHelloMessage(char *hello, int hello_len) {
                  * new one is reporting. What we do if this happens is to set its
                  * port to 0, to signal the address is invalid. We'll update it
                  * later if we get an HELLO message. */
-                sentinelKVInstance *other =
-                    getSentinelKVInstanceByAddrAndRunID(primary->sentinels, token[0], port, NULL);
+                sentinelValkeyInstance *other =
+                    getSentinelValkeyInstanceByAddrAndRunID(primary->sentinels, token[0], port, NULL);
                 if (other) {
                     /* If there is already other sentinel with same address (but
                      * different runid) then remove the old one across all primaries */
@@ -2809,7 +2854,7 @@ void sentinelProcessHelloMessage(char *hello, int hello_len) {
 
                     di = dictGetIterator(sentinel.primaries);
                     while ((de = dictNext(di)) != NULL) {
-                        sentinelKVInstance *primary = dictGetVal(de);
+                        sentinelValkeyInstance *primary = dictGetVal(de);
                         removeMatchingSentinelFromPrimary(primary, runid_obsolete);
                     }
                     dictReleaseIterator(di);
@@ -2818,7 +2863,7 @@ void sentinelProcessHelloMessage(char *hello, int hello_len) {
             }
 
             /* Add the new sentinel. */
-            si = createSentinelKVInstance(token[2], SRI_SENTINEL, token[0], port, primary->quorum, primary);
+            si = createSentinelValkeyInstance(token[2], SRI_SENTINEL, token[0], port, primary->quorum, primary);
 
             if (si) {
                 if (!removed) sentinelEvent(LL_NOTICE, "+sentinel", si, "%@");
@@ -2867,9 +2912,9 @@ cleanup:
 
 /* This is our Pub/Sub callback for the Hello channel. It's useful in order
  * to discover other sentinels attached at the same primary. */
-void sentinelReceiveHelloMessages(kvAsyncContext *c, void *reply, void *privdata) {
-    sentinelKVInstance *ri = privdata;
-    kvReply *r;
+void sentinelReceiveHelloMessages(valkeyAsyncContext *c, void *reply, void *privdata) {
+    sentinelValkeyInstance *ri = privdata;
+    valkeyReply *r;
     UNUSED(c);
 
     if (!reply || !ri) return;
@@ -2884,9 +2929,9 @@ void sentinelReceiveHelloMessages(kvAsyncContext *c, void *reply, void *privdata
      * can avoid to check for details.
      * Note: Reply type is PUSH in resp3. Normally, sentinel will not use
      * resp3 but this is required for testing (see logreqres.c). */
-    if ((r->type != KV_REPLY_ARRAY && r->type != KV_REPLY_PUSH) || r->elements != 3 ||
-        r->element[0]->type != KV_REPLY_STRING || r->element[1]->type != KV_REPLY_STRING ||
-        r->element[2]->type != KV_REPLY_STRING || strcmp(r->element[0]->str, "message") != 0)
+    if ((r->type != VALKEY_REPLY_ARRAY && r->type != VALKEY_REPLY_PUSH) || r->elements != 3 ||
+        r->element[0]->type != VALKEY_REPLY_STRING || r->element[1]->type != VALKEY_REPLY_STRING ||
+        r->element[2]->type != VALKEY_REPLY_STRING || strcmp(r->element[0]->str, "message") != 0)
         return;
 
     /* We are not interested in meeting ourselves */
@@ -2904,20 +2949,20 @@ void sentinelReceiveHelloMessages(kvAsyncContext *c, void *reply, void *privdata
  * sentinel_ip,sentinel_port,sentinel_runid,current_epoch,
  * primary_name,primary_ip,primary_port,primary_config_epoch.
  *
- * Returns C_OK if the PUBLISH was queued correctly, otherwise
+ * Returns C_OK if the PUBLISH was queued correctly; otherwise,
  * C_ERR is returned. */
-int sentinelSendHello(sentinelKVInstance *ri) {
+int sentinelSendHello(sentinelValkeyInstance *ri) {
     char ip[NET_IP_STR_LEN];
     char payload[NET_IP_STR_LEN + 1024];
     int retval;
     char *announce_ip;
     int announce_port;
-    sentinelKVInstance *primary = (ri->flags & SRI_PRIMARY) ? ri : ri->primary;
+    sentinelValkeyInstance *primary = (ri->flags & SRI_PRIMARY) ? ri : ri->primary;
     sentinelAddr *primary_addr = sentinelGetCurrentPrimaryAddress(primary);
 
     if (ri->link->disconnected) return C_ERR;
 
-    /* Use the specified announce address if specified, otherwise try to
+    /* Use the specified announce address if specified; otherwise, try to
      * obtain our own IP address. */
     if (sentinel.announce_ip) {
         announce_ip = sentinel.announce_ip;
@@ -2940,7 +2985,7 @@ int sentinelSendHello(sentinelKVInstance *ri) {
              /* --- */
              primary->name, announceSentinelAddr(primary_addr), primary_addr->port,
              (unsigned long long)primary->config_epoch);
-    retval = kvAsyncCommand(ri->link->cc, sentinelPublishReplyCallback, ri, "%s %s %s",
+    retval = valkeyAsyncCommand(ri->link->cc, sentinelPublishReplyCallback, ri, "%s %s %s",
                                 sentinelInstanceMapCommand(ri, "PUBLISH"), SENTINEL_HELLO_CHANNEL, payload);
     if (retval != C_OK) return C_ERR;
     ri->link->pending_commands++;
@@ -2949,13 +2994,13 @@ int sentinelSendHello(sentinelKVInstance *ri) {
 
 /* Reset last_pub_time in all the instances in the specified dictionary
  * in order to force the delivery of a Hello update ASAP. */
-void sentinelForceHelloUpdateDictOfKVInstances(dict *instances) {
+void sentinelForceHelloUpdateDictOfValkeyInstances(dict *instances) {
     dictIterator *di;
     dictEntry *de;
 
     di = dictGetSafeIterator(instances);
     while ((de = dictNext(di)) != NULL) {
-        sentinelKVInstance *ri = dictGetVal(de);
+        sentinelValkeyInstance *ri = dictGetVal(de);
         if (ri->last_pub_time >= (sentinel_publish_period + 1)) ri->last_pub_time -= (sentinel_publish_period + 1);
     }
     dictReleaseIterator(di);
@@ -2969,12 +3014,12 @@ void sentinelForceHelloUpdateDictOfKVInstances(dict *instances) {
  * with a period of SENTINEL_PUBLISH_PERIOD milliseconds, however when a
  * Sentinel upgrades a configuration it is a good idea to deliver an update
  * to the other Sentinels ASAP. */
-int sentinelForceHelloUpdateForPrimary(sentinelKVInstance *primary) {
+int sentinelForceHelloUpdateForPrimary(sentinelValkeyInstance *primary) {
     if (!(primary->flags & SRI_PRIMARY)) return C_ERR;
     if (primary->last_pub_time >= (sentinel_publish_period + 1))
         primary->last_pub_time -= (sentinel_publish_period + 1);
-    sentinelForceHelloUpdateDictOfKVInstances(primary->sentinels);
-    sentinelForceHelloUpdateDictOfKVInstances(primary->replicas);
+    sentinelForceHelloUpdateDictOfValkeyInstances(primary->sentinels);
+    sentinelForceHelloUpdateDictOfValkeyInstances(primary->replicas);
     return C_OK;
 }
 
@@ -2983,14 +3028,14 @@ int sentinelForceHelloUpdateForPrimary(sentinelKVInstance *primary) {
  *
  * On error zero is returned, and we can't consider the PING command
  * queued in the connection. */
-int sentinelSendPing(sentinelKVInstance *ri) {
+int sentinelSendPing(sentinelValkeyInstance *ri) {
     int retval =
-        kvAsyncCommand(ri->link->cc, sentinelPingReplyCallback, ri, "%s", sentinelInstanceMapCommand(ri, "PING"));
+        valkeyAsyncCommand(ri->link->cc, sentinelPingReplyCallback, ri, "%s", sentinelInstanceMapCommand(ri, "PING"));
     if (retval == C_OK) {
         ri->link->pending_commands++;
         ri->link->last_ping_time = mstime();
         /* We update the active ping time only if we received the pong for
-         * the previous ping, otherwise we are technically waiting since the
+         * the previous ping; otherwise, we are technically waiting since the
          * first ping that did not receive a reply. */
         if (ri->link->act_ping_time == 0) ri->link->act_ping_time = ri->link->last_ping_time;
         return 1;
@@ -3001,7 +3046,7 @@ int sentinelSendPing(sentinelKVInstance *ri) {
 
 /* Send periodic PING, INFO, and PUBLISH to the Hello channel to
  * the specified primary or replica instance. */
-void sentinelSendPeriodicCommands(sentinelKVInstance *ri) {
+void sentinelSendPeriodicCommands(sentinelValkeyInstance *ri) {
     mstime_t now = mstime();
     mstime_t info_period, ping_period;
     int retval;
@@ -3041,7 +3086,7 @@ void sentinelSendPeriodicCommands(sentinelKVInstance *ri) {
 
     /* Send INFO to primaries and replicas, not sentinels. */
     if ((ri->flags & SRI_SENTINEL) == 0 && (ri->info_refresh == 0 || (now - ri->info_refresh) > info_period)) {
-        retval = kvAsyncCommand(ri->link->cc, sentinelInfoReplyCallback, ri, "%s",
+        retval = valkeyAsyncCommand(ri->link->cc, sentinelInfoReplyCallback, ri, "%s",
                                     sentinelInstanceMapCommand(ri, "INFO"));
         if (retval == C_OK) ri->link->pending_commands++;
     }
@@ -3055,7 +3100,7 @@ void sentinelSendPeriodicCommands(sentinelKVInstance *ri) {
     if ((now - ri->last_pub_time) > sentinel_publish_period) {
         /* Don't publish if the command would block because client writes are blocked:
            - during coordinated failover
-           - during KV failover (this may be a failover that is stuck) */
+           - during Valkey failover (this may be a failover that is stuck) */
         if (((ri->flags & SRI_COORD_FAILOVER) == 0 || ri->failover_state > SENTINEL_FAILOVER_STATE_WAIT_PROMOTION) &&
             ri->monitored_instance_failover_state != SENTINEL_MONITORED_INSTANCE_FAILOVER) {
             sentinelSendHello(ri);
@@ -3082,6 +3127,27 @@ const char *getLogLevel(void) {
     return "unknown";
 }
 
+static int containsControlChars(const char *s, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        unsigned char ch = (unsigned char)s[i];
+        if (ch <= 0x1F || ch == 0x7F) return 1;
+    }
+    return 0;
+}
+
+/* Validate that arguments starting from 'first_arg' contain no control characters.
+ * Returns C_OK if all arguments are clean, or C_ERR after sending an error reply. */
+static int sentinelValidateArgs(client *c, int first_arg, const char *cmd) {
+    for (int i = first_arg; i < c->argc; i++) {
+        sds arg = objectGetVal(c->argv[i]);
+        if (containsControlChars(arg, sdslen(arg))) {
+            addReplyErrorFormat(c, "Invalid argument at index %d for %s: control characters are not allowed", i, cmd);
+            return C_ERR;
+        }
+    }
+    return C_OK;
+}
+
 /* SENTINEL CONFIG SET option value [option value ...] */
 void sentinelConfigSetCommand(client *c) {
     long long numval;
@@ -3104,6 +3170,8 @@ void sentinelConfigSetCommand(client *c) {
         populateDict(options_dict, options);
     }
     dict *set_configs = dictCreate(&stringSetDictType);
+
+    if (sentinelValidateArgs(c, 3, "SENTINEL CONFIG SET") == C_ERR) goto exit;
 
     /* Validate arguments are valid */
     for (int i = 3; i < c->argc; i++) {
@@ -3279,7 +3347,7 @@ const char *sentinelFailoverStateStr(int state) {
 }
 
 /* Server instance to RESP representation. */
-void addReplySentinelKVInstance(client *c, sentinelKVInstance *ri) {
+void addReplySentinelValkeyInstance(client *c, sentinelValkeyInstance *ri) {
     char *flags = sdsempty();
     void *mbl;
     int fields = 0;
@@ -3679,7 +3747,7 @@ void addReplySentinelDebugInfo(client *c) {
 
 /* Output a number of instances contained inside a dictionary as
  * RESP. */
-void addReplyDictOfKVInstances(client *c, dict *instances) {
+void addReplyDictOfValkeyInstances(client *c, dict *instances) {
     dictIterator *di;
     dictEntry *de;
     long replicas = 0;
@@ -3687,11 +3755,11 @@ void addReplyDictOfKVInstances(client *c, dict *instances) {
 
     di = dictGetIterator(instances);
     while ((de = dictNext(di)) != NULL) {
-        sentinelKVInstance *ri = dictGetVal(de);
+        sentinelValkeyInstance *ri = dictGetVal(de);
 
         /* don't announce unannounced replicas */
         if (ri->flags & SRI_REPLICA && !ri->replica_announced) continue;
-        addReplySentinelKVInstance(c, ri);
+        addReplySentinelValkeyInstance(c, ri);
         replicas++;
     }
     dictReleaseIterator(di);
@@ -3701,8 +3769,8 @@ void addReplyDictOfKVInstances(client *c, dict *instances) {
 /* Lookup the named primary into sentinel.primaries.
  * If the primary is not found reply to the client with an error and returns
  * NULL. */
-sentinelKVInstance *sentinelGetPrimaryByNameOrReplyError(client *c, robj *name) {
-    sentinelKVInstance *ri;
+sentinelValkeyInstance *sentinelGetPrimaryByNameOrReplyError(client *c, robj *name) {
+    sentinelValkeyInstance *ri;
 
     ri = dictFetchValue(sentinel.primaries, objectGetVal(name));
     if (!ri) {
@@ -3715,7 +3783,7 @@ sentinelKVInstance *sentinelGetPrimaryByNameOrReplyError(client *c, robj *name) 
 #define SENTINEL_ISQR_OK 0
 #define SENTINEL_ISQR_NOQUORUM (1 << 0)
 #define SENTINEL_ISQR_NOAUTH (1 << 1)
-int sentinelIsQuorumReachable(sentinelKVInstance *primary, int *usableptr) {
+int sentinelIsQuorumReachable(sentinelValkeyInstance *primary, int *usableptr) {
     dictIterator *di;
     dictEntry *de;
     int usable = 1; /* Number of usable Sentinels. Init to 1 to count myself. */
@@ -3724,7 +3792,7 @@ int sentinelIsQuorumReachable(sentinelKVInstance *primary, int *usableptr) {
 
     di = dictGetIterator(primary->sentinels);
     while ((de = dictNext(di)) != NULL) {
-        sentinelKVInstance *ri = dictGetVal(de);
+        sentinelValkeyInstance *ri = dictGetVal(de);
 
         if (ri->flags & (SRI_S_DOWN | SRI_O_DOWN)) continue;
         usable++;
@@ -3746,7 +3814,7 @@ void sentinelCommand(client *c) {
             "    failover.",
             "CONFIG SET param value [param value ...]",
             "    Set a global Sentinel configuration parameter.",
-            "CONFIG GET <param> [param param param ...]",
+            "CONFIG GET param [param ...]",
             "    Get global Sentinel configuration parameter.",
             "DEBUG [<param> <value> ...]",
             "    Show a list of configurable time parameters and their values (milliseconds).",
@@ -3784,7 +3852,8 @@ void sentinelCommand(client *c) {
             "    Show a list of Sentinel instances for this primary and their state.",
             "SET <primary-name> <option> <value> [<option> <value> ...]",
             "    Set configuration parameters for certain primaries.",
-            "SIMULATE-FAILURE [CRASH-AFTER-ELECTION] [CRASH-AFTER-PROMOTION] [HELP]",
+            "SIMULATE-FAILURE (CRASH-AFTER-ELECTION|CRASH-AFTER-PROMOTION|HELP) "
+            "[(CRASH-AFTER-ELECTION|CRASH-AFTER-PROMOTION|HELP) ...]",
             "    Simulate a Sentinel crash.",
             NULL,
         };
@@ -3792,28 +3861,28 @@ void sentinelCommand(client *c) {
     } else if (!strcasecmp(objectGetVal(c->argv[1]), "primaries") || !strcasecmp(objectGetVal(c->argv[1]), "masters")) {
         /* SENTINEL PRIMARIES */
         if (c->argc != 2) goto numargserr;
-        addReplyDictOfKVInstances(c, sentinel.primaries);
+        addReplyDictOfValkeyInstances(c, sentinel.primaries);
     } else if (!strcasecmp(objectGetVal(c->argv[1]), "primary") || !strcasecmp(objectGetVal(c->argv[1]), "master")) {
         /* SENTINEL PRIMARY <name> */
-        sentinelKVInstance *ri;
+        sentinelValkeyInstance *ri;
 
         if (c->argc != 3) goto numargserr;
         if ((ri = sentinelGetPrimaryByNameOrReplyError(c, c->argv[2])) == NULL) return;
-        addReplySentinelKVInstance(c, ri);
+        addReplySentinelValkeyInstance(c, ri);
     } else if (!strcasecmp(objectGetVal(c->argv[1]), "slaves") || !strcasecmp(objectGetVal(c->argv[1]), "replicas")) {
         /* SENTINEL REPLICAS <primary-name> */
-        sentinelKVInstance *ri;
+        sentinelValkeyInstance *ri;
 
         if (c->argc != 3) goto numargserr;
         if ((ri = sentinelGetPrimaryByNameOrReplyError(c, c->argv[2])) == NULL) return;
-        addReplyDictOfKVInstances(c, ri->replicas);
+        addReplyDictOfValkeyInstances(c, ri->replicas);
     } else if (!strcasecmp(objectGetVal(c->argv[1]), "sentinels")) {
         /* SENTINEL SENTINELS <primary-name> */
-        sentinelKVInstance *ri;
+        sentinelValkeyInstance *ri;
 
         if (c->argc != 3) goto numargserr;
         if ((ri = sentinelGetPrimaryByNameOrReplyError(c, c->argv[2])) == NULL) return;
-        addReplyDictOfKVInstances(c, ri->sentinels);
+        addReplyDictOfValkeyInstances(c, ri->sentinels);
     } else if (!strcasecmp(objectGetVal(c->argv[1]), "myid") && c->argc == 2) {
         /* SENTINEL MYID */
         addReplyBulkCBuffer(c, sentinel.myid, CONFIG_RUN_ID_SIZE);
@@ -3833,10 +3902,10 @@ void sentinelCommand(client *c) {
          * one time per epoch.
          *
          * runid is "*" if we are not seeking for a vote from the Sentinel
-         * in order to elect the failover leader. Otherwise it is set to the
+         * in order to elect the failover leader. Otherwise, it is set to the
          * runid we want the Sentinel to vote if it did not already voted.
          */
-        sentinelKVInstance *ri;
+        sentinelValkeyInstance *ri;
         long long req_epoch;
         uint64_t leader_epoch = 0;
         char *leader = NULL;
@@ -3847,14 +3916,14 @@ void sentinelCommand(client *c) {
         if (getLongFromObjectOrReply(c, c->argv[3], &port, NULL) != C_OK ||
             getLongLongFromObjectOrReply(c, c->argv[4], &req_epoch, NULL) != C_OK)
             return;
-        ri = getSentinelKVInstanceByAddrAndRunID(sentinel.primaries, objectGetVal(c->argv[2]), port, NULL);
+        ri = getSentinelValkeyInstanceByAddrAndRunID(sentinel.primaries, objectGetVal(c->argv[2]), port, NULL);
 
         /* It exists? Is actually a primary? Is subjectively down? It's down.
          * Note: if we are in tilt mode we always reply with "0". */
         if (!sentinel.tilt && ri && (ri->flags & SRI_S_DOWN) && (ri->flags & SRI_PRIMARY)) isdown = 1;
 
         /* Vote for the primary (or fetch the previous vote) if the request
-         * includes a runid, otherwise the sender is not seeking for a vote. */
+         * includes a runid; otherwise, the sender is not seeking for a vote. */
         if (ri && ri->flags & SRI_PRIMARY && strcasecmp(objectGetVal(c->argv[5]), "*")) {
             leader = sentinelVoteLeader(ri, (uint64_t)req_epoch, objectGetVal(c->argv[5]), &leader_epoch);
         }
@@ -3873,7 +3942,7 @@ void sentinelCommand(client *c) {
     } else if (!strcasecmp(objectGetVal(c->argv[1]), "get-primary-addr-by-name") ||
                !strcasecmp(objectGetVal(c->argv[1]), "get-master-addr-by-name")) {
         /* SENTINEL GET-PRIMARY-ADDR-BY-NAME <primary-name> */
-        sentinelKVInstance *ri;
+        sentinelValkeyInstance *ri;
 
         if (c->argc != 3) goto numargserr;
         ri = sentinelGetPrimaryByName(objectGetVal(c->argv[2]));
@@ -3888,7 +3957,7 @@ void sentinelCommand(client *c) {
         }
     } else if (!strcasecmp(objectGetVal(c->argv[1]), "failover")) {
         /* SENTINEL FAILOVER <primary-name> */
-        sentinelKVInstance *ri;
+        sentinelValkeyInstance *ri;
         int coordinated = 0;
 
         if (c->argc < 3 || c->argc > 4) goto numargserr;
@@ -3936,11 +4005,14 @@ void sentinelCommand(client *c) {
         sentinelPendingScriptsCommand(c);
     } else if (!strcasecmp(objectGetVal(c->argv[1]), "monitor")) {
         /* SENTINEL MONITOR <name> <ip> <port> <quorum> */
-        sentinelKVInstance *ri;
+        sentinelValkeyInstance *ri;
         long quorum, port;
         char ip[NET_IP_STR_LEN];
 
         if (c->argc != 6) goto numargserr;
+
+        if (sentinelValidateArgs(c, 2, "SENTINEL MONITOR") == C_ERR) return;
+
         if (getLongFromObjectOrReply(c, c->argv[5], &quorum, "Invalid quorum") != C_OK) return;
         if (getLongFromObjectOrReply(c, c->argv[4], &port, "Invalid port") != C_OK) return;
 
@@ -3950,7 +4022,7 @@ void sentinelCommand(client *c) {
         }
 
         /* If resolve-hostnames is used, actual DNS resolution may take place.
-         * Otherwise just validate address.
+         * Otherwise, just validate address.
          */
         if (anetResolve(NULL, objectGetVal(c->argv[3]), ip, sizeof(ip), sentinel.resolve_hostnames ? ANET_NONE : ANET_IP_ONLY) ==
             ANET_ERR) {
@@ -3959,7 +4031,7 @@ void sentinelCommand(client *c) {
         }
 
         /* Parameters are valid. Try to create the primary instance. */
-        ri = createSentinelKVInstance(objectGetVal(c->argv[2]), SRI_PRIMARY, objectGetVal(c->argv[3]), port, quorum, NULL);
+        ri = createSentinelValkeyInstance(objectGetVal(c->argv[2]), SRI_PRIMARY, objectGetVal(c->argv[3]), port, quorum, NULL);
         if (ri == NULL) {
             addReplyError(c, sentinelCheckCreateInstanceErrors(SRI_PRIMARY));
         } else {
@@ -3972,7 +4044,7 @@ void sentinelCommand(client *c) {
         return;
     } else if (!strcasecmp(objectGetVal(c->argv[1]), "remove")) {
         /* SENTINEL REMOVE <name> */
-        sentinelKVInstance *ri;
+        sentinelValkeyInstance *ri;
 
         if (c->argc != 3) goto numargserr;
         if ((ri = sentinelGetPrimaryByNameOrReplyError(c, c->argv[2])) == NULL) return;
@@ -3981,7 +4053,7 @@ void sentinelCommand(client *c) {
         sentinelFlushConfigAndReply(c);
     } else if (!strcasecmp(objectGetVal(c->argv[1]), "ckquorum")) {
         /* SENTINEL CKQUORUM <name> */
-        sentinelKVInstance *ri;
+        sentinelValkeyInstance *ri;
         int usable;
 
         if (c->argc != 3) goto numargserr;
@@ -4024,13 +4096,13 @@ void sentinelCommand(client *c) {
          * a dictionary composed of just the primary groups the user
          * requested. */
         dictType copy_keeper = instancesDictType;
-        copy_keeper.valDestructor = NULL;
+        copy_keeper.entryDestructor = zfree;
         dict *primaries_local = sentinel.primaries;
         if (c->argc > 2) {
             primaries_local = dictCreate(&copy_keeper);
 
             for (int i = 2; i < c->argc; i++) {
-                sentinelKVInstance *ri;
+                sentinelValkeyInstance *ri;
                 ri = sentinelGetPrimaryByName(objectGetVal(c->argv[i]));
                 if (!ri) continue; /* ignore non-existing names */
                 dictAdd(primaries_local, ri->name, ri);
@@ -4054,7 +4126,7 @@ void sentinelCommand(client *c) {
         dictEntry *de;
         di = dictGetIterator(primaries_local);
         while ((de = dictNext(di)) != NULL) {
-            sentinelKVInstance *ri = dictGetVal(de);
+            sentinelValkeyInstance *ri = dictGetVal(de);
             addReplyBulkCBuffer(c, ri->name, strlen(ri->name));
             addReplyArrayLen(c, dictSize(ri->replicas) + 1); /* +1 for self */
             addReplyArrayLen(c, 2);
@@ -4068,7 +4140,7 @@ void sentinelCommand(client *c) {
             dictEntry *sde;
             sdi = dictGetIterator(ri->replicas);
             while ((sde = dictNext(sdi)) != NULL) {
-                sentinelKVInstance *sri = dictGetVal(sde);
+                sentinelValkeyInstance *sri = dictGetVal(sde);
                 addReplyArrayLen(c, 2);
                 addReplyLongLong(c, ri->info_refresh ? (now - sri->info_refresh) : 0);
                 if (sri->info)
@@ -4081,7 +4153,8 @@ void sentinelCommand(client *c) {
         dictReleaseIterator(di);
         if (primaries_local != sentinel.primaries) dictRelease(primaries_local);
     } else if (!strcasecmp(objectGetVal(c->argv[1]), "simulate-failure")) {
-        /* SENTINEL SIMULATE-FAILURE [CRASH-AFTER-ELECTION] [CRASH-AFTER-PROMOTION] [HELP] */
+        /* SENTINEL SIMULATE-FAILURE (CRASH-AFTER-ELECTION|CRASH-AFTER-PROMOTION|HELP)
+         * [(CRASH-AFTER-ELECTION|CRASH-AFTER-PROMOTION|HELP) ...] */
         int j;
 
         sentinel.simfailure_flags = SENTINEL_SIMFAILURE_NONE;
@@ -4144,7 +4217,7 @@ void sentinelInfoCommand(client *c) {
     }
     dictReleaseIterator(di);
 
-    /* Insert explicit all sections (don't pass these vars to genKVInfoString) */
+    /* Insert explicit all sections (don't pass these vars to genValkeyInfoString) */
     if (sec_all || sec_everything) {
         releaseInfoSectionDict(sections_dict);
         /* We cache this dict as an optimization. */
@@ -4155,7 +4228,7 @@ void sentinelInfoCommand(client *c) {
         sections_dict = cached_all_info_sections;
     }
 
-    sds info = genKVInfoString(sections_dict, 0, 0);
+    sds info = genValkeyInfoString(sections_dict, 0, 0);
     if (sec_all || (dictFind(sections_dict, "sentinel") != NULL)) {
         dictIterator *di;
         dictEntry *de;
@@ -4164,7 +4237,7 @@ void sentinelInfoCommand(client *c) {
         if (sdslen(info) != 0) info = sdscat(info, "\r\n");
         info = sdscatprintf(info,
                             "# Sentinel\r\n"
-                            "sentinel_masters:%lu\r\n"
+                            "sentinel_masters:%zu\r\n"
                             "sentinel_tilt:%d\r\n"
                             "sentinel_tilt_since_seconds:%jd\r\n"
                             "sentinel_total_tilt:%d\r\n"
@@ -4178,7 +4251,7 @@ void sentinelInfoCommand(client *c) {
 
         di = dictGetIterator(sentinel.primaries);
         while ((de = dictNext(di)) != NULL) {
-            sentinelKVInstance *ri = dictGetVal(de);
+            sentinelValkeyInstance *ri = dictGetVal(de);
             char *status = "ok";
 
             if (ri->flags & SRI_O_DOWN)
@@ -4187,7 +4260,7 @@ void sentinelInfoCommand(client *c) {
                 status = "sdown";
             info = sdscatprintf(info,
                                 "master%d:name=%s,status=%s,address=%s:%d,"
-                                "slaves=%lu,sentinels=%lu\r\n",
+                                "slaves=%zu,sentinels=%zu\r\n",
                                 primary_id++, ri->name, status, announceSentinelAddr(ri->addr), ri->addr->port,
                                 dictSize(ri->replicas), dictSize(ri->sentinels) + 1);
         }
@@ -4209,7 +4282,7 @@ void sentinelRoleCommand(client *c) {
 
     di = dictGetIterator(sentinel.primaries);
     while ((de = dictNext(di)) != NULL) {
-        sentinelKVInstance *ri = dictGetVal(de);
+        sentinelValkeyInstance *ri = dictGetVal(de);
 
         addReplyBulkCString(c, ri->name);
     }
@@ -4218,13 +4291,15 @@ void sentinelRoleCommand(client *c) {
 
 /* SENTINEL SET <primaryname> [<option> <value> ...] */
 void sentinelSetCommand(client *c) {
-    sentinelKVInstance *ri;
+    sentinelValkeyInstance *ri;
     int j, changes = 0;
     int badarg = 0; /* Bad argument position for error reporting. */
     char *option;
     int redacted;
 
     if ((ri = sentinelGetPrimaryByNameOrReplyError(c, c->argv[2])) == NULL) return;
+
+    if (sentinelValidateArgs(c, 3, "SENTINEL SET") == C_ERR) return;
 
     /* Process option - value pairs. */
     for (j = 3; j < c->argc; j++) {
@@ -4404,7 +4479,7 @@ void sentinelPublishCommand(client *c) {
 /* ===================== SENTINEL availability checks ======================= */
 
 /* Is this instance down from our point of view? */
-void sentinelCheckSubjectivelyDown(sentinelKVInstance *ri) {
+void sentinelCheckSubjectivelyDown(sentinelValkeyInstance *ri) {
     mstime_t elapsed = 0;
 
     if (ri->link->act_ping_time)
@@ -4469,24 +4544,27 @@ void sentinelCheckSubjectivelyDown(sentinelKVInstance *ri) {
  * reported in a given time range that the instance was not reachable.
  * However messages can be delayed so there are no strong guarantees about
  * N instances agreeing at the same time about the down state. */
-void sentinelCheckObjectivelyDown(sentinelKVInstance *primary) {
+void sentinelCheckObjectivelyDown(sentinelValkeyInstance *primary) {
     dictIterator *di;
     dictEntry *de;
-    unsigned int quorum = 0, odown = 0;
+    unsigned int quorum = 1, odown = 0; /* Count the current sentinel. */
+    mstime_t now = mstime();
 
-    if (primary->flags & SRI_S_DOWN) {
-        /* Is down for enough sentinels? */
-        quorum = 1; /* the current sentinel. */
-        /* Count all the other sentinels. */
-        di = dictGetIterator(primary->sentinels);
-        while ((de = dictNext(di)) != NULL) {
-            sentinelKVInstance *ri = dictGetVal(de);
+    /* Expire stale replies even when the primary is healthy, before counting
+     * the other sentinels towards the quorum. */
+    di = dictGetIterator(primary->sentinels);
+    while ((de = dictNext(di)) != NULL) {
+        sentinelValkeyInstance *ri = dictGetVal(de);
 
-            if (ri->flags & SRI_PRIMARY_DOWN) quorum++;
+        if (now - ri->last_primary_down_reply_time > sentinel_ask_period * 5) {
+            ri->flags &= ~SRI_PRIMARY_DOWN;
+            sdsfree(ri->leader);
+            ri->leader = NULL;
         }
-        dictReleaseIterator(di);
-        if (quorum >= primary->quorum) odown = 1;
+        if (ri->flags & SRI_PRIMARY_DOWN) quorum++;
     }
+    dictReleaseIterator(di);
+    if ((primary->flags & SRI_S_DOWN) && quorum >= primary->quorum) odown = 1;
 
     /* Set the flag accordingly to the outcome. */
     if (odown) {
@@ -4505,10 +4583,10 @@ void sentinelCheckObjectivelyDown(sentinelKVInstance *primary) {
 
 /* Receive the SENTINEL is-primary-down-by-addr reply, see the
  * sentinelAskPrimariesStateToOtherSentinels() function for more information. */
-void sentinelReceiveIsPrimaryDownReply(kvAsyncContext *c, void *reply, void *privdata) {
-    sentinelKVInstance *ri = privdata;
+void sentinelReceiveIsPrimaryDownReply(valkeyAsyncContext *c, void *reply, void *privdata) {
+    sentinelValkeyInstance *ri = privdata;
     instanceLink *link = c->data;
-    kvReply *r;
+    valkeyReply *r;
 
     if (!reply || !link) return;
     link->pending_commands--;
@@ -4517,8 +4595,8 @@ void sentinelReceiveIsPrimaryDownReply(kvAsyncContext *c, void *reply, void *pri
     /* Ignore every error or unexpected reply.
      * Note that if the command returns an error for any reason we'll
      * end clearing the SRI_PRIMARY_DOWN flag for timeout anyway. */
-    if (r->type == KV_REPLY_ARRAY && r->elements == 3 && r->element[0]->type == KV_REPLY_INTEGER &&
-        r->element[1]->type == KV_REPLY_STRING && r->element[2]->type == KV_REPLY_INTEGER) {
+    if (r->type == VALKEY_REPLY_ARRAY && r->elements == 3 && r->element[0]->type == VALKEY_REPLY_INTEGER &&
+        r->element[1]->type == VALKEY_REPLY_STRING && r->element[2]->type == VALKEY_REPLY_INTEGER) {
         ri->last_primary_down_reply_time = mstime();
         if (r->element[0]->integer == 1) {
             ri->flags |= SRI_PRIMARY_DOWN;
@@ -4542,7 +4620,7 @@ void sentinelReceiveIsPrimaryDownReply(kvAsyncContext *c, void *reply, void *pri
  * SENTINEL IS-PRIMARY-DOWN-BY-ADDR requests to other sentinels
  * in order to get the replies that allow to reach the quorum
  * needed to mark the primary in ODOWN state and trigger a failover. */
-void sentinelAskPrimaryStateToOtherSentinels(sentinelKVInstance *primary, int flags) {
+void sentinelAskPrimaryStateToOtherSentinels(sentinelValkeyInstance *primary, int flags) {
     /* We don't need to send requests when the primary is not SDOWN */
     if ((primary->flags & SRI_S_DOWN) == 0) return;
 
@@ -4554,16 +4632,8 @@ void sentinelAskPrimaryStateToOtherSentinels(sentinelKVInstance *primary, int fl
 
     di = dictGetIterator(primary->sentinels);
     while ((de = dictNext(di)) != NULL) {
-        sentinelKVInstance *ri = dictGetVal(de);
-        mstime_t elapsed = mstime() - ri->last_primary_down_reply_time;
+        sentinelValkeyInstance *ri = dictGetVal(de);
         int retval;
-
-        /* If the primary state from other sentinel is too old, we clear it. */
-        if (elapsed > sentinel_ask_period * 5) {
-            ri->flags &= ~SRI_PRIMARY_DOWN;
-            sdsfree(ri->leader);
-            ri->leader = NULL;
-        }
 
         /* Only ask if primary is down to other sentinels if:
          *
@@ -4575,7 +4645,7 @@ void sentinelAskPrimaryStateToOtherSentinels(sentinelKVInstance *primary, int fl
             continue;
 
         /* Ask */
-        retval = kvAsyncCommand(
+        retval = valkeyAsyncCommand(
             ri->link->cc, sentinelReceiveIsPrimaryDownReply, ri, "%s is-master-down-by-addr %s %s %llu %s",
             sentinelInstanceMapCommand(ri, "SENTINEL"), announceSentinelAddr(primary->addr), port,
             sentinel.current_epoch, (primary->failover_state > SENTINEL_FAILOVER_STATE_NONE) ? sentinel.myid : "*");
@@ -4595,9 +4665,9 @@ void sentinelSimFailureCrash(void) {
 /* Vote for the sentinel with 'req_runid' or return the old vote if already
  * voted for the specified 'req_epoch' or one greater.
  *
- * If a vote is not available returns NULL, otherwise return the Sentinel
+ * If a vote is not available returns NULL; otherwise, return the Sentinel
  * runid and populate the leader_epoch with the epoch of the vote. */
-char *sentinelVoteLeader(sentinelKVInstance *primary, uint64_t req_epoch, char *req_runid, uint64_t *leader_epoch) {
+char *sentinelVoteLeader(sentinelValkeyInstance *primary, uint64_t req_epoch, char *req_runid, uint64_t *leader_epoch) {
     if (req_epoch > sentinel.current_epoch) {
         sentinel.current_epoch = req_epoch;
         sentinelFlushConfig();
@@ -4651,7 +4721,7 @@ int sentinelLeaderIncr(dict *counters, char *runid) {
  * To be a leader for a given epoch, we should have the majority of
  * the Sentinels we know (ever seen since the last SENTINEL RESET) that
  * reported the same instance as leader for the same epoch. */
-char *sentinelGetLeader(sentinelKVInstance *primary, uint64_t epoch) {
+char *sentinelGetLeader(sentinelValkeyInstance *primary, uint64_t epoch) {
     dict *counters;
     dictIterator *di;
     dictEntry *de;
@@ -4669,7 +4739,7 @@ char *sentinelGetLeader(sentinelKVInstance *primary, uint64_t epoch) {
     /* Count other sentinels votes */
     di = dictGetIterator(primary->sentinels);
     while ((de = dictNext(di)) != NULL) {
-        sentinelKVInstance *ri = dictGetVal(de);
+        sentinelValkeyInstance *ri = dictGetVal(de);
         if (ri->leader != NULL && ri->leader_epoch == sentinel.current_epoch) sentinelLeaderIncr(counters, ri->leader);
     }
     dictReleaseIterator(di);
@@ -4723,7 +4793,7 @@ char *sentinelGetLeader(sentinelKVInstance *primary, uint64_t epoch) {
  * The command returns C_OK if the FAILOVER command was accepted for
  * (later) delivery otherwise C_ERR. The command replies are just
  * discarded. */
-int sentinelFailoverTo(sentinelKVInstance *ri, const sentinelAddr *addr, mstime_t timeout) {
+int sentinelFailoverTo(sentinelValkeyInstance *ri, const sentinelAddr *addr, mstime_t timeout) {
     char portstr[32];
     const char *host;
     int retval;
@@ -4733,27 +4803,27 @@ int sentinelFailoverTo(sentinelKVInstance *ri, const sentinelAddr *addr, mstime_
 
     /* Note that we don't check the replies returned by commands, since we
      * will observe instead the effects in the next INFO output. */
-    retval = kvAsyncCommand(ri->link->cc,
+    retval = valkeyAsyncCommand(ri->link->cc,
                                 sentinelDiscardReplyCallback, ri, "%s",
                                 sentinelInstanceMapCommand(ri, "MULTI"));
     if (retval == C_ERR) return retval;
     ri->link->pending_commands++;
 
-    retval = kvAsyncCommand(ri->link->cc,
+    retval = valkeyAsyncCommand(ri->link->cc,
                                 sentinelDiscardReplyCallback, ri, "%s PAUSE %d WRITE",
                                 sentinelInstanceMapCommand(ri, "CLIENT"),
                                 timeout);
     if (retval == C_ERR) return retval;
     ri->link->pending_commands++;
 
-    retval = kvAsyncCommand(ri->link->cc,
+    retval = valkeyAsyncCommand(ri->link->cc,
                                 sentinelDiscardReplyCallback, ri, "%s TO %s %s TIMEOUT %d",
                                 sentinelInstanceMapCommand(ri, "FAILOVER"),
                                 host, portstr, timeout);
     if (retval == C_ERR) return retval;
     ri->link->pending_commands++;
 
-    retval = kvAsyncCommand(ri->link->cc,
+    retval = valkeyAsyncCommand(ri->link->cc,
                                 sentinelDiscardReplyCallback, ri, "%s",
                                 sentinelInstanceMapCommand(ri, "EXEC"));
     if (retval == C_ERR) return retval;
@@ -4770,8 +4840,10 @@ int sentinelFailoverTo(sentinelKVInstance *ri, const sentinelAddr *addr, mstime_
  * The command returns C_OK if the commands were accepted for
  * (later) delivery otherwise C_ERR. The command replies are just
  * discarded. */
-int sentinelKillClients(sentinelKVInstance *ri) {
+int sentinelKillClients(sentinelValkeyInstance *ri) {
     int retval;
+
+    if (ri->link->cc == NULL) return C_ERR;
 
     /* 1) Rewrite the configuration (the instance just switched roles)
      * 2) Disconnect all clients (but this one sending the command) in order
@@ -4781,20 +4853,20 @@ int sentinelKillClients(sentinelKVInstance *ri) {
      *
      * Note that we don't check the replies returned by commands, since we
      * will observe instead the effects in the next INFO output. */
-    retval = kvAsyncCommand(ri->link->cc,
+    retval = valkeyAsyncCommand(ri->link->cc,
                                 sentinelDiscardReplyCallback, ri, "%s",
                                 sentinelInstanceMapCommand(ri, "MULTI"));
     if (retval == C_ERR) return retval;
     ri->link->pending_commands++;
 
-    retval = kvAsyncCommand(ri->link->cc,
+    retval = valkeyAsyncCommand(ri->link->cc,
                                 sentinelDiscardReplyCallback, ri, "%s REWRITE",
                                 sentinelInstanceMapCommand(ri, "CONFIG"));
     if (retval == C_ERR) return retval;
     ri->link->pending_commands++;
 
     for (int type = 0; type < 2; type++) {
-        retval = kvAsyncCommand(ri->link->cc,
+        retval = valkeyAsyncCommand(ri->link->cc,
                                     sentinelDiscardReplyCallback, ri, "%s KILL TYPE %s",
                                     sentinelInstanceMapCommand(ri, "CLIENT"),
                                     type == 0 ? "normal" : "pubsub");
@@ -4802,13 +4874,13 @@ int sentinelKillClients(sentinelKVInstance *ri) {
         ri->link->pending_commands++;
     }
 
-    retval = kvAsyncCommand(ri->link->cc,
+    retval = valkeyAsyncCommand(ri->link->cc,
                                 sentinelDiscardReplyCallback, ri, "%s UNPAUSE",
                                 sentinelInstanceMapCommand(ri, "CLIENT"));
     if (retval == C_ERR) return retval;
     ri->link->pending_commands++;
 
-    retval = kvAsyncCommand(ri->link->cc,
+    retval = valkeyAsyncCommand(ri->link->cc,
                                 sentinelDiscardReplyCallback, ri, "%s",
                                 sentinelInstanceMapCommand(ri, "EXEC"));
     if (retval == C_ERR) return retval;
@@ -4827,7 +4899,7 @@ int sentinelKillClients(sentinelKVInstance *ri) {
  * The command returns C_OK if the REPLICAOF command was accepted for
  * (later) delivery otherwise C_ERR. The command replies are just
  * discarded. */
-int sentinelSendReplicaOf(sentinelKVInstance *ri, const sentinelAddr *addr) {
+int sentinelSendReplicaOf(sentinelValkeyInstance *ri, const sentinelAddr *addr) {
     char portstr[32];
     const char *host;
     int retval;
@@ -4844,7 +4916,7 @@ int sentinelSendReplicaOf(sentinelKVInstance *ri, const sentinelAddr *addr) {
 
     /* In order to send REPLICAOF in a safe way, we send a transaction performing
      * the following tasks:
-     * 1) Abort a potentially ongoing KV FAILOVER (that may be stuck). REPLICAOF
+     * 1) Abort a potentially ongoing Valkey FAILOVER (that may be stuck). REPLICAOF
      *    can't be used during a failover.
      * 2) Reconfigure the instance according to the specified host/port params.
      * 3) Rewrite the configuration.
@@ -4854,24 +4926,24 @@ int sentinelSendReplicaOf(sentinelKVInstance *ri, const sentinelAddr *addr) {
      *
      * Note that we don't check the replies returned by commands, since we
      * will observe instead the effects in the next INFO output. */
-    retval = kvAsyncCommand(ri->link->cc, sentinelDiscardReplyCallback, ri, "%s",
+    retval = valkeyAsyncCommand(ri->link->cc, sentinelDiscardReplyCallback, ri, "%s",
                                 sentinelInstanceMapCommand(ri, "MULTI"));
     if (retval == C_ERR) return retval;
     ri->link->pending_commands++;
 
     if (ri->monitored_instance_failover_state == SENTINEL_MONITORED_INSTANCE_FAILOVER) {
-        retval = kvAsyncCommand(ri->link->cc, sentinelDiscardReplyCallback, ri, "%s ABORT",
+        retval = valkeyAsyncCommand(ri->link->cc, sentinelDiscardReplyCallback, ri, "%s ABORT",
                                     sentinelInstanceMapCommand(ri, "FAILOVER"));
         if (retval == C_ERR) return retval;
         ri->link->pending_commands++;
     }
 
-    retval = kvAsyncCommand(ri->link->cc, sentinelDiscardReplyCallback, ri, "%s %s %s",
+    retval = valkeyAsyncCommand(ri->link->cc, sentinelDiscardReplyCallback, ri, "%s %s %s",
                                 sentinelInstanceMapCommand(ri, "SLAVEOF"), host, portstr);
     if (retval == C_ERR) return retval;
     ri->link->pending_commands++;
 
-    retval = kvAsyncCommand(ri->link->cc, sentinelDiscardReplyCallback, ri, "%s REWRITE",
+    retval = valkeyAsyncCommand(ri->link->cc, sentinelDiscardReplyCallback, ri, "%s REWRITE",
                                 sentinelInstanceMapCommand(ri, "CONFIG"));
     if (retval == C_ERR) return retval;
     ri->link->pending_commands++;
@@ -4882,22 +4954,22 @@ int sentinelSendReplicaOf(sentinelKVInstance *ri, const sentinelAddr *addr) {
      * recognized as a syntax error, and the transaction will not fail (but
      * only the unsupported command will fail). */
     for (int type = 0; type < 2; type++) {
-        retval = kvAsyncCommand(ri->link->cc, sentinelDiscardReplyCallback, ri, "%s KILL TYPE %s",
+        retval = valkeyAsyncCommand(ri->link->cc, sentinelDiscardReplyCallback, ri, "%s KILL TYPE %s",
                                     sentinelInstanceMapCommand(ri, "CLIENT"), type == 0 ? "normal" : "pubsub");
         if (retval == C_ERR) return retval;
         ri->link->pending_commands++;
     }
 
     retval =
-        kvAsyncCommand(ri->link->cc, sentinelDiscardReplyCallback, ri, "%s", sentinelInstanceMapCommand(ri, "EXEC"));
+        valkeyAsyncCommand(ri->link->cc, sentinelDiscardReplyCallback, ri, "%s", sentinelInstanceMapCommand(ri, "EXEC"));
     if (retval == C_ERR) return retval;
     ri->link->pending_commands++;
 
     return C_OK;
 }
 
-/* Setup the primary state to start a failover. */
-void sentinelStartFailover(sentinelKVInstance *primary) {
+/* Set up the primary state to start a failover. */
+void sentinelStartFailover(sentinelValkeyInstance *primary) {
     serverAssert(primary->flags & SRI_PRIMARY);
 
     primary->failover_state = SENTINEL_FAILOVER_STATE_WAIT_START;
@@ -4920,7 +4992,7 @@ void sentinelStartFailover(sentinelKVInstance *primary) {
  * start the failover but that we'll not be able to act.
  *
  * Return non-zero if a failover was started. */
-int sentinelStartFailoverIfNeeded(sentinelKVInstance *primary) {
+int sentinelStartFailoverIfNeeded(sentinelValkeyInstance *primary) {
     /* We can't failover if the primary is not in O_DOWN state. */
     if (!(primary->flags & SRI_O_DOWN)) return 0;
 
@@ -4958,7 +5030,7 @@ int sentinelStartFailoverIfNeeded(sentinelKVInstance *primary) {
  *    This is pretty much black magic but the idea is, the primary was not
  *    available so the replica may be lagging, but not over a certain time.
  *    Anyway we'll select the best replica according to replication offset.
- * 5) Replica priority can't be zero, otherwise the replica is discarded.
+ * 5) Replica priority can't be zero; otherwise, the replica is discarded.
  *
  * Among all the replicas matching the above conditions we select the replica
  * with, in order of sorting key:
@@ -4970,7 +5042,7 @@ int sentinelStartFailoverIfNeeded(sentinelKVInstance *primary) {
  * Basically if runid is the same, the replica that processed more commands
  * from the primary is selected.
  *
- * The function returns the pointer to the selected replica, otherwise
+ * The function returns the pointer to the selected replica; otherwise,
  * NULL if no suitable replica was found.
  */
 
@@ -4978,7 +5050,7 @@ int sentinelStartFailoverIfNeeded(sentinelKVInstance *primary) {
  * sort suitable replicas in a "better first" order, to take the first of
  * the list. */
 int compareReplicasForPromotion(const void *a, const void *b) {
-    sentinelKVInstance **sa = (sentinelKVInstance **)a, **sb = (sentinelKVInstance **)b;
+    sentinelValkeyInstance **sa = (sentinelValkeyInstance **)a, **sb = (sentinelValkeyInstance **)b;
     char *sa_runid, *sb_runid;
 
     if ((*sa)->replica_priority != (*sb)->replica_priority) return (*sa)->replica_priority - (*sb)->replica_priority;
@@ -5006,9 +5078,9 @@ int compareReplicasForPromotion(const void *a, const void *b) {
     return strcasecmp(sa_runid, sb_runid);
 }
 
-sentinelKVInstance *sentinelSelectReplica(sentinelKVInstance *primary) {
-    sentinelKVInstance **instance = zmalloc(sizeof(instance[0]) * dictSize(primary->replicas));
-    sentinelKVInstance *selected = NULL;
+sentinelValkeyInstance *sentinelSelectReplica(sentinelValkeyInstance *primary) {
+    sentinelValkeyInstance **instance = zmalloc(sizeof(instance[0]) * dictSize(primary->replicas));
+    sentinelValkeyInstance *selected = NULL;
     int instances = 0;
     dictIterator *di;
     dictEntry *de;
@@ -5020,7 +5092,7 @@ sentinelKVInstance *sentinelSelectReplica(sentinelKVInstance *primary) {
     di = dictGetIterator(primary->replicas);
 
     while ((de = dictNext(di)) != NULL) {
-        sentinelKVInstance *replica = dictGetVal(de);
+        sentinelValkeyInstance *replica = dictGetVal(de);
         mstime_t info_validity_time;
 
         if (replica->flags & (SRI_S_DOWN | SRI_O_DOWN)) continue;
@@ -5029,7 +5101,7 @@ sentinelKVInstance *sentinelSelectReplica(sentinelKVInstance *primary) {
         if (replica->replica_priority == 0) continue;
 
         /* If the primary is in SDOWN state we get INFO for replicas every second.
-         * Otherwise we get it with the usual period so we need to account for
+         * Otherwise, we get it with the usual period so we need to account for
          * a larger delay. */
         if (primary->flags & SRI_S_DOWN)
             info_validity_time = sentinel_ping_period * 5;
@@ -5041,7 +5113,7 @@ sentinelKVInstance *sentinelSelectReplica(sentinelKVInstance *primary) {
     }
     dictReleaseIterator(di);
     if (instances) {
-        qsort(instance, instances, sizeof(sentinelKVInstance *), compareReplicasForPromotion);
+        qsort(instance, instances, sizeof(sentinelValkeyInstance *), compareReplicasForPromotion);
         selected = instance[0];
     }
     zfree(instance);
@@ -5049,7 +5121,7 @@ sentinelKVInstance *sentinelSelectReplica(sentinelKVInstance *primary) {
 }
 
 /* ---------------- Failover state machine implementation ------------------- */
-void sentinelFailoverWaitStart(sentinelKVInstance *ri) {
+void sentinelFailoverWaitStart(sentinelValkeyInstance *ri) {
     char *leader;
     int isleader;
 
@@ -5080,8 +5152,8 @@ void sentinelFailoverWaitStart(sentinelKVInstance *ri) {
     sentinelEvent(LL_WARNING, "+failover-state-select-slave", ri, "%@");
 }
 
-void sentinelFailoverSelectReplica(sentinelKVInstance *ri) {
-    sentinelKVInstance *replica = sentinelSelectReplica(ri);
+void sentinelFailoverSelectReplica(sentinelValkeyInstance *ri) {
+    sentinelValkeyInstance *replica = sentinelSelectReplica(ri);
 
     /* We don't handle the timeout in this state as the function aborts
      * the failover or go forward in the next state. */
@@ -5098,7 +5170,7 @@ void sentinelFailoverSelectReplica(sentinelKVInstance *ri) {
     }
 }
 
-void sentinelFailoverSendFailover(sentinelKVInstance *ri) {
+void sentinelFailoverSendFailover(sentinelValkeyInstance *ri) {
     int retval;
     mstime_t time_passed = mstime() - ri->failover_state_change_time;
 
@@ -5130,7 +5202,7 @@ void sentinelFailoverSendFailover(sentinelKVInstance *ri) {
 }
 
 
-void sentinelFailoverSendReplicaOfNoOne(sentinelKVInstance *ri) {
+void sentinelFailoverSendReplicaOfNoOne(sentinelValkeyInstance *ri) {
     int retval;
 
     /* We can't send the command to the promoted replica if it is now
@@ -5157,7 +5229,7 @@ void sentinelFailoverSendReplicaOfNoOne(sentinelKVInstance *ri) {
 
 /* We actually wait for promotion indirectly checking with INFO when the
  * replica turns into a primary. */
-void sentinelFailoverWaitPromotion(sentinelKVInstance *ri) {
+void sentinelFailoverWaitPromotion(sentinelValkeyInstance *ri) {
     /* Just handle the timeout. Switching to the next state is handled
      * by the function parsing the INFO command of the promoted replica. */
     if (mstime() - ri->failover_state_change_time > ri->failover_timeout) {
@@ -5166,7 +5238,7 @@ void sentinelFailoverWaitPromotion(sentinelKVInstance *ri) {
     }
 }
 
-void sentinelFailoverDetectEnd(sentinelKVInstance *primary) {
+void sentinelFailoverDetectEnd(sentinelValkeyInstance *primary) {
     int not_reconfigured = 0, timeout = 0;
     dictIterator *di;
     dictEntry *de;
@@ -5180,7 +5252,7 @@ void sentinelFailoverDetectEnd(sentinelKVInstance *primary) {
      * configured. */
     di = dictGetIterator(primary->replicas);
     while ((de = dictNext(di)) != NULL) {
-        sentinelKVInstance *replica = dictGetVal(de);
+        sentinelValkeyInstance *replica = dictGetVal(de);
 
         if (replica->flags & (SRI_PROMOTED | SRI_RECONF_DONE)) continue;
         if (replica->flags & SRI_S_DOWN) continue;
@@ -5210,7 +5282,7 @@ void sentinelFailoverDetectEnd(sentinelKVInstance *primary) {
 
         di = dictGetIterator(primary->replicas);
         while ((de = dictNext(di)) != NULL) {
-            sentinelKVInstance *replica = dictGetVal(de);
+            sentinelValkeyInstance *replica = dictGetVal(de);
             int retval;
 
             if (replica->flags & (SRI_PROMOTED | SRI_RECONF_DONE | SRI_RECONF_SENT)) continue;
@@ -5228,14 +5300,14 @@ void sentinelFailoverDetectEnd(sentinelKVInstance *primary) {
 
 /* Send REPLICAOF <new primary address> to all the remaining replicas that
  * still don't appear to have the configuration updated. */
-void sentinelFailoverReconfNextReplica(sentinelKVInstance *primary) {
+void sentinelFailoverReconfNextReplica(sentinelValkeyInstance *primary) {
     dictIterator *di;
     dictEntry *de;
     int in_progress = 0;
 
     di = dictGetIterator(primary->replicas);
     while ((de = dictNext(di)) != NULL) {
-        sentinelKVInstance *replica = dictGetVal(de);
+        sentinelValkeyInstance *replica = dictGetVal(de);
 
         if (replica->flags & (SRI_RECONF_SENT | SRI_RECONF_INPROG)) in_progress++;
     }
@@ -5243,7 +5315,7 @@ void sentinelFailoverReconfNextReplica(sentinelKVInstance *primary) {
 
     di = dictGetIterator(primary->replicas);
     while (in_progress < primary->parallel_syncs && (de = dictNext(di)) != NULL) {
-        sentinelKVInstance *replica = dictGetVal(de);
+        sentinelValkeyInstance *replica = dictGetVal(de);
         int retval;
 
         /* Skip the promoted replica, and already configured replicas. */
@@ -5283,8 +5355,8 @@ void sentinelFailoverReconfNextReplica(sentinelKVInstance *primary) {
 /* This function is called when the replica is in
  * SENTINEL_FAILOVER_STATE_UPDATE_CONFIG state. In this state we need
  * to remove it from the primary table and add the promoted replica instead. */
-void sentinelFailoverSwitchToPromotedReplica(sentinelKVInstance *primary) {
-    sentinelKVInstance *ref = primary->promoted_replica ? primary->promoted_replica : primary;
+void sentinelFailoverSwitchToPromotedReplica(sentinelValkeyInstance *primary) {
+    sentinelValkeyInstance *ref = primary->promoted_replica ? primary->promoted_replica : primary;
 
     sentinelEvent(LL_WARNING, "+switch-master", primary, "%s %s %d %s %d", primary->name,
                   announceSentinelAddr(primary->addr), primary->addr->port, announceSentinelAddr(ref->addr),
@@ -5293,7 +5365,7 @@ void sentinelFailoverSwitchToPromotedReplica(sentinelKVInstance *primary) {
     sentinelResetPrimaryAndChangeAddress(primary, ref->addr->hostname, ref->addr->port);
 }
 
-void sentinelFailoverStateMachine(sentinelKVInstance *ri) {
+void sentinelFailoverStateMachine(sentinelValkeyInstance *ri) {
     serverAssert(ri->flags & SRI_PRIMARY);
 
     if (!(ri->flags & SRI_FAILOVER_IN_PROGRESS)) return;
@@ -5315,9 +5387,9 @@ void sentinelFailoverStateMachine(sentinelKVInstance *ri) {
 /* Abort a failover in progress:
  *
  * This function can only be called before the promoted replica acknowledged
- * the replica -> primary switch. Otherwise the failover can't be aborted and
+ * the replica -> primary switch. Otherwise, the failover can't be aborted and
  * will reach its end (possibly by timeout). */
-void sentinelAbortFailover(sentinelKVInstance *ri) {
+void sentinelAbortFailover(sentinelValkeyInstance *ri) {
     serverAssert(ri->flags & SRI_FAILOVER_IN_PROGRESS);
     serverAssert(ri->failover_state <= SENTINEL_FAILOVER_STATE_WAIT_PROMOTION);
 
@@ -5336,7 +5408,7 @@ void sentinelAbortFailover(sentinelKVInstance *ri) {
  * -------------------------------------------------------------------------- */
 
 /* Perform scheduled operations for the specified instance. */
-void sentinelHandleKVInstance(sentinelKVInstance *ri) {
+void sentinelHandleValkeyInstance(sentinelValkeyInstance *ri) {
     /* ========== MONITORING HALF ============ */
     /* Every kind of instance */
     sentinelReconnectInstance(ri);
@@ -5366,20 +5438,20 @@ void sentinelHandleKVInstance(sentinelKVInstance *ri) {
 
 /* Perform scheduled operations for all the instances in the dictionary.
  * Recursively call the function against dictionaries of replicas. */
-void sentinelHandleDictOfKVInstances(dict *instances) {
+void sentinelHandleDictOfValkeyInstances(dict *instances) {
     dictIterator *di;
     dictEntry *de;
-    sentinelKVInstance *switch_to_promoted = NULL;
+    sentinelValkeyInstance *switch_to_promoted = NULL;
 
     /* There are a number of things we need to perform against every primary. */
     di = dictGetIterator(instances);
     while ((de = dictNext(di)) != NULL) {
-        sentinelKVInstance *ri = dictGetVal(de);
+        sentinelValkeyInstance *ri = dictGetVal(de);
 
-        sentinelHandleKVInstance(ri);
+        sentinelHandleValkeyInstance(ri);
         if (ri->flags & SRI_PRIMARY) {
-            sentinelHandleDictOfKVInstances(ri->replicas);
-            sentinelHandleDictOfKVInstances(ri->sentinels);
+            sentinelHandleDictOfValkeyInstances(ri->replicas);
+            sentinelHandleDictOfValkeyInstances(ri->sentinels);
             if (ri->failover_state == SENTINEL_FAILOVER_STATE_UPDATE_CONFIG) {
                 switch_to_promoted = ri;
             }
@@ -5426,10 +5498,10 @@ void sentinelCheckTiltCondition(void) {
 
 void sentinelTimer(void) {
     sentinelCheckTiltCondition();
-    sentinelHandleDictOfKVInstances(sentinel.primaries);
+    sentinelHandleDictOfValkeyInstances(sentinel.primaries);
     sentinelRunPendingScripts();
     sentinelCollectTerminatedScripts();
-    sentinelKillTimedoutScripts();
+    sentinelKillTimedOutScripts();
 
     /* We continuously change the frequency of the server "timer interrupt"
      * in order to desynchronize every Sentinel from every other.

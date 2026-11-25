@@ -19,14 +19,22 @@ start_server {} {
         }
     }
 
+    test {WAIT out of range numreplicas} {
+        # numreplicas is stored in blockingState as int, so it must be
+        # validated to fit within [0, INT_MAX] to prevent overflow.
+        assert_error "*out of range*" {$master wait -1 0}
+        assert_error "*out of range*" {$master wait 2147483648 0}
+        assert_error "*out of range*" {$master wait 9223372036854775808 0}
+    }
+
     test {WAIT out of range timeout (milliseconds)} {
         # Timeout is parsed as milliseconds by getLongLongFromObjectOrReply().
         # Verify we get out of range message if value is behind LLONG_MAX
-        # (decimal value equals to 0x8000000000000000)
+        # (decimal value equals 0x8000000000000000)
          assert_error "*or out of range*" {$master wait 2 9223372036854775808}
 
          # expected to fail by later overflow condition after addition
-         # of mstime(). (decimal value equals to 0x7FFFFFFFFFFFFFFF)
+         # of mstime(). (decimal value equals 0x7FFFFFFFFFFFFFFF)
          assert_error "*timeout is out of range*" {$master wait 2 9223372036854775807}
 
          assert_error "*timeout is negative*" {$master wait 2 -1}
@@ -70,8 +78,8 @@ start_server {} {
     }
 
     test {WAIT replica multiple clients unblock - reuse last result} {
-        set rd [kv_deferring_client -1]
-        set rd2 [kv_deferring_client -1]
+        set rd [valkey_deferring_client -1]
+        set rd2 [valkey_deferring_client -1]
 
         pause_process $slave_pid
 
@@ -100,14 +108,14 @@ start_server {} {
     }
 
     start_server {} {
-        test {Setup a new replica} {
+        test {Set up a new replica} {
             r replicaof $master_host $master_port
             wait_for_ofs_sync $master r
             wait_for_ofs_sync $master $slave
         }
 
         test {WAIT in script will work} {
-            # Pause the old replica so it can not catch up the offset.
+            # Pause the old replica so it cannot catch up the offset.
             pause_process $slave_pid
 
             # Primary set a new key and wait the new replica catch up the offset.
@@ -134,6 +142,27 @@ tags {"wait aof network external:skip"} {
     start_server {overrides {appendonly {yes} auto-aof-rewrite-percentage {0}}} {
         set master [srv 0 client]
 
+        test {WAITAOF out of range numlocal} {
+            # numlocal must be 0 or 1.
+            assert_error "*out of range*" {$master waitaof -1 0 0}
+            assert_error "*out of range*" {$master waitaof 2 0 0}
+        }
+
+        test {WAITAOF out of range numreplicas} {
+            # numreplicas is stored in blockingState as int, so it must be
+            # validated to fit within [0, INT_MAX] to prevent overflow.
+            assert_error "*out of range*" {$master waitaof 0 -1 0}
+            assert_error "*out of range*" {$master waitaof 0 2147483648 0}
+            assert_error "*out of range*" {$master waitaof 0 9223372036854775808 0}
+        }
+
+        test {WAITAOF out of range timeout (milliseconds)} {
+            # Verify timeout validation for WAITAOF, similar to WAIT.
+            assert_error "*out of range*" {$master waitaof 0 0 9223372036854775808}
+            assert_error "*timeout is out of range*" {$master waitaof 0 0 9223372036854775807}
+            assert_error "*timeout is negative*" {$master waitaof 0 0 -1}
+        }
+
         test {WAITAOF local copy before fsync} {
             r config set appendfsync no
             $master incr foo
@@ -154,7 +183,7 @@ tags {"wait aof network external:skip"} {
 
         test {WAITAOF local wait and then stop aof} {
             r config set appendfsync no
-            set rd [kv_deferring_client]
+            set rd [valkey_deferring_client]
             $rd incr foo
             $rd read
             $rd waitaof 1 0 0
@@ -216,7 +245,7 @@ tags {"wait aof network external:skip"} {
             $replica config set appendfsync no
 
             test {WAITAOF on demoted master gets unblocked with an error} {
-                set rd [kv_deferring_client]
+                set rd [valkey_deferring_client]
                 $rd incr foo
                 $rd read
                 $rd waitaof 0 1 0
@@ -297,8 +326,8 @@ tags {"wait aof network external:skip"} {
             }
 
             test {WAITAOF replica multiple clients unblock - reuse last result} {
-                set rd [kv_deferring_client -1]
-                set rd2 [kv_deferring_client -1]
+                set rd [valkey_deferring_client -1]
+                set rd2 [valkey_deferring_client -1]
 
                 pause_process $replica_pid
 
@@ -340,10 +369,10 @@ tags {"wait aof network external:skip"} {
             }
 
             test {WAITAOF master without backlog, wait is released when the replica finishes full-sync} {
-                set rd [kv_deferring_client -1]
+                set rd [valkey_deferring_client -1]
                 $rd incr foo
                 $rd read
-                $rd waitaof 0 1 0
+                $rd waitaof 0 1 10000
                 wait_for_blocked_client -1
                 $replica replicaof $master_host $master_port
                 assert_equal [$rd read] {1 1}
@@ -382,7 +411,7 @@ tags {"wait aof network external:skip"} {
 
             test {WAITAOF master client didn't send any write command} {
                 $master config set repl-ping-replica-period 1
-                set client [kv_client -1]
+                set client [valkey_client -1]
                 after 1200 ;# wait for PING
                 assert_equal [$master waitaof 1 1 0] {1 1}
                 $client close
@@ -391,7 +420,7 @@ tags {"wait aof network external:skip"} {
 
             test {WAITAOF master client didn't send any command} {
                 $master config set repl-ping-replica-period 1
-                set client [kv [srv -1 "host"] [srv -1 "port"] 0 $::tls]
+                set client [valkey [srv -1 "host"] [srv -1 "port"] 0 $::tls]
                 after 1200 ;# wait for PING
                 assert_equal [$master waitaof 1 1 0] {1 1}
                 $client close
@@ -430,8 +459,8 @@ tags {"wait aof network external:skip"} {
                             }
 
                             # add some writes and block a client on each master
-                            set rd [kv_deferring_client -3]
-                            set rd2 [kv_deferring_client -1]
+                            set rd [valkey_deferring_client -3]
+                            set rd2 [valkey_deferring_client -1]
                             $rd set boo 11
                             $rd2 set boo 22
                             $rd read
@@ -483,8 +512,8 @@ start_server {} {
     }
 
     test {WAIT and WAITAOF replica multiple clients unblock - reuse last result} {
-        set rd [kv_deferring_client]
-        set rd2 [kv_deferring_client]
+        set rd [valkey_deferring_client]
+        set rd2 [valkey_deferring_client]
 
         $master config set appendonly yes
         $replica1 config set appendonly yes
@@ -528,6 +557,52 @@ start_server {} {
 
         $rd close
         $rd2 close
+    }
+}
+}
+}
+
+start_server {tags {"wait network external:skip"}} {
+start_server {} {
+start_server {} {
+    set master1 [srv -2 client]
+    set master1_host [srv -2 host]
+    set master1_port [srv -2 port]
+
+    set master2 [srv -1 client]
+    set master2_host [srv -1 host]
+    set master2_port [srv -1 port]
+
+    set replica [srv 0 client]
+
+    test {Repoint replica with deferred freeClient does not double-connect} {
+        $replica replicaof $master1_host $master1_port
+        wait_for_condition 50 100 {
+            [s 0 master_link_status] eq {up}
+        } else {
+            fail "Replication to master1 not established"
+        }
+
+        $replica debug force-free-primary-async 1
+
+        set log_lines [count_log_lines 0]
+        $replica replicaof $master2_host $master2_port
+        wait_for_condition 50 200 {
+            [s 0 master_link_status] eq {up}
+        } else {
+            fail "Replication to master2 not established after repoint"
+        }
+        after 2000
+
+        set logfile [srv 0 stdout]
+        set lines [split [exec tail -n +[expr {$log_lines + 1}] < $logfile] "\n"]
+        set sync_count 0
+        foreach line $lines {
+            if {[string match "*Connecting to PRIMARY $master2_host:$master2_port*" $line]} {
+                incr sync_count
+            }
+        }
+        assert_equal 1 $sync_count
     }
 }
 }

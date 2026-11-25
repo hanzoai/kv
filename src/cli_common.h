@@ -1,8 +1,9 @@
 #ifndef __CLICOMMON_H
 #define __CLICOMMON_H
 
-#include <kv/kv.h>
+#include <valkey/valkey.h>
 #include "sds.h"
+#include <stdint.h>
 
 typedef struct cliSSLconfig {
     /* Requested SNI, or NULL */
@@ -33,9 +34,9 @@ typedef struct cliConnInfo {
     char *user;
 } cliConnInfo;
 
-int cliSecureConnection(kvContext *c, cliSSLconfig config, const char **err);
+int cliSecureConnection(valkeyContext *c, cliSSLconfig config, const char **err);
 
-ssize_t cliWriteConn(kvContext *c, const char *buf, size_t buf_len);
+ssize_t cliWriteConn(valkeyContext *c, const char *buf, size_t buf_len);
 
 int cliSecureInit(void);
 
@@ -51,6 +52,10 @@ void freeCliConnInfo(cliConnInfo connInfo);
 
 sds cliVersion(void);
 
-kvContext *kvConnectWrapper(enum kvConnectionType ct, const char *ip_or_path, int port, const struct timeval tv, int nonblock, int multipath);
+valkeyContext *valkeyConnectWrapper(enum valkeyConnectionType ct, const char *ip_or_path, int port, const struct timeval tv, int nonblock, int multipath);
+
+/* 62-bit per-thread PRNG (splitmix64), lock-free. Each thread's stream is
+ * seeded on first use from the srandom()-seedable global generator. */
+uint64_t rand62(void);
 
 #endif /* __CLICOMMON_H */

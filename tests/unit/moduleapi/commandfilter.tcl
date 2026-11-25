@@ -50,6 +50,18 @@ start_server {tags {"modules"}} {
         r lrange log-key 0 -1
     } "{ping @log}"
 
+    test {Command Filter applies on Lua redis.call() with arg replacing} {
+        r del mylist
+        r eval "redis.call('rpush', 'mylist', 'elem1', '@replaceme', 'elem2')" 0
+        r lrange mylist 0 -1
+    } {elem1 --replaced-- elem2}
+
+    test {Command Filter applies on Lua redis.call() with arg deletion} {
+        r del mylist
+        r eval "redis.call('rpush', 'mylist', 'elem1', '@delme', 'elem2')" 0
+        r lrange mylist 0 -1
+    } {elem1 elem2}
+
     test {Command Filter strings can be retained} {
         r commandfilter.retained
     } {my-retained-string}
@@ -127,7 +139,7 @@ test {Blocking Commands don't run through command filter when reprocessed} {
 
         r lpush list2{t} a b c d e
 
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
         # we're asking to pop from the left, but the command filter swaps the two arguments,
         # if it didn't swap it, we would end up with e d c b a 5 (5 being the left most of the following lpush)
         # but since we swap the arguments, we end up with 1 e d c b a (1 being the right most of it).
@@ -148,7 +160,7 @@ test {Filtering based on client id} {
     start_server {tags {"modules"}} {
         r module load $testmodule log-key 0
 
-        set rr [kv_client]
+        set rr [valkey_client]
         set cid [$rr client id]
         r unfilter_clientid $cid
 

@@ -1,6 +1,7 @@
 # Check the basic monitoring and failover capabilities.
 source "../tests/includes/start-init-tests.tcl"
 source "../tests/includes/init-tests.tcl"
+source "../../support/cli.tcl"
 
 foreach_sentinel_id id {
     S $id sentinel debug default-down-after 1000
@@ -35,7 +36,11 @@ test "Sentinel command flag infrastructure works correctly" {
 }
 
 test "SENTINEL HELP output the sentinel subcommand help" {
-    assert_match "*SENTINEL <subcommand> *" [S 0 SENTINEL HELP]
+    set help [S 0 SENTINEL HELP]
+    assert_match "*SENTINEL <subcommand> *" $help
+    assert {[string first \
+        {SIMULATE-FAILURE (CRASH-AFTER-ELECTION|CRASH-AFTER-PROMOTION|HELP) [(CRASH-AFTER-ELECTION|CRASH-AFTER-PROMOTION|HELP) ...]} \
+        $help] != -1}
 }
 
 test "SENTINEL MYID return the sentinel instance ID" {
@@ -64,6 +69,22 @@ test "SENTINEL PRIMARIES returns a list of monitored primaries" {
     assert_morethan_equal [llength [S 0 SENTINEL PRIMARIES]] 1
 }
 
+test "SENTINEL GET-PRIMARY-ADDR-BY-NAME returns null for an unknown primary" {
+    set protocols {2 3}
+    if {$::force_resp3} {
+        set protocols {3}
+    }
+    foreach resp $protocols {
+        set rd [valkey_client sentinel 0]
+        $rd hello $resp
+        $rd readraw 1
+        set expected [expr {$resp == 2 ? {*-1} : {_}}]
+        assert_equal $expected [$rd SENTINEL GET-PRIMARY-ADDR-BY-NAME nosuchprimary]
+        assert_equal $expected [$rd SENTINEL GET-MASTER-ADDR-BY-NAME nosuchprimary]
+        $rd close
+    }
+}
+
 test "SENTINEL SENTINELS returns a list of sentinel instances" {
      assert_morethan_equal [llength [S 0 SENTINEL SENTINELS mymaster]] 1
 }
@@ -78,15 +99,38 @@ test "SENTINEL SIMULATE-FAILURE HELP list supported flags" {
     assert_equal {crash-after-election crash-after-promotion} $res
 }
 
+test "SENTINEL SIMULATE-FAILURE command metadata" {
+    set docs [dict get [S 0 COMMAND DOCS sentinel|simulate-failure] sentinel|simulate-failure]
+    set mode [lindex [dict get $docs arguments] 0]
+    assert_equal {multiple} [dict get $mode flags]
+
+    set modes [dict get $mode arguments]
+    foreach {index token} {0 CRASH-AFTER-ELECTION 1 CRASH-AFTER-PROMOTION 2 HELP} {
+        assert_equal $token [dict get [lindex $modes $index] token]
+    }
+}
+
+test "SENTINEL SIMULATE-FAILURE valkey-cli hint" {
+    set cmd [list $::VALKEY_CLI_BIN \
+        -h [get_instance_attrib sentinel 0 host] \
+        -p [get_instance_attrib sentinel 0 port]]
+    lappend cmd {*}[valkeycli_tls_config "../.."]
+    lappend cmd --test_hint "SENTINEL SIMULATE-FAILURE "
+
+    assert_equal \
+        {CRASH-AFTER-ELECTION|CRASH-AFTER-PROMOTION|HELP [CRASH-AFTER-ELECTION|CRASH-AFTER-PROMOTION|HELP ...]} \
+        [exec {*}$cmd]
+}
+
 test "Basic failover works if the primary is down" {
     # Explicitly forbid the FAILOVER command to ensure backward compatibility with
-    # ACLs that were documented for KV < 9.0
+    # ACLs that were documented for Valkey < 9.0
     configure_sentinel_user_acl $::user $::password 0
 
     set old_port [RPort $master_id]
     set addr [S 0 SENTINEL GET-PRIMARY-ADDR-BY-NAME mymaster]
     assert {[lindex $addr 1] == $old_port}
-    kill_instance kv $master_id
+    kill_instance valkey $master_id
     foreach_sentinel_id id {
         S $id sentinel debug ping-period 500
         S $id sentinel debug ask-period 500  
@@ -96,9 +140,9 @@ test "Basic failover works if the primary is down" {
             fail "At least one Sentinel did not receive failover info"
         }
     }
-    restart_instance kv $master_id
+    restart_instance valkey $master_id
     set addr [S 0 SENTINEL GET-PRIMARY-ADDR-BY-NAME mymaster]
-    set master_id [get_instance_id_by_port kv [lindex $addr 1]]
+    set master_id [get_instance_id_by_port valkey [lindex $addr 1]]
 }
 
 test "New primary [join $addr {:}] role matches" {
@@ -106,12 +150,12 @@ test "New primary [join $addr {:}] role matches" {
 }
 
 test "All the other slaves now point to the new primary" {
-    foreach_kv_id id {
+    foreach_valkey_id id {
         if {$id != $master_id && $id != 0} {
             wait_for_condition 1000 50 {
                 [RI $id master_port] == [lindex $addr 1]
             } else {
-                fail "KV ID $id not configured to replicate with new master"
+                fail "Valkey ID $id not configured to replicate with new master"
             }
         }
     }
@@ -126,22 +170,97 @@ test "The old primary eventually gets reconfigured as a slave" {
     reset_sentinel_user_acl $::user
 }
 
+test "Stale primary-down reports do not trigger another failover" {
+    # Reports from the first failover expire after five 500ms ask-periods.
+    after 3000
+    set primary [S 0 SENTINEL PRIMARY mymaster]
+    set primary_addr [S 0 SENTINEL GET-PRIMARY-ADDR-BY-NAME mymaster]
+    set primary_id [get_instance_id_by_port valkey [lindex $primary_addr 1]]
+    set log [open "sentinel_0/log.txt" r]
+    seek $log 0 end
+
+    # Only Sentinel 0 uses this user; the primary remains reachable by its peers.
+    foreach_valkey_id id {
+        R $id ACL SETUSER isolated-sentinel on >$::password +@all allchannels
+    }
+    S 0 SENTINEL SET mymaster auth-user isolated-sentinel auth-pass $::password
+    wait_for_sentinels_connect_servers
+    R $primary_id ACL SETUSER isolated-sentinel -ping
+    set errcode [catch {
+        wait_for_condition 100 100 {
+            [string match "*s_down*" [dict get [S 0 SENTINEL PRIMARY mymaster] flags]]
+        } else {
+            fail "The isolated Sentinel did not enter SDOWN"
+        }
+
+        # Allow even a delayed, incorrect second failover to start.
+        after [expr {2 * [dict get $primary failover-timeout]}]
+        set events [read $log]
+        assert_match "*+sdown master*" $events
+        assert_no_match "*+odown*" $events
+        assert_no_match "*+try-failover*" $events
+        foreach_sentinel_id id {
+            assert_equal $primary_addr [S $id SENTINEL GET-PRIMARY-ADDR-BY-NAME mymaster]
+            set info [S $id SENTINEL PRIMARY mymaster]
+            assert_equal [dict get $primary config-epoch] [dict get $info config-epoch]
+            if {$id == 0} {
+                assert_match "*s_down*" [dict get $info flags]
+            } else {
+                assert_equal master [dict get $info flags]
+            }
+        }
+    } error options]
+    close $log
+    S 0 SENTINEL SET mymaster auth-user "" auth-pass ""
+    foreach_valkey_id id {
+        R $id ACL DELUSER isolated-sentinel
+    }
+    wait_for_sentinels_connect_servers
+    if {$errcode} {
+        return -options $options $error
+    }
+
+    foreach_sentinel_id id {
+        wait_for_condition 100 100 {
+            ![string match "*master_down*" [S $id SENTINEL SENTINELS mymaster]]
+        } else {
+            fail "Sentinel $id still has stale primary-down reports"
+        }
+    }
+}
+
 test "ODOWN is not possible without N (quorum) Sentinels reports" {
+    set sentinels [llength $::sentinel_instances]
     foreach_sentinel_id id {
         S $id SENTINEL SET mymaster quorum [expr $sentinels+1]
     }
     set old_port [RPort $master_id]
     set addr [S 0 SENTINEL GET-PRIMARY-ADDR-BY-NAME mymaster]
     assert {[lindex $addr 1] == $old_port}
-    kill_instance kv $master_id
+    kill_instance valkey $master_id
 
-    # Make sure failover did not happened.
+    # Make sure failover did not happen.
     set addr [S 0 SENTINEL GET-PRIMARY-ADDR-BY-NAME mymaster]
     assert {[lindex $addr 1] == $old_port}
-    restart_instance kv $master_id
+    restart_instance valkey $master_id
 }
 
 test "Failover is not possible without majority agreement" {
+    set quorum [expr {$sentinels/2 + 1}]
+
+    # The previous test just restarted the primary. Sentinels can still show it
+    # as disconnected, and cross down-after right after we lower the quorum,
+    # which starts a real failover with every Sentinel alive. Wait until each
+    # one is connected and has had a recent PONG.
+    foreach_sentinel_id id {
+        wait_for_condition 1000 50 {
+            [dict get [S $id SENTINEL PRIMARY mymaster] flags] eq "master" &&
+            [dict get [S $id SENTINEL PRIMARY mymaster] last-ok-ping-reply] < 1000
+        } else {
+            fail "Sentinel $id does not see the primary as healthy"
+        }
+    }
+
     foreach_sentinel_id id {
         S $id SENTINEL SET mymaster quorum $quorum
     }
@@ -152,12 +271,12 @@ test "Failover is not possible without majority agreement" {
     }
 
     # Kill the current master
-    kill_instance kv $master_id
+    kill_instance valkey $master_id
 
-    # Make sure failover did not happened.
+    # Make sure failover did not happen.
     set addr [S $quorum SENTINEL GET-PRIMARY-ADDR-BY-NAME mymaster]
     assert {[lindex $addr 1] == $old_port}
-    restart_instance kv $master_id
+    restart_instance valkey $master_id
 
     # Cleanup: restart Sentinels to monitor the master.
     for {set id 0} {$id < $quorum} {incr id} {
@@ -179,7 +298,7 @@ test "Failover works if we configure for absolute agreement" {
         }
     }
 
-    kill_instance kv $master_id
+    kill_instance valkey $master_id
 
     foreach_sentinel_id id {
         wait_for_condition 1000 100 {
@@ -188,9 +307,9 @@ test "Failover works if we configure for absolute agreement" {
             fail "At least one Sentinel did not receive failover info"
         }
     }
-    restart_instance kv $master_id
+    restart_instance valkey $master_id
     set addr [S 0 SENTINEL GET-PRIMARY-ADDR-BY-NAME mymaster]
-    set master_id [get_instance_id_by_port kv [lindex $addr 1]]
+    set master_id [get_instance_id_by_port valkey [lindex $addr 1]]
 
     # Set the min ODOWN agreement back to strict majority.
     foreach_sentinel_id id {
@@ -202,7 +321,7 @@ test "New primary [join $addr {:}] role matches" {
     assert {[RI $master_id role] eq {master}}
 }
 
-test "SENTINEL RESET can resets the primary" {
+test "SENTINEL RESET can reset the primary" {
     # After SENTINEL RESET, sometimes the sentinel can sense the primary again,
     # causing the test to fail. Here we give it a few more chances.
     for {set j 0} {$j < 10} {incr j} {

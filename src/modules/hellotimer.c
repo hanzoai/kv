@@ -30,45 +30,45 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "../kvmodule.h"
+#include "../valkeymodule.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
 
 /* Timer callback. */
-void timerHandler(KVModuleCtx *ctx, void *data) {
-    KVMODULE_NOT_USED(ctx);
+void timerHandler(ValkeyModuleCtx *ctx, void *data) {
+    VALKEYMODULE_NOT_USED(ctx);
     printf("Fired %s!\n", (char *)data);
-    KVModule_Free(data);
+    ValkeyModule_Free(data);
 }
 
 /* HELLOTIMER.TIMER*/
-int TimerCommand_KVCommand(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
+int TimerCommand_ValkeyCommand(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
 
     for (int j = 0; j < 10; j++) {
         int delay = rand() % 5000;
-        char *buf = KVModule_Alloc(256);
+        char *buf = ValkeyModule_Alloc(256);
         snprintf(buf, 256, "After %d", delay);
-        KVModuleTimerID tid = KVModule_CreateTimer(ctx, delay, timerHandler, buf);
-        KVMODULE_NOT_USED(tid);
+        ValkeyModuleTimerID tid = ValkeyModule_CreateTimer(ctx, delay, timerHandler, buf);
+        VALKEYMODULE_NOT_USED(tid);
     }
-    return KVModule_ReplyWithSimpleString(ctx, "OK");
+    return ValkeyModule_ReplyWithSimpleString(ctx, "OK");
 }
 
 /* This function must be present on each module. It is used in order to
  * register the commands into the server. */
-int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
+int ValkeyModule_OnLoad(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
 
-    if (KVModule_Init(ctx, "hellotimer", 1, KVMODULE_APIVER_1) == KVMODULE_ERR) return KVMODULE_ERR;
+    if (ValkeyModule_Init(ctx, "hellotimer", 1, VALKEYMODULE_APIVER_1) == VALKEYMODULE_ERR) return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx, "hellotimer.timer", TimerCommand_KVCommand, "readonly", 0, 0, 0) ==
-        KVMODULE_ERR)
-        return KVMODULE_ERR;
+    if (ValkeyModule_CreateCommand(ctx, "hellotimer.timer", TimerCommand_ValkeyCommand, "readonly", 0, 0, 0) ==
+        VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
 
-    return KVMODULE_OK;
+    return VALKEYMODULE_OK;
 }

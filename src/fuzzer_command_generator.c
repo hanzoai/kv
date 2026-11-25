@@ -1,22 +1,24 @@
 /*
- * Copyright (c) KV Contributors
+ * Copyright (c) Valkey Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "fmacros.h"
-#include <kv/kv.h>
+#include <valkey/valkey.h>
 #include "commands.h"
 #include "fuzzer_command_generator.h"
+#include "cli_common.h"
 #include "sds.h"
 #include "dict.h"
-#include "server.h"
-
+#include "zmalloc.h"
+#include "util.h"
 #include <assert.h>
 #include <string.h>
 #include <math.h>
 #include <time.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <sys/time.h>
 #include <pthread.h>
@@ -46,7 +48,8 @@ typedef enum {
     CMD_GROUP_GEO = 8,
     CMD_GROUP_BITMAP = 9,
     CMD_GROUP_PUBSUB = 10,
-    CMD_GROUP_GENERIC = 11
+    CMD_GROUP_GENERIC = 11,
+    CMD_GROUP_PATH_HASH = 12
 } CommandGroupType;
 
 typedef enum {
@@ -102,7 +105,7 @@ typedef struct {
     dict *configDict;
     sds *aclCategories;
     size_t aclCategoriesCount;
-    int max_keys;
+    long long max_keys;
     int cluster_mode;
 } FuzzerContext;
 
@@ -215,6 +218,7 @@ static CommandGroupType mapGroupType(const sds groupStr) {
         {"hyperloglog", CMD_GROUP_HYPERLOGLOG},
         {"geo", CMD_GROUP_GEO},
         {"bitmap", CMD_GROUP_BITMAP},
+        {"pathhash", CMD_GROUP_PATH_HASH},
         {"pubsub", CMD_GROUP_PUBSUB},
         {"generic", CMD_GROUP_GENERIC},
         {NULL, CMD_GROUP_UNKNOWN}};
@@ -296,21 +300,22 @@ static int sdsKeyCompare(const void *key1, const void *key2) {
 }
 
 static uint64_t sdsHash(const void *key) {
-    return dictGenHashFunction((unsigned char *)key, sdslen((char *)key));
+    return dictGenHashFunction(key, sdslen(key));
 }
 
-static void sdsDestructor(void *val) {
-    sdsfree(val);
+static void dictEntryDestructorSdsKeyConfigVal(void *entry) {
+    dictEntry *de = entry;
+    sdsfree(dictGetKey(de));
+    configDictValDestructor(dictGetVal(de));
+    zfree(de);
 }
 
 /* Dictionary type for config entries */
 static dictType configDictType = {
-    sdsHash,                 /* hash function */
-    NULL,                    /* key dup */
-    sdsKeyCompare,           /* key compare */
-    sdsDestructor,           /* key destructor */
-    configDictValDestructor, /* val destructor */
-    NULL                     /* allow to expand */
+    .entryGetKey = dictEntryGetKey,
+    .hashFunction = sdsHash,
+    .keyCompare = sdsKeyCompare,
+    .entryDestructor = dictEntryDestructorSdsKeyConfigVal,
 };
 
 dict *initConfigDict(void) {
@@ -325,7 +330,6 @@ static int isEnumConfig(const char *key) {
         "appendfsync",
         "oom-score-adj",
         "acl-pubsub-default",
-        "sanitize-dump-payload",
         "cluster-preferred-endpoint-type",
         "propagation-error-behavior",
         "shutdown-on-sigint",
@@ -447,9 +451,6 @@ void generateRandomEnumValue(FuzzerCommand *cmd, ConfigEntry *entry, const char 
     } else if (strcasecmp(config_name, "acl-pubsub-default") == 0) {
         static const char *options[] = {"allchannels", "resetchannels"};
         appendArg(cmd, sdsnew(options[rand() % 2]));
-    } else if (strcasecmp(config_name, "sanitize-dump-payload") == 0) {
-        static const char *options[] = {"no", "yes", "clients"};
-        appendArg(cmd, sdsnew(options[rand() % 3]));
     } else if (strcasecmp(config_name, "propagation-error-behavior") == 0) {
         static const char *options[] = {"ignore", "panic", "panic-on-replicas"};
         appendArg(cmd, sdsnew(options[rand() % 3]));
@@ -596,12 +597,12 @@ void generateConfigSetCommand(FuzzerCommand *cmd) {
     generateRandomConfigValue(cmd, entry);
 }
 
-static void parseAclCategories(kvReply *reply) {
+static void parseAclCategories(valkeyReply *reply) {
     fuzz_ctx->aclCategoriesCount = reply->elements;
     fuzz_ctx->aclCategories = zmalloc(sizeof(sds) * reply->elements);
 
     for (size_t i = 0; i < reply->elements; i++) {
-        if (reply->element[i]->type == KV_REPLY_STRING) {
+        if (reply->element[i]->type == VALKEY_REPLY_STRING) {
             fuzz_ctx->aclCategories[i] = sdsnew(reply->element[i]->str);
         }
     }
@@ -617,15 +618,15 @@ static void freeAclCategories(void) {
     fuzz_ctx->aclCategoriesCount = 0;
 }
 
-dict *parseConfigOutput(kvReply *reply) {
+dict *parseConfigOutput(valkeyReply *reply) {
     dict *configDict = initConfigDict();
 
     /* `CONFIG GET *` returns an array of key-value pairs */
     for (size_t i = 0; i < reply->elements; i += 2) {
         if (i + 1 >= reply->elements) break;
 
-        if (reply->element[i]->type != KV_REPLY_STRING ||
-            reply->element[i + 1]->type != KV_REPLY_STRING) continue;
+        if (reply->element[i]->type != VALKEY_REPLY_STRING ||
+            reply->element[i + 1]->type != VALKEY_REPLY_STRING) continue;
 
         const char *key = reply->element[i]->str;
         const char *value = reply->element[i + 1]->str;
@@ -640,7 +641,7 @@ dict *parseConfigOutput(kvReply *reply) {
 }
 
 /* Process argument flags from Vallkey reply */
-static void processArgumentFlags(CommandArgument *cmdArg, kvReply *flags) {
+static void processArgumentFlags(CommandArgument *cmdArg, valkeyReply *flags) {
     static const struct {
         const char *name;
         int flag;
@@ -663,29 +664,29 @@ static void processArgumentFlags(CommandArgument *cmdArg, kvReply *flags) {
 }
 
 /* Forward declaration */
-static void parseCommandArguments(kvReply *arguments, CommandArgument *result, struct CommandInfo *parent);
+static void parseCommandArguments(valkeyReply *arguments, CommandArgument *result, struct CommandInfo *parent);
 
-static void processSubarguments(CommandArgument *cmdArg, kvReply *arguments) {
+static void processSubarguments(CommandArgument *cmdArg, valkeyReply *arguments) {
     cmdArg->subargs = zcalloc(arguments->elements * sizeof(CommandArgument));
     cmdArg->subargCount = arguments->elements;
     parseCommandArguments(arguments, cmdArg->subargs, cmdArg->parent);
 }
 
 /* Parse a single command argument from argument map */
-static void parseCommandArgument(CommandArgument *cmdArg, kvReply *argMap) {
-    if (argMap->type != KV_REPLY_MAP && argMap->type != KV_REPLY_ARRAY) return;
+static void parseCommandArgument(CommandArgument *cmdArg, valkeyReply *argMap) {
+    if (argMap->type != VALKEY_REPLY_MAP && argMap->type != VALKEY_REPLY_ARRAY) return;
 
     for (size_t i = 0; i < argMap->elements; i += 2) {
-        assert(argMap->element[i]->type == KV_REPLY_STRING);
+        assert(argMap->element[i]->type == VALKEY_REPLY_STRING);
         char *key = argMap->element[i]->str;
-        kvReply *value = argMap->element[i + 1];
+        valkeyReply *value = argMap->element[i + 1];
 
         if (!strcmp(key, "name")) {
             cmdArg->name = zstrdup(value->str);
         } else if (!strcmp(key, "token")) {
             cmdArg->token = zstrdup(value->str);
         } else if (!strcmp(key, "type")) {
-            assert(value->type == KV_REPLY_STRING);
+            assert(value->type == VALKEY_REPLY_STRING);
             cmdArg->type = mapArgumentType(value->str);
         } else if (!strcmp(key, "arguments")) {
             processSubarguments(cmdArg, value);
@@ -696,7 +697,7 @@ static void parseCommandArgument(CommandArgument *cmdArg, kvReply *argMap) {
 }
 
 /* Parse command arguments from Vallkey reply */
-static void parseCommandArguments(kvReply *arguments, CommandArgument *result, struct CommandInfo *parent) {
+static void parseCommandArguments(valkeyReply *arguments, CommandArgument *result, struct CommandInfo *parent) {
     for (size_t j = 0; j < arguments->elements; j++) {
         result[j].parent = parent;
         parseCommandArgument(&result[j], arguments->element[j]);
@@ -704,18 +705,18 @@ static void parseCommandArguments(kvReply *arguments, CommandArgument *result, s
 }
 
 /* Returns the total number of commands and subcommands in the command docs table. */
-static size_t countTotalCommands(kvReply *commandTable) {
+static size_t countTotalCommands(valkeyReply *commandTable) {
     size_t commandCount = commandTable->elements / 2;
 
     /* The command docs table maps command names to a map of their specs. */
     for (size_t i = 0; i < commandTable->elements; i += 2) {
-        kvReply *map = commandTable->element[i + 1];
+        valkeyReply *map = commandTable->element[i + 1];
 
         for (size_t j = 0; j < map->elements; j += 2) {
             char *key = map->element[j]->str;
 
             if (!strcmp(key, "subcommands")) {
-                kvReply *subcommands = map->element[j + 1];
+                valkeyReply *subcommands = map->element[j + 1];
                 commandCount += subcommands->elements / 2;
             }
         }
@@ -756,11 +757,11 @@ static void populateCommandEntry(CommandEntry *command, sds cmdName, sds subcomm
     }
 
     command->fullname = zmalloc(fullnameLength);
-    kv_strlcpy(command->fullname, command->argv[0], fullnameLength);
+    valkey_strlcpy(command->fullname, command->argv[0], fullnameLength);
 
     if (subcommandName) {
-        kv_strlcat(command->fullname, " ", fullnameLength);
-        kv_strlcat(command->fullname, command->argv[1], fullnameLength);
+        valkey_strlcat(command->fullname, " ", fullnameLength);
+        valkey_strlcat(command->fullname, command->argv[1], fullnameLength);
     }
 
     /* Initialize new fields */
@@ -771,7 +772,7 @@ static void populateCommandEntry(CommandEntry *command, sds cmdName, sds subcomm
 }
 
 /* Find a command in the registry by name and update its arity and flags */
-static void updateCommand(sds cmdName, int arity, kvReply *flagsArray) {
+static void updateCommand(sds cmdName, int arity, valkeyReply *flagsArray) {
     for (size_t j = 0; j < fuzz_ctx->commandRegistrySize; j++) {
         CommandEntry *cmd = &fuzz_ctx->commandRegistry[j];
 
@@ -784,7 +785,7 @@ static void updateCommand(sds cmdName, int arity, kvReply *flagsArray) {
         /* Copy each flag and update the flags bitmask */
         cmd->info.flags = 0;
         for (size_t k = 0; k < flagsArray->elements; k++) {
-            if (flagsArray->element[k]->type != KV_REPLY_STATUS) continue;
+            if (flagsArray->element[k]->type != VALKEY_REPLY_STATUS) continue;
 
             sds flagStr = flagsArray->element[k]->str;
             /* Map the string flag to its enum value and update the bitmask */
@@ -797,33 +798,33 @@ static void updateCommand(sds cmdName, int arity, kvReply *flagsArray) {
 }
 
 /* Extract command flags from COMMAND output and update the command registry */
-static void extractCommandFlags(kvReply *info) {
-    if (!info || info->type != KV_REPLY_ARRAY) {
+static void extractCommandFlags(valkeyReply *info) {
+    if (!info || info->type != VALKEY_REPLY_ARRAY) {
         return;
     }
 
     /* Iterate through each command in the COMMAND output */
     for (size_t i = 0; i < info->elements; i++) {
-        kvReply *cmdEntry = info->element[i];
+        valkeyReply *cmdEntry = info->element[i];
 
         /* Each command entry should be an array */
-        if (cmdEntry->type != KV_REPLY_ARRAY || cmdEntry->elements < 6) continue;
+        if (cmdEntry->type != VALKEY_REPLY_ARRAY || cmdEntry->elements < 6) continue;
 
         /* Get command name */
-        if (cmdEntry->element[0]->type != KV_REPLY_STRING) continue;
+        if (cmdEntry->element[0]->type != VALKEY_REPLY_STRING) continue;
 
         sds cmdName = cmdEntry->element[0]->str;
 
         /* Get command arity (element 1 in the COMMAND output) */
         int arity = 0;
-        if (cmdEntry->element[1]->type == KV_REPLY_INTEGER) {
+        if (cmdEntry->element[1]->type == VALKEY_REPLY_INTEGER) {
             arity = cmdEntry->element[1]->integer;
         }
 
         /* Get command flags (element 2 in the COMMAND output) */
-        if (cmdEntry->element[2]->type != KV_REPLY_ARRAY) continue;
+        if (cmdEntry->element[2]->type != VALKEY_REPLY_ARRAY) continue;
 
-        kvReply *flagsArray = cmdEntry->element[2];
+        valkeyReply *flagsArray = cmdEntry->element[2];
 
         for (size_t j = 0; j < fuzz_ctx->commandRegistrySize; j++) {
             CommandEntry *cmd = &fuzz_ctx->commandRegistry[j];
@@ -843,43 +844,43 @@ static void extractCommandFlags(kvReply *info) {
  * 'next' points to the next help entry to be filled in.
  * Returns a pointer to the next available position in the help entries table.
  * If the command has subcommands, this is called recursively for the subcommands.*/
-static CommandEntry *initializeCommandEntry(sds cmdName, sds subcommandName, CommandEntry *next, kvReply *specs) {
+static CommandEntry *initializeCommandEntry(sds cmdName, sds subcommandName, CommandEntry *next, valkeyReply *specs) {
     CommandEntry *command = next++;
     populateCommandEntry(command, cmdName, subcommandName);
 
-    assert(specs->type == KV_REPLY_MAP || specs->type == KV_REPLY_ARRAY);
+    assert(specs->type == VALKEY_REPLY_MAP || specs->type == VALKEY_REPLY_ARRAY);
 
     /* Initialize command flags and group */
     command->info.flags = 0;
     command->info.group = CMD_GROUP_UNKNOWN;
 
     for (size_t j = 0; j < specs->elements; j += 2) {
-        assert(specs->element[j]->type == KV_REPLY_STRING);
+        assert(specs->element[j]->type == VALKEY_REPLY_STRING);
         sds key = specs->element[j]->str;
 
         if (!strcmp(key, "arguments")) {
-            kvReply *arguments = specs->element[j + 1];
-            assert(arguments->type == KV_REPLY_ARRAY);
+            valkeyReply *arguments = specs->element[j + 1];
+            assert(arguments->type == VALKEY_REPLY_ARRAY);
             command->info.args = zcalloc(arguments->elements * sizeof(CommandArgument));
             command->info.argCount = arguments->elements;
             parseCommandArguments(arguments, command->info.args, &command->info);
         } else if (!strcmp(key, "group")) {
             /* Extract the command group/type */
-            if (specs->element[j + 1]->type == KV_REPLY_STRING) {
+            if (specs->element[j + 1]->type == VALKEY_REPLY_STRING) {
                 command->info.group = mapGroupType(specs->element[j + 1]->str);
             }
         } else if (!strcmp(key, "subcommands")) {
-            kvReply *subcommands = specs->element[j + 1];
-            assert(subcommands->type == KV_REPLY_MAP || subcommands->type == KV_REPLY_ARRAY);
+            valkeyReply *subcommands = specs->element[j + 1];
+            assert(subcommands->type == VALKEY_REPLY_MAP || subcommands->type == VALKEY_REPLY_ARRAY);
 
             /* Set has_subcommands flag to true */
             command->has_subcommands = 1;
 
             for (size_t i = 0; i < subcommands->elements; i += 2) {
-                assert(subcommands->element[i]->type == KV_REPLY_STRING);
+                assert(subcommands->element[i]->type == VALKEY_REPLY_STRING);
                 sds subName = subcommands->element[i]->str;
-                kvReply *subcommand = subcommands->element[i + 1];
-                assert(subcommand->type == KV_REPLY_MAP || subcommand->type == KV_REPLY_ARRAY);
+                valkeyReply *subcommand = subcommands->element[i + 1];
+                assert(subcommand->type == VALKEY_REPLY_MAP || subcommand->type == VALKEY_REPLY_ARRAY);
                 next = initializeCommandEntry(cmdName, subName, next, subcommand);
             }
         }
@@ -888,7 +889,7 @@ static CommandEntry *initializeCommandEntry(sds cmdName, sds subcommandName, Com
 }
 
 /* Initializes entries for all commands in the COMMAND DOCS reply.*/
-static void initializeCommandRegistry(kvReply *commandTable) {
+static void initializeCommandRegistry(valkeyReply *commandTable) {
     /* Initialize command registry */
     fuzz_ctx->commandRegistrySize = countTotalCommands(commandTable);
     fuzz_ctx->commandRegistry = zmalloc(sizeof(CommandEntry) * fuzz_ctx->commandRegistrySize);
@@ -903,12 +904,12 @@ static void initializeCommandRegistry(kvReply *commandTable) {
     CommandEntry *next = fuzz_ctx->commandRegistry;
 
     for (size_t i = 0; i < commandTable->elements; i += 2) {
-        assert(commandTable->element[i]->type == KV_REPLY_STRING);
+        assert(commandTable->element[i]->type == VALKEY_REPLY_STRING);
         sds cmdName = commandTable->element[i]->str;
 
-        assert(commandTable->element[i + 1]->type == KV_REPLY_MAP ||
-               commandTable->element[i + 1]->type == KV_REPLY_ARRAY);
-        kvReply *cmdSpecs = commandTable->element[i + 1];
+        assert(commandTable->element[i + 1]->type == VALKEY_REPLY_MAP ||
+               commandTable->element[i + 1]->type == VALKEY_REPLY_ARRAY);
+        valkeyReply *cmdSpecs = commandTable->element[i + 1];
         next = initializeCommandEntry(cmdName, NULL, next, cmdSpecs);
     }
 
@@ -1046,10 +1047,12 @@ void initializeRandomSeed(void) {
     struct timeval tv;
     gettimeofday(&tv, NULL);
     srand(time(NULL) ^ (unsigned long)pthread_self() ^ tv.tv_usec);
+    /* rand62() uses random(), whose state is separate from rand(). */
+    srandom(time(NULL) ^ (unsigned long)pthread_self() ^ tv.tv_usec);
 }
 
-/* Initialize the fuzzer with a connected KV context */
-int initFuzzer(kvContext *ctx, int num_keys, int cluster_mode, int fuzz_flags) {
+/* Initialize the fuzzer with a connected Valkey context */
+int initFuzzer(valkeyContext *ctx, long long num_keys, int cluster_mode, int fuzz_flags) {
     int ret = -1;
     fuzz_ctx = zmalloc(sizeof(FuzzerContext));
     /* Set global configuration values */
@@ -1058,38 +1061,38 @@ int initFuzzer(kvContext *ctx, int num_keys, int cluster_mode, int fuzz_flags) {
     fuzz_ctx->aclCategories = NULL;
     fuzz_ctx->aclCategoriesCount = 0;
 
-    kvReply *commandDocs = NULL;
-    kvReply *commandInfo = NULL;
-    kvReply *configOutput = NULL;
-    kvReply *aclCatOutput = NULL;
+    valkeyReply *commandDocs = NULL;
+    valkeyReply *commandInfo = NULL;
+    valkeyReply *configOutput = NULL;
+    valkeyReply *aclCatOutput = NULL;
 
     /* Execute COMMAND DOCS to get command documentation */
-    commandDocs = kvCommand(ctx, "COMMAND DOCS");
-    if (!commandDocs || commandDocs->type == KV_REPLY_ERROR) {
+    commandDocs = valkeyCommand(ctx, "COMMAND DOCS");
+    if (!commandDocs || commandDocs->type == VALKEY_REPLY_ERROR) {
         printf("Error: Failed to execute COMMAND DOCS. %s\n",
                commandDocs ? commandDocs->str : "No reply received");
         goto cleanup;
     }
 
     /* Execute COMMAND to get command flags */
-    commandInfo = kvCommand(ctx, "COMMAND");
-    if (!commandInfo || commandInfo->type == KV_REPLY_ERROR) {
+    commandInfo = valkeyCommand(ctx, "COMMAND");
+    if (!commandInfo || commandInfo->type == VALKEY_REPLY_ERROR) {
         printf("Error: Failed to execute COMMAND. %s\n",
                commandInfo ? commandInfo->str : "No reply received");
         goto cleanup;
     }
 
     /* Execute CONFIG GET * to get configuration parameters */
-    configOutput = kvCommand(ctx, "CONFIG GET *");
-    if (!configOutput || configOutput->type == KV_REPLY_ERROR) {
+    configOutput = valkeyCommand(ctx, "CONFIG GET *");
+    if (!configOutput || configOutput->type == VALKEY_REPLY_ERROR) {
         printf("Error: Failed to execute CONFIG GET *. %s\n",
                configOutput ? configOutput->str : "No reply received");
         goto cleanup;
     }
 
     /* Execute ACL CAT to get ACL categories */
-    aclCatOutput = kvCommand(ctx, "ACL CAT");
-    if (!aclCatOutput || aclCatOutput->type == KV_REPLY_ERROR) {
+    aclCatOutput = valkeyCommand(ctx, "ACL CAT");
+    if (!aclCatOutput || aclCatOutput->type == VALKEY_REPLY_ERROR) {
         /* ACL CAT might not be available in older versions, continue without it */
         printf("Warning: ACL CAT command failed, using fallback ACL categories\n");
     } else {
@@ -1176,6 +1179,9 @@ static void addKeysToCommand(FuzzerCommand *cmd, int numkeys, CommandArgument *a
         case CMD_GROUP_BITMAP:
             keyPrefix = "bitmap";
             break;
+        case CMD_GROUP_PATH_HASH:
+            keyPrefix = "pathhash";
+            break;
         case CMD_GROUP_PUBSUB:
             keyPrefix = "channel";
             break;
@@ -1192,14 +1198,14 @@ static void addKeysToCommand(FuzzerCommand *cmd, int numkeys, CommandArgument *a
     }
 
     for (int i = 0; i < numkeys; i++) {
-        int keyNumber = rand() % fuzz_ctx->max_keys;
+        long long keyNumber = (long long)rand62() % fuzz_ctx->max_keys;
         sds keyName;
 
         /* In cluster mode, ensure all keys use the same slot tag to map to the same slot */
         if (fuzz_ctx->cluster_mode && client_ctx && client_ctx->current_slot_tag) {
-            keyName = sdscatprintf(sdsempty(), "%s%s:%d", client_ctx->current_slot_tag, keyPrefix, keyNumber);
+            keyName = sdscatprintf(sdsempty(), "%s%s:%lld", client_ctx->current_slot_tag, keyPrefix, keyNumber);
         } else {
-            keyName = sdscatprintf(sdsempty(), "%s:%d", keyPrefix, keyNumber);
+            keyName = sdscatprintf(sdsempty(), "%s:%lld", keyPrefix, keyNumber);
         }
 
         appendArg(cmd, keyName);
@@ -1357,7 +1363,7 @@ static sds generateRandomAddress(void) {
     }
 }
 
-/* Generate plausible string values for KV command arguments */
+/* Generate plausible string values for Valkey command arguments */
 static void generateStringArgValue(FuzzerCommand *cmd, const char *argName, CommandArgument *arg) {
     static const char *usernames[] = {"alice", "bob", "charlie", "dave", "eve"};
     static const char *commands[] = {"GET", "SET", "DEL", "HSET", "LPUSH", "ZADD", "PUBLISH"};
@@ -1547,8 +1553,6 @@ static void generateStringArgValue(FuzzerCommand *cmd, const char *argName, Comm
         appendArg(cmd, sdscatprintf(sdsempty(), "module-%d", rand() % 100));
     } else if (strcmp(argName, "arg") == 0 || strcmp(argName, "args") == 0) {
         appendArg(cmd, sdscatprintf(sdsempty(), "arg%d", rand() % 10));
-    } else if (strcmp(argName, "command") == 0) {
-        appendArg(cmd, sdsnew(commands[rand() % (sizeof(commands) / sizeof(commands[0]))]));
     } else if (strcmp(argName, "threshold") == 0) {
         appendArg(cmd, sdscatprintf(sdsempty(), "%d", rand() % 30));
     } else if (strcmp(argName, "metric") == 0) {
@@ -1657,7 +1661,7 @@ static void addArgumentToCommand(FuzzerCommand *cmd, CommandArgument *arg) {
             time_t currentTime = time(NULL);
             /* add a random number of seconds to the current time */
             currentTime += rand() % RANDOM_TIME_VARIANCE;
-            appendArg(cmd, sdscatprintf(sdsempty(), "%ld", currentTime));
+            appendArg(cmd, sdscatprintf(sdsempty(), "%jd", (intmax_t)currentTime));
         } else if (arg->type == ARG_TYPE_PATTERN) {
             appendArg(cmd, sdsnew("*"));
         } else if (arg->type == ARG_TYPE_KEY) {

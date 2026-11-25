@@ -6,7 +6,7 @@ start_server {tags {"pubsub network"}} {
     }
 
     foreach resp {2 3} {
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         if {[lsearch $::denytags "resp3"] >= 0} {
             if {$resp == 3} {continue}
         } elseif {$::force_resp3} {
@@ -42,7 +42,7 @@ start_server {tags {"pubsub network"}} {
     }
 
     test "PUBLISH/SUBSCRIBE basics" {
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
 
         # subscribe to two channels
         assert_equal {1 2} [subscribe $rd1 {chan1 chan2}]
@@ -67,8 +67,8 @@ start_server {tags {"pubsub network"}} {
     }
 
     test "PUBLISH/SUBSCRIBE with two clients" {
-        set rd1 [kv_deferring_client]
-        set rd2 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
+        set rd2 [valkey_deferring_client]
 
         assert_equal {1} [subscribe $rd1 {chan1}]
         assert_equal {1} [subscribe $rd2 {chan1}]
@@ -82,7 +82,7 @@ start_server {tags {"pubsub network"}} {
     }
 
     test "PUBLISH/SUBSCRIBE after UNSUBSCRIBE without arguments" {
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         assert_equal {1 2 3} [subscribe $rd1 {chan1 chan2 chan3}]
         unsubscribe $rd1
         # wait for the unsubscribe to take effect
@@ -100,7 +100,7 @@ start_server {tags {"pubsub network"}} {
     }
 
     test "SUBSCRIBE to one channel more than once" {
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         assert_equal {1 1 1} [subscribe $rd1 {chan1 chan1 chan1}]
         assert_equal 1 [r publish chan1 hello]
         assert_equal {message chan1 hello} [$rd1 read]
@@ -110,14 +110,14 @@ start_server {tags {"pubsub network"}} {
     }
 
     test "UNSUBSCRIBE from non-subscribed channels" {
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         assert_equal {0 0 0} [unsubscribe $rd1 {foo bar quux}]
         # clean up clients
         $rd1 close
     }
 
     test "PUBLISH/PSUBSCRIBE basics" {
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
 
         # subscribe to two patterns
         assert_equal {1 2} [psubscribe $rd1 {foo.* bar.*}]
@@ -145,8 +145,8 @@ start_server {tags {"pubsub network"}} {
     }
 
     test "PUBLISH/PSUBSCRIBE with two clients" {
-        set rd1 [kv_deferring_client]
-        set rd2 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
+        set rd2 [valkey_deferring_client]
 
         assert_equal {1} [psubscribe $rd1 {chan.*}]
         assert_equal {1} [psubscribe $rd2 {chan.*}]
@@ -160,7 +160,7 @@ start_server {tags {"pubsub network"}} {
     }
 
     test "PUBLISH/PSUBSCRIBE after PUNSUBSCRIBE without arguments" {
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         assert_equal {1 2 3} [psubscribe $rd1 {chan1.* chan2.* chan3.*}]
         punsubscribe $rd1
         # wait for the unsubscribe to take effect
@@ -178,7 +178,7 @@ start_server {tags {"pubsub network"}} {
     }
 
     test "PubSub messages with CLIENT REPLY OFF" {
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
         $rd hello 3
         $rd read ;# Discard the hello reply
 
@@ -202,7 +202,7 @@ start_server {tags {"pubsub network"}} {
     } {0} {resp3}
 
     test "PUNSUBSCRIBE from non-subscribed channels" {
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         assert_equal {0 0 0} [punsubscribe $rd1 {foo.* bar.* quux.*}]
 
         # clean up clients
@@ -214,8 +214,8 @@ start_server {tags {"pubsub network"}} {
     } {abc 0 def 0}
 
     test "NUMPATs returns the number of unique patterns" {
-        set rd1 [kv_deferring_client]
-        set rd2 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
+        set rd2 [valkey_deferring_client]
 
         # Three unique patterns and one that overlaps
         psubscribe $rd1 "foo*"
@@ -234,7 +234,7 @@ start_server {tags {"pubsub network"}} {
     }
 
     test "Mix SUBSCRIBE and PSUBSCRIBE" {
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         assert_equal {1} [subscribe $rd1 {foo.bar}]
         assert_equal {2} [psubscribe $rd1 {foo.*}]
 
@@ -260,7 +260,7 @@ start_server {tags {"pubsub network"}} {
 
     test "Keyspace notifications: we receive keyspace notifications" {
         r config set notify-keyspace-events KA
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         $rd1 CLIENT REPLY OFF ;# Make sure it works even if replies are silenced
         assert_equal {1} [psubscribe $rd1 *]
         r set foo bar
@@ -270,7 +270,7 @@ start_server {tags {"pubsub network"}} {
 
     test "Keyspace notifications: we receive keyevent notifications" {
         r config set notify-keyspace-events EA
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         $rd1 CLIENT REPLY SKIP ;# Make sure it works even if replies are silenced
         assert_equal {1} [psubscribe $rd1 *]
         r set foo bar
@@ -280,7 +280,7 @@ start_server {tags {"pubsub network"}} {
 
     test "Keyspace notifications: we can receive both kind of events" {
         r config set notify-keyspace-events KEA
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         $rd1 CLIENT REPLY ON ;# Just coverage
         assert_equal {OK} [$rd1 read]
         assert_equal {1} [psubscribe $rd1 *]
@@ -290,10 +290,45 @@ start_server {tags {"pubsub network"}} {
         $rd1 close
     }
 
+    test "Keyspace notifications: events with no subscribers" {
+        r config set notify-keyspace-events KEA
+        r set foo{t} bar
+
+        set rd1 [valkey_deferring_client]
+        assert_equal {1} [psubscribe $rd1 *]
+        r set foo2{t} bar2
+        assert_equal "pmessage * __keyspace@${db}__:foo2{t} set" [$rd1 read]
+        assert_equal "pmessage * __keyevent@${db}__:set foo2{t}" [$rd1 read]
+        $rd1 close
+    }
+
+    test "Keyspace notifications: K/E bitmask selects emitted channels" {
+        set rd1 [valkey_deferring_client]
+        assert_equal {1} [psubscribe $rd1 *]
+
+        # Neither K nor E: string class fires but is dropped early.
+        r config set notify-keyspace-events $
+        r set foo bar
+        r publish fence hello ;# Fence: no keyspace notification may leak before it
+        assert_equal "pmessage * fence hello" [$rd1 read]
+
+        # Only K: keyspace channel only.
+        r config set notify-keyspace-events K$
+        r set foo bar
+        assert_equal "pmessage * __keyspace@${db}__:foo set" [$rd1 read]
+
+        # Only E: keyevent channel only.
+        r config set notify-keyspace-events E$
+        r set foo bar
+        assert_equal "pmessage * __keyevent@${db}__:set foo" [$rd1 read]
+
+        $rd1 close
+    }
+
     test "Keyspace notifications: we are able to mask events" {
         r config set notify-keyspace-events KEl
         r del mylist
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         assert_equal {1} [psubscribe $rd1 *]
         r set foo bar
         r lpush mylist a
@@ -305,7 +340,7 @@ start_server {tags {"pubsub network"}} {
 
     test "Keyspace notifications: general events test" {
         r config set notify-keyspace-events KEg
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         assert_equal {1} [psubscribe $rd1 *]
         r set foo bar
         r expire foo 1
@@ -320,7 +355,7 @@ start_server {tags {"pubsub network"}} {
     test "Keyspace notifications: list events test" {
         r config set notify-keyspace-events KEl
         r del mylist
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         assert_equal {1} [psubscribe $rd1 *]
         r lpush mylist a
         r rpush mylist a
@@ -337,7 +372,7 @@ start_server {tags {"pubsub network"}} {
     test "Keyspace notifications: set events test" {
         r config set notify-keyspace-events Ks
         r del myset
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         assert_equal {1} [psubscribe $rd1 *]
         r sadd myset a b c d
         r srem myset x
@@ -352,7 +387,7 @@ start_server {tags {"pubsub network"}} {
     test "Keyspace notifications: zset events test" {
         r config set notify-keyspace-events Kz
         r del myzset
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         assert_equal {1} [psubscribe $rd1 *]
         r zadd myzset 1 a 2 b
         r zrem myzset x
@@ -367,7 +402,7 @@ start_server {tags {"pubsub network"}} {
     test "Keyspace notifications: hash events test" {
         r config set notify-keyspace-events Kh
         r del myhash
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         assert_equal {1} [psubscribe $rd1 *]
         r hmset myhash yes 1 no 0
         r hincrby myhash yes 10
@@ -379,7 +414,7 @@ start_server {tags {"pubsub network"}} {
     test "Keyspace notifications: stream events test" {
         r config set notify-keyspace-events Kt
         r del mystream
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         assert_equal {1} [psubscribe $rd1 *]
         r xgroup create mystream mygroup $ mkstream
         r xgroup createconsumer mystream mygroup Bob
@@ -403,7 +438,7 @@ start_server {tags {"pubsub network"}} {
     test "Keyspace notifications: expired events (triggered expire)" {
         r config set notify-keyspace-events Ex
         r del foo
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         assert_equal {1} [psubscribe $rd1 *]
         r psetex foo 100 1
         wait_for_condition 50 100 {
@@ -418,7 +453,7 @@ start_server {tags {"pubsub network"}} {
     test "Keyspace notifications: expired events (background expire)" {
         r config set notify-keyspace-events Ex
         r del foo
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         assert_equal {1} [psubscribe $rd1 *]
         r psetex foo 100 1
         assert_equal "pmessage * __keyevent@${db}__:expired foo" [$rd1 read]
@@ -428,7 +463,7 @@ start_server {tags {"pubsub network"}} {
     test "Keyspace notification: expired event (Expiration time is already expired)" {
         r config set notify-keyspace-events Ex
         r del foo
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         assert_equal {1} [psubscribe $rd1 *]
         r set foo 1
         r expire foo -1
@@ -440,7 +475,7 @@ start_server {tags {"pubsub network"}} {
         r config set notify-keyspace-events Ee
         r config set maxmemory-policy allkeys-lru
         r flushdb
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         assert_equal {1} [psubscribe $rd1 *]
         r set foo bar
         r config set maxmemory 1
@@ -459,11 +494,15 @@ start_server {tags {"pubsub network"}} {
         assert_equal {AK} [lindex [r config get notify-keyspace-events] 1]
         r config set notify-keyspace-events EA
         assert_equal {AE} [lindex [r config get notify-keyspace-events] 1]
+        r config set notify-keyspace-events KEAn
+        assert_equal {AnKE} [lindex [r config get notify-keyspace-events] 1]
+        r config set notify-keyspace-events KEAnm
+        assert_equal {AnKEm} [lindex [r config get notify-keyspace-events] 1]
     }
 
     test "Keyspace notifications: new key test" {
         r config set notify-keyspace-events En
-        set rd1 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
         assert_equal {1} [psubscribe $rd1 *]
         r set foo bar
         # second set of foo should not cause a 'new' event
@@ -524,5 +563,35 @@ start_server {tags {"pubsub network"}} {
         assert_equal [r publish foo vaz] {1}
         assert_equal [r read] {message foo vaz}
     } {} {resp3}
+
+    # when a RESP3 connection both publishes and is subscribed, reply copy
+    # avoidance for large bulk payloads can write the payload into c->buf
+    # while the push header is deferred to pending_push_messages, tearing
+    # the push frame apart on the wire.
+    test "RESP3 publish to self keeps push frame contiguous under copy avoidance" {
+        set copy_avoid [lindex [r config get min-string-size-avoid-copy-reply] 1]
+        set copy_avoid_threaded [lindex [r config get min-string-size-avoid-copy-reply-threaded] 1]
+        # Force the copy-avoidance path regardless of defaults / IO threads.
+        r config set min-string-size-avoid-copy-reply 1
+        r config set min-string-size-avoid-copy-reply-threaded 1
+
+        set rd [valkey_deferring_client]
+        $rd hello 3
+        $rd read
+
+        # Threshold is forced to 1 above; use 128 so the string is RAW-encoded
+        set payload [string repeat X 128]
+        assert_equal {1} [subscribe $rd wiretest]
+
+        $rd publish wiretest $payload
+        # If the frame is torn, the first RESP value is the bare bulk payload
+        # instead of the PUBLISH integer reply.
+        assert_equal 1 [$rd read]
+        assert_equal [list message wiretest $payload] [$rd read]
+
+        $rd close
+        r config set min-string-size-avoid-copy-reply $copy_avoid
+        r config set min-string-size-avoid-copy-reply-threaded $copy_avoid_threaded
+    } {OK} {resp3}
 
 }

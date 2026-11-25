@@ -47,7 +47,7 @@ start_server {
         r XADD mystream * a 1
         r XADD mystream * b 2
         # XREADGROUP should return only the new elements "a 1" "b 1"
-        # and not the element "foo bar" which was pre existing in the
+        # and not the element "foo bar" which was preexisting in the
         # stream (see previous test)
         set reply [
             r XREADGROUP GROUP mygroup consumer-1 STREAMS mystream ">"
@@ -159,6 +159,48 @@ start_server {
         assert {[r xack s g $id1] eq 1}
     }
 
+    test {Stream consumer group commands should dirty WATCHed keys} {
+        r DEL mystream
+        r XADD mystream 1-0 f v
+        r XGROUP CREATE mystream mygroup 0
+
+        r WATCH mystream
+        r XGROUP CREATE mystream othergroup 0
+        r MULTI
+        r PING
+        assert_equal {} [r EXEC]
+
+        r WATCH mystream
+        r XGROUP SETID mystream mygroup 1-0
+        r MULTI
+        r PING
+        assert_equal {} [r EXEC]
+
+        r WATCH mystream
+        r XGROUP CREATECONSUMER mystream mygroup alice
+        r MULTI
+        r PING
+        assert_equal {} [r EXEC]
+
+        r WATCH mystream
+        r XGROUP DELCONSUMER mystream mygroup alice
+        r MULTI
+        r PING
+        assert_equal {} [r EXEC]
+
+        r WATCH mystream
+        r XSETID mystream 2-0
+        r MULTI
+        r PING
+        assert_equal {} [r EXEC]
+
+        r WATCH mystream
+        r XGROUP DESTROY mystream othergroup
+        r MULTI
+        r PING
+        assert_equal {} [r EXEC]
+    }
+
     test {PEL NACK reassignment after XGROUP SETID event} {
         r del events
         r xadd events * f1 v1
@@ -213,6 +255,59 @@ start_server {
         assert {[lindex $res 0 1 1] == {2-0 {field1 B}}}
     }
 
+    test {XREADGROUP, XACK, XCLAIM and XAUTOCLAIM should dirty WATCHed keys} {
+        r DEL mystream
+        set id1 [r XADD mystream 1-0 a 1]
+        set id2 [r XADD mystream 2-0 b 2]
+        r XGROUP CREATE mystream mygroup 0
+
+        r WATCH mystream
+        r XREADGROUP GROUP mygroup consumer1 COUNT 1 STREAMS mystream >
+        r MULTI
+        r PING
+        assert_equal {} [r EXEC]
+
+        r WATCH mystream
+        r XACK mystream mygroup $id1
+        r MULTI
+        r PING
+        assert_equal {} [r EXEC]
+
+        r XREADGROUP GROUP mygroup consumer1 COUNT 1 STREAMS mystream >
+        after 20
+
+        r WATCH mystream
+        r XCLAIM mystream mygroup consumer2 0 $id2
+        r MULTI
+        r PING
+        assert_equal {} [r EXEC]
+
+        after 20
+        r WATCH mystream
+        r XAUTOCLAIM mystream mygroup consumer1 0 0-0 COUNT 1
+        r MULTI
+        r PING
+        assert_equal {} [r EXEC]
+    }
+
+    test {Blocking XREADGROUP consumer creation should dirty WATCHed keys} {
+        r DEL mystream
+        r XGROUP CREATE mystream mygroup $ MKSTREAM
+
+        r WATCH mystream
+        set rd [valkey_deferring_client]
+        $rd XREADGROUP GROUP mygroup consumer1 BLOCK 0 NOACK STREAMS mystream ">"
+        wait_for_blocked_clients_count 1
+
+        r MULTI
+        r PING
+        assert_equal {} [r EXEC]
+
+        r XADD mystream * f v
+        $rd read
+        $rd close
+    }
+
     test {Blocking XREADGROUP will not reply with an empty array} {
         r del mystream
         r XGROUP CREATE mystream mygroup $ MKSTREAM
@@ -221,7 +316,7 @@ start_server {
         assert {[lindex $res 0 1 0] == {666-0 {f v}}}
         r XADD mystream 667 f2 v2
         r XDEL mystream 667
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
         $rd XREADGROUP GROUP mygroup Alice BLOCK 10 STREAMS mystream ">"
         wait_for_blocked_clients_count 0
         assert {[$rd read] == {}} ;# before the fix, client didn't even block, but was served synchronously with {mystream {}}
@@ -232,7 +327,7 @@ start_server {
         r DEL mystream
         r XADD mystream 666 f v
         r XGROUP CREATE mystream mygroup $
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
         $rd XREADGROUP GROUP mygroup Alice BLOCK 0 STREAMS mystream ">"
         wait_for_blocked_clients_count 1
         r DEL mystream
@@ -244,7 +339,7 @@ start_server {
         r DEL mystream
         r XADD mystream 666 f v
         r XGROUP CREATE mystream mygroup $
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
         $rd XREADGROUP GROUP mygroup Alice BLOCK 0 STREAMS mystream ">"
         wait_for_blocked_clients_count 1
         r SET mystream val1
@@ -256,7 +351,7 @@ start_server {
         r DEL mystream
         r XADD mystream 666 f v
         r XGROUP CREATE mystream mygroup $
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
         $rd XREADGROUP GROUP mygroup Alice BLOCK 0 STREAMS mystream ">"
         wait_for_blocked_clients_count 1
         r MULTI
@@ -271,7 +366,7 @@ start_server {
         r DEL mystream
         r XADD mystream 666 f v
         r XGROUP CREATE mystream mygroup $
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
         $rd XREADGROUP GROUP mygroup Alice BLOCK 0 STREAMS mystream ">"
         wait_for_blocked_clients_count 1
         r FLUSHALL
@@ -286,7 +381,7 @@ start_server {
         r DEL mystream
         r XADD mystream 666 f v
         r XGROUP CREATE mystream mygroup $
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
         $rd SELECT 9
         $rd read
         $rd XREADGROUP GROUP mygroup Alice BLOCK 0 STREAMS mystream ">"
@@ -304,7 +399,7 @@ start_server {
         r DEL mystream
         r XADD mystream 666 f v
         r XGROUP CREATE mystream mygroup $
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
         $rd SELECT 9
         $rd read
         $rd XREADGROUP GROUP mygroup Alice BLOCK 0 STREAMS mystream ">"
@@ -325,7 +420,7 @@ start_server {
     test {Blocking XREAD: key deleted} {
         r DEL mystream
         r XADD mystream 666 f v
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
         $rd XREAD BLOCK 0 STREAMS mystream "$"
         wait_for_blocked_clients_count 1
         r DEL mystream
@@ -339,7 +434,7 @@ start_server {
     test {Blocking XREAD: key type changed with SET} {
         r DEL mystream
         r XADD mystream 666 f v
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
         $rd XREAD BLOCK 0 STREAMS mystream "$"
         wait_for_blocked_clients_count 1
         r SET mystream val1
@@ -352,7 +447,7 @@ start_server {
     }
 
     test {Blocking XREADGROUP for stream that ran dry (issue #5299)} {
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
 
         # Add a entry then delete it, now stream's last_id is 666.
         r DEL mystream
@@ -378,7 +473,7 @@ start_server {
     }
 
     test "Blocking XREADGROUP will ignore BLOCK if ID is not >" {
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
 
         # Add a entry then delete it, now stream's last_id is 666.
         r DEL mystream
@@ -427,8 +522,8 @@ start_server {
     }
 
      test {Blocking XREADGROUP for stream key that has clients blocked on list} {
-        set rd [kv_deferring_client]
-        set rd2 [kv_deferring_client]
+        set rd [valkey_deferring_client]
+        set rd2 [valkey_deferring_client]
         
         # First delete the stream
         r DEL mystream
@@ -479,9 +574,9 @@ start_server {
         r DEL mystream
         r XGROUP CREATE mystream mygroup $ MKSTREAM
 
-        set rd1 [kv_deferring_client]
-        set rd2 [kv_deferring_client]
-        set rd3 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
+        set rd2 [valkey_deferring_client]
+        set rd3 [valkey_deferring_client]
 
         $rd1 xreadgroup GROUP mygroup myuser COUNT 10 BLOCK 10000 STREAMS mystream >
         $rd2 xreadgroup GROUP mygroup myuser COUNT 10 BLOCK 10000 STREAMS mystream >
@@ -502,8 +597,8 @@ start_server {
         r DEL mystream
         r XGROUP CREATE mystream mygroup $ MKSTREAM
 
-        set rd1 [kv_deferring_client]
-        set rd2 [kv_deferring_client]
+        set rd1 [valkey_deferring_client]
+        set rd2 [valkey_deferring_client]
 
         $rd1 xreadgroup GROUP mygroup myuser BLOCK 0 STREAMS mystream >
         wait_for_blocked_clients_count 1
@@ -530,7 +625,7 @@ start_server {
         r config resetstat
         r del mystream
         r XGROUP CREATE mystream mygroup $ MKSTREAM
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
         $rd XREADGROUP GROUP mygroup Alice BLOCK 0 STREAMS mystream ">"
         wait_for_blocked_clients_count 1
         r XGROUP DESTROY mystream mygroup
@@ -546,7 +641,7 @@ start_server {
     test {RENAME can unblock XREADGROUP with data} {
         r del mystream{t}
         r XGROUP CREATE mystream{t} mygroup $ MKSTREAM
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
         $rd XREADGROUP GROUP mygroup Alice BLOCK 0 STREAMS mystream{t} ">"
         wait_for_blocked_clients_count 1
         r XGROUP CREATE mystream2{t} mygroup $ MKSTREAM
@@ -559,7 +654,7 @@ start_server {
     test {RENAME can unblock XREADGROUP with -NOGROUP} {
         r del mystream{t}
         r XGROUP CREATE mystream{t} mygroup $ MKSTREAM
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
         $rd XREADGROUP GROUP mygroup Alice BLOCK 0 STREAMS mystream{t} ">"
         wait_for_blocked_clients_count 1
         r XADD mystream2{t} 100 f1 v1
@@ -1015,7 +1110,7 @@ start_server {
             r XGROUP CREATE mystream mygroup $ MKSTREAM
             r XADD mystream * f1 v1
             r XREADGROUP GROUP mygroup Alice NOACK STREAMS mystream ">"
-            set rd [kv_deferring_client]
+            set rd [valkey_deferring_client]
             $rd XREADGROUP GROUP mygroup Bob BLOCK 0 NOACK STREAMS mystream ">"
             wait_for_blocked_clients_count 1
             r XADD mystream * f2 v2
@@ -1036,7 +1131,7 @@ start_server {
             r XGROUP CREATE mystream mygroup $ MKSTREAM
             r XADD mystream * f v
             r XREADGROUP GROUP mygroup Alice NOACK STREAMS mystream ">"
-            set rd [kv_deferring_client]
+            set rd [valkey_deferring_client]
             $rd XREADGROUP GROUP mygroup Bob BLOCK 0 NOACK STREAMS mystream ">"
             wait_for_blocked_clients_count 1
             r XGROUP CREATECONSUMER mystream mygroup Charlie
@@ -1128,6 +1223,38 @@ start_server {
         set reply [r XINFO STREAM x FULL]
         set group [lindex [dict get $reply groups] 0]
         assert_equal [dict get $group entries-read] 10
+        assert_equal [dict get $group lag] 0
+    }
+
+    test {Consumer group lag after XTRIM removes unread entries} {
+        r DEL x
+        for {set i 1} {$i <= 6} {incr i} {
+            r XADD x $i-0 data $i
+        }
+        r XGROUP CREATE x g1 0
+        r XREADGROUP GROUP g1 c1 COUNT 1 STREAMS x >
+        r XTRIM x MAXLEN 2
+        set reply [r XINFO STREAM x FULL]
+        set group [lindex [dict get $reply groups] 0]
+        assert_equal [dict get $group lag] 2
+
+        r XREADGROUP GROUP g1 c1 STREAMS x >
+        set reply [r XINFO STREAM x FULL]
+        set group [lindex [dict get $reply groups] 0]
+        assert_equal [dict get $group entries-read] 6
+        assert_equal [dict get $group lag] 0
+    }
+
+    test {Consumer group lag after XTRIM empties the stream} {
+        r DEL x
+        for {set i 1} {$i <= 6} {incr i} {
+            r XADD x $i-0 data $i
+        }
+        r XGROUP CREATE x g1 0
+        r XREADGROUP GROUP g1 c1 COUNT 1 STREAMS x >
+        r XTRIM x MAXLEN 0
+        set reply [r XINFO STREAM x FULL]
+        set group [lindex [dict get $reply groups] 0]
         assert_equal [dict get $group lag] 0
     }
 
@@ -1247,7 +1374,7 @@ start_server {
         set reply [r XINFO STREAM x FULL]
         set group [lindex [dict get $reply groups] 0]
         assert_equal [dict get $group entries-read] 5
-        assert_equal [dict get $group lag] 2
+        assert_equal [dict get $group lag] 1
         set group [lindex [dict get $reply groups] 1]
         assert_equal [dict get $group entries-read] {}
         assert_equal [dict get $group lag] 1
@@ -1310,7 +1437,7 @@ start_server {
         set reply [r XINFO STREAM x FULL]
         set group [lindex [dict get $reply groups] 0]
         assert_equal [dict get $group entries-read] 5
-        assert_equal [dict get $group lag] 3
+        assert_equal [dict get $group lag] 2
         set group [lindex [dict get $reply groups] 1]
         assert_equal [dict get $group entries-read] {}
         assert_equal [dict get $group lag] 2
@@ -1476,6 +1603,379 @@ start_server {
             set group [lindex [dict get $reply groups] 0]
             assert_equal [dict get $group entries-read] 3
             assert_equal [dict get $group lag] 0
+        }
+    }
+
+    start_server {tags {"external:skip"}} {
+        set master [srv -1 client]
+        set master_host [srv -1 host]
+        set master_port [srv -1 port]
+        set replica [srv 0 client]
+
+        test {XACKDEL replication: ack-only (no deletion) propagates PEL removal to replica} {
+            $replica replicaof $master_host $master_port
+            wait_for_condition 50 100 {
+                [s 0 master_link_status] eq {up}
+            } else {
+                fail "Replication not started."
+            }
+
+            # Two groups both read the message so grp2 blocks deletion in ACKED mode
+            $master DEL stream
+            $master XADD stream 1-0 f v
+            $master XGROUP CREATE stream grp1 0
+            $master XGROUP CREATE stream grp2 0
+            $master XREADGROUP GROUP grp1 alice COUNT 1 STREAMS stream >
+            $master XREADGROUP GROUP grp2 bob COUNT 1 STREAMS stream >
+
+            wait_for_ofs_sync $master $replica
+
+            # Replica should have the pending entry in grp1 before ack
+            assert_equal [llength [$replica XPENDING stream grp1 - + 10]] 1
+
+            # ACKED mode: grp2 still has entry in PEL so deletion is suppressed
+            $master XACKDEL stream grp1 ACKED IDS 1 1-0
+
+            wait_for_ofs_sync $master $replica
+
+            # grp1's PEL entry should be gone, stream entry still present on replica
+            assert_equal [llength [$replica XPENDING stream grp1 - + 10]] 0
+            assert_equal [llength [$replica XRANGE stream - +]] 1
+        }
+
+        test {XACKDEL replication: ACKED mode deletion propagates stream removal to replica} {
+            $replica replicaof $master_host $master_port
+            wait_for_condition 50 100 {
+                [s 0 master_link_status] eq {up}
+            } else {
+                fail "Replication not started."
+            }
+
+            $master DEL stream
+            $master XADD stream 1-0 f v
+            $master XGROUP CREATE stream grp 0
+            $master XREADGROUP GROUP grp alice COUNT 1 STREAMS stream >
+
+            wait_for_ofs_sync $master $replica
+
+            # Replica should have entry in stream and PEL before ack
+            assert_equal [llength [$replica XRANGE stream - +]] 1
+            assert_equal [llength [$replica XPENDING stream grp - + 10]] 1
+
+            # ACKED mode with only one group: triggers deletion
+            $master XACKDEL stream grp ACKED IDS 1 1-0
+
+            wait_for_ofs_sync $master $replica
+
+            # Both PEL entry and stream entry should be gone on replica
+            assert_equal [llength [$replica XPENDING stream grp - + 10]] 0
+            assert_equal [llength [$replica XRANGE stream - +]] 0
+        }
+
+        test {XACKDEL replication: DELREF clears other groups' PELs on replica} {
+            $replica replicaof $master_host $master_port
+            wait_for_condition 50 100 {
+                [s 0 master_link_status] eq {up}
+            } else {
+                fail "Replication not started."
+            }
+
+            $master DEL stream
+            $master XADD stream 1-0 f v
+            $master XGROUP CREATE stream grp1 0
+            $master XGROUP CREATE stream grp2 0
+            $master XREADGROUP GROUP grp1 alice COUNT 1 STREAMS stream >
+            $master XREADGROUP GROUP grp2 bob COUNT 1 STREAMS stream >
+
+            wait_for_ofs_sync $master $replica
+
+            # Both groups should have the entry in their PEL on replica
+            assert_equal [llength [$replica XPENDING stream grp1 - + 10]] 1
+            assert_equal [llength [$replica XPENDING stream grp2 - + 10]] 1
+
+            # DELREF: ack for grp1, force-delete from stream and clear all groups' PELs
+            $master XACKDEL stream grp1 DELREF IDS 1 1-0
+
+            wait_for_ofs_sync $master $replica
+
+            # Stream entry and grp2's PEL entry should both be gone on replica
+            assert_equal [llength [$replica XRANGE stream - +]] 0
+            assert_equal [llength [$replica XPENDING stream grp2 - + 10]] 0
+        }
+    }
+
+    start_server {tags {"external:skip"}} {
+        set master [srv -1 client]
+        set master_host [srv -1 host]
+        set master_port [srv -1 port]
+        set replica [srv 0 client]
+
+        test {XDELEX replication: KEEPREF deletes stream entry but keeps dangling PEL ref on replica} {
+            $replica replicaof $master_host $master_port
+            wait_for_condition 50 100 {
+                [s 0 master_link_status] eq {up}
+            } else {
+                fail "Replication not started."
+            }
+
+            $master DEL stream
+            $master XADD stream 1-0 f v
+            $master XADD stream 2-0 f v
+            $master XGROUP CREATE stream grp 0
+            $master XREADGROUP GROUP grp alice COUNT 1 STREAMS stream >
+
+            wait_for_ofs_sync $master $replica
+
+            # Replica has both entries and grp's PEL contains 1-0
+            assert_equal 2 [$replica XLEN stream]
+            assert_equal 1 [llength [$replica XPENDING stream grp - + 10]]
+
+            # KEEPREF: deletes entry from stream but leaves PEL reference intact
+            $master XDELEX stream KEEPREF IDS 1 1-0
+
+            wait_for_ofs_sync $master $replica
+
+            # Stream entry gone on replica, PEL reference still present
+            assert_equal 1 [$replica XLEN stream]
+            assert_equal 1 [llength [$replica XPENDING stream grp - + 10]]
+        }
+
+        test {XDELEX replication: DELREF deletes stream entry and clears PEL on replica} {
+            $replica replicaof $master_host $master_port
+            wait_for_condition 50 100 {
+                [s 0 master_link_status] eq {up}
+            } else {
+                fail "Replication not started."
+            }
+
+            $master DEL stream
+            $master XADD stream 1-0 f v
+            $master XADD stream 2-0 f v
+            $master XGROUP CREATE stream grp 0
+            $master XREADGROUP GROUP grp alice COUNT 1 STREAMS stream >
+
+            wait_for_ofs_sync $master $replica
+
+            # Replica has both entries and grp's PEL contains 1-0
+            assert_equal 2 [$replica XLEN stream]
+            assert_equal 1 [llength [$replica XPENDING stream grp - + 10]]
+
+            # DELREF: deletes entry from stream AND removes it from all PELs
+            $master XDELEX stream DELREF IDS 1 1-0
+
+            wait_for_ofs_sync $master $replica
+
+            # Stream entry gone and PEL cleared on replica
+            assert_equal 1 [$replica XLEN stream]
+            assert_equal 0 [llength [$replica XPENDING stream grp - + 10]]
+        }
+
+        test {XDELEX replication: ACKED skips pending entries, deletes only after all groups ack} {
+            $replica replicaof $master_host $master_port
+            wait_for_condition 50 100 {
+                [s 0 master_link_status] eq {up}
+            } else {
+                fail "Replication not started."
+            }
+
+            $master DEL stream
+            $master XADD stream 1-0 f v
+            $master XGROUP CREATE stream grp 0
+            $master XREADGROUP GROUP grp alice COUNT 1 STREAMS stream >
+
+            wait_for_ofs_sync $master $replica
+
+            # Entry is pending; ACKED mode should not delete it
+            $master XDELEX stream ACKED IDS 1 1-0
+
+            wait_for_ofs_sync $master $replica
+
+            # Entry still present on replica since it was not acked
+            assert_equal 1 [$replica XLEN stream]
+            assert_equal 1 [llength [$replica XPENDING stream grp - + 10]]
+
+            # Now ack the entry and retry XDELEX ACKED
+            $master XACK stream grp 1-0
+            $master XDELEX stream ACKED IDS 1 1-0
+
+            wait_for_ofs_sync $master $replica
+
+            # Entry deleted on replica after all groups have acked
+            assert_equal 0 [$replica XLEN stream]
+            assert_equal 0 [llength [$replica XPENDING stream grp - + 10]]
+        }
+    }
+
+    start_server {tags {"external:skip"}} {
+        set master [srv -1 client]
+        set master_host [srv -1 host]
+        set master_port [srv -1 port]
+        set replica [srv 0 client]
+
+        # Number of times 'cmd' was executed on the replica, or 0 if never
+        # called (INFO omits zero counters).
+        proc get_replica_calls {client cmd} {
+            set info [$client INFO commandstats]
+            foreach line [split $info "\n"] {
+                if {[string match "cmdstat_$cmd:*" $line]} {
+                    regexp {calls=(\d+)} $line -> count
+                    return $count
+                }
+            }
+            return 0
+        }
+
+        $replica replicaof $master_host $master_port
+        wait_for_condition 50 100 {
+            [s 0 master_link_status] eq {up}
+        } else {
+            fail "Replication not started."
+        }
+
+        test {XACKDEL ack-only propagates XACK but never XACKDEL or XDEL} {
+            $master DEL stream
+            $master XADD stream 1-0 f v
+            $master XGROUP CREATE stream grp1 0
+            $master XGROUP CREATE stream grp2 0
+            $master XREADGROUP GROUP grp1 alice COUNT 1 STREAMS stream >
+            $master XREADGROUP GROUP grp2 bob COUNT 1 STREAMS stream >
+            wait_for_ofs_sync $master $replica
+
+            set xack_before [get_replica_calls $replica xack]
+            set xdel_before [get_replica_calls $replica xdel]
+
+            # grp2 still holds the message pending, so nothing is deleted
+            $master XACKDEL stream grp1 ACKED IDS 1 1-0
+            wait_for_ofs_sync $master $replica
+
+            assert_equal 1 [expr {[get_replica_calls $replica xack] - $xack_before}]
+            assert_equal 0 [expr {[get_replica_calls $replica xdel] - $xdel_before}]
+            assert_equal 0 [get_replica_calls $replica xackdel]
+            assert_equal 1 [$replica XLEN stream]
+            assert_equal 0 [llength [$replica XPENDING stream grp1 - + 10]]
+        }
+
+        test {XACKDEL KEEPREF propagates XACK + XDEL but never XACKDEL} {
+            $master DEL stream
+            $master XADD stream 1-0 f v
+            $master XGROUP CREATE stream grp 0
+            $master XREADGROUP GROUP grp alice COUNT 1 STREAMS stream >
+            wait_for_ofs_sync $master $replica
+
+            set xack_before [get_replica_calls $replica xack]
+            set xdel_before [get_replica_calls $replica xdel]
+
+            $master XACKDEL stream grp KEEPREF IDS 1 1-0
+            wait_for_ofs_sync $master $replica
+
+            assert_equal 1 [expr {[get_replica_calls $replica xack] - $xack_before}]
+            assert_equal 1 [expr {[get_replica_calls $replica xdel] - $xdel_before}]
+            assert_equal 0 [get_replica_calls $replica xackdel]
+            assert_equal 0 [$replica XLEN stream]
+            assert_equal 0 [llength [$replica XPENDING stream grp - + 10]]
+        }
+
+        test {XACKDEL KEEPREF on already deleted entry propagates XACK only} {
+            $master DEL stream
+            $master XADD stream 1-0 f v
+            $master XGROUP CREATE stream grp 0
+            $master XREADGROUP GROUP grp alice COUNT 1 STREAMS stream >
+            $master XDEL stream 1-0
+            wait_for_ofs_sync $master $replica
+
+            set xack_before [get_replica_calls $replica xack]
+            set xdel_before [get_replica_calls $replica xdel]
+
+            # Entry is already deleted from stream, so only XACK is propagated
+            assert_equal {1} [$master XACKDEL stream grp KEEPREF IDS 1 1-0]
+            wait_for_ofs_sync $master $replica
+
+            assert_equal 1 [expr {[get_replica_calls $replica xack] - $xack_before}]
+            assert_equal 0 [expr {[get_replica_calls $replica xdel] - $xdel_before}]
+            assert_equal 0 [get_replica_calls $replica xackdel]
+            assert_equal 0 [$replica XLEN stream]
+            assert_equal 0 [llength [$replica XPENDING stream grp - + 10]]
+        }
+
+        test {XACKDEL DELREF propagates per-group XACK + XDEL but never XACKDEL} {
+            $master DEL stream
+            $master XADD stream 1-0 f v
+            $master XGROUP CREATE stream grp1 0
+            $master XGROUP CREATE stream grp2 0
+            $master XREADGROUP GROUP grp1 alice COUNT 1 STREAMS stream >
+            $master XREADGROUP GROUP grp2 bob COUNT 1 STREAMS stream >
+            wait_for_ofs_sync $master $replica
+
+            set xack_before [get_replica_calls $replica xack]
+            set xdel_before [get_replica_calls $replica xdel]
+
+            $master XACKDEL stream grp1 DELREF IDS 1 1-0
+            wait_for_ofs_sync $master $replica
+
+            # One XACK for the target group + one for grp2's cleared PEL ref
+            assert_equal 2 [expr {[get_replica_calls $replica xack] - $xack_before}]
+            assert_equal 1 [expr {[get_replica_calls $replica xdel] - $xdel_before}]
+            assert_equal 0 [get_replica_calls $replica xackdel]
+            assert_equal 0 [$replica XLEN stream]
+            assert_equal 0 [llength [$replica XPENDING stream grp2 - + 10]]
+        }
+
+        test {XDELEX KEEPREF propagates XDEL only but never XDELEX} {
+            $master DEL stream
+            $master XADD stream 1-0 f v
+            wait_for_ofs_sync $master $replica
+
+            set xack_before [get_replica_calls $replica xack]
+            set xdel_before [get_replica_calls $replica xdel]
+
+            $master XDELEX stream KEEPREF IDS 1 1-0
+            wait_for_ofs_sync $master $replica
+
+            assert_equal 1 [expr {[get_replica_calls $replica xdel] - $xdel_before}]
+            assert_equal 0 [expr {[get_replica_calls $replica xack] - $xack_before}]
+            assert_equal 0 [get_replica_calls $replica xdelex]
+            assert_equal 0 [$replica XLEN stream]
+        }
+
+        test {XDELEX DELREF propagates XDEL + XACK but never XDELEX} {
+            $master DEL stream
+            $master XADD stream 1-0 f v
+            $master XGROUP CREATE stream grp 0
+            $master XREADGROUP GROUP grp alice COUNT 1 STREAMS stream >
+            wait_for_ofs_sync $master $replica
+
+            set xack_before [get_replica_calls $replica xack]
+            set xdel_before [get_replica_calls $replica xdel]
+
+            $master XDELEX stream DELREF IDS 1 1-0
+            wait_for_ofs_sync $master $replica
+
+            assert_equal 1 [expr {[get_replica_calls $replica xdel] - $xdel_before}]
+            assert_equal 1 [expr {[get_replica_calls $replica xack] - $xack_before}]
+            assert_equal 0 [get_replica_calls $replica xdelex]
+            assert_equal 0 [$replica XLEN stream]
+            assert_equal 0 [llength [$replica XPENDING stream grp - + 10]]
+        }
+
+        test {XDELEX ACKED with nothing deleted propagates nothing} {
+            $master DEL stream
+            $master XADD stream 1-0 f v
+            $master XGROUP CREATE stream grp 0
+            $master XREADGROUP GROUP grp alice COUNT 1 STREAMS stream >
+            wait_for_ofs_sync $master $replica
+
+            set xack_before [get_replica_calls $replica xack]
+            set xdel_before [get_replica_calls $replica xdel]
+
+            # Entry still pending in grp, so ACKED neither deletes nor clears
+            $master XDELEX stream ACKED IDS 1 1-0
+            wait_for_ofs_sync $master $replica
+
+            assert_equal 0 [expr {[get_replica_calls $replica xdel] - $xdel_before}]
+            assert_equal 0 [expr {[get_replica_calls $replica xack] - $xack_before}]
+            assert_equal 0 [get_replica_calls $replica xdelex]
+            assert_equal 1 [$replica XLEN stream]
+            assert_equal 1 [llength [$replica XPENDING stream grp - + 10]]
         }
     }
 

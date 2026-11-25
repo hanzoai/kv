@@ -3,7 +3,7 @@ applyTo:
   - "utils/**/*"
 ---
 
-# KV Utilities Review Standards
+# Valkey Utilities Review Standards
 
 Apply these standards to utility scripts and tools.
 

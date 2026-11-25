@@ -1,5 +1,5 @@
 /*
- * Copyright (c) KV Contributors
+ * Copyright (c) Valkey Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -7,10 +7,11 @@
 #include "scripting_engine.h"
 #include "bio.h"
 #include "dict.h"
+#include "eval.h"
 #include "functions.h"
 #include "module.h"
 #include "server.h"
-#include "kvmodule.h"
+#include "valkeymodule.h"
 
 /* First ABI version */
 #define SCRIPTING_ENGINE_ABI_VERSION_1 1
@@ -48,9 +49,9 @@ typedef struct scriptingEngineImpl {
 
 typedef struct scriptingEngine {
     sds name;                                                 /* Name of the engine */
-    KVModule *module;                                     /* the module that implements the scripting engine */
+    ValkeyModule *module;                                     /* the module that implements the scripting engine */
     scriptingEngineImpl impl;                                 /* engine context and callbacks to interact with the engine */
-    KVModuleCtx *module_ctx_cache[MODULE_CTX_CACHE_SIZE]; /* Cache of module context objects */
+    ValkeyModuleCtx *module_ctx_cache[MODULE_CTX_CACHE_SIZE]; /* Cache of module context objects */
 } scriptingEngine;
 
 
@@ -65,27 +66,16 @@ static engineManager engineMgr = {
     .total_memory_overhead = 0,
 };
 
-static uint64_t dictStrCaseHash(const void *key) {
-    return dictGenCaseHashFunction((unsigned char *)key, strlen((char *)key));
-}
-
 dictType engineDictType = {
-    dictStrCaseHash,       /* hash function */
-    NULL,                  /* key dup */
-    dictSdsKeyCaseCompare, /* key compare */
-    NULL,                  /* key destructor */
-    NULL,                  /* val destructor */
-    NULL                   /* allow to expand */
+    .entryGetKey = dictEntryGetKey,
+    .hashFunction = dictCStrCaseHash,
+    .keyCompare = dictSdsKeyCaseCompare,
+    .entryDestructor = zfree,
 };
-
-static int isCalledFromAsyncThread(void) {
-    pthread_t curr_thread = pthread_self();
-    return !pthread_equal(server.main_thread_id, curr_thread);
-}
 
 /* Initializes the scripting engine manager.
  * The engine manager is responsible for managing the several scripting engines
- * that are loaded in the server and implemented by KV Modules.
+ * that are loaded in the server and implemented by Valkey Modules.
  *
  * Returns C_ERR if some error occurs during the initialization.
  */
@@ -133,7 +123,7 @@ static inline void scriptingEngineInitializeEngineMethods(scriptingEngine *engin
  * Returns C_ERR in case of an error during registration.
  */
 int scriptingEngineManagerRegister(const char *engine_name,
-                                   KVModule *engine_module,
+                                   ValkeyModule *engine_module,
                                    engineCtx *engine_ctx,
                                    engineMethods *engine_methods) {
     serverAssert(engine_name != NULL);
@@ -155,10 +145,6 @@ int scriptingEngineManagerRegister(const char *engine_name,
         .module_ctx_cache = {0},
     };
     scriptingEngineInitializeEngineMethods(e, engine_methods);
-
-    for (size_t i = 0; i < MODULE_CTX_CACHE_SIZE; i++) {
-        e->module_ctx_cache[i] = moduleAllocateContext();
-    }
 
     for (size_t i = 0; i < MODULE_CTX_CACHE_SIZE; i++) {
         e->module_ctx_cache[i] = moduleAllocateContext();
@@ -188,18 +174,22 @@ int scriptingEngineManagerUnregister(const char *engine_name) {
     scriptingEngine *e = dictGetVal(entry);
 
     functionsRemoveLibFromEngine(e);
+    evalRemoveScriptsFromEngine(e);
 
     engineMemoryInfo mem_info = scriptingEngineCallGetMemoryInfo(e, VMSE_ALL);
     engineMgr.total_memory_overhead -= zmalloc_size(e) +
                                        sdsAllocSize(e->name) +
                                        mem_info.engine_memory_overhead;
 
-    sdsfree(e->name);
-
     /* We need to ensure that any pending async flush of eval scripts or
-     * functions have completed before freeing the module context cache, which
-     * may be used by the async jobs. */
+     * functions have completed before freeing the engine resources, which
+     * may be used by the async jobs. Release the GIL first since the lazy
+     * free jobs need to acquire it to call scriptingEngineCallFreeFunction. */
+    moduleReleaseGIL();
     bioDrainWorker(BIO_LAZY_FREE);
+    moduleAcquireGIL();
+
+    sdsfree(e->name);
 
     for (size_t i = 0; i < MODULE_CTX_CACHE_SIZE; i++) {
         serverAssert(e->module_ctx_cache[i] != NULL);
@@ -214,7 +204,7 @@ int scriptingEngineManagerUnregister(const char *engine_name) {
 
 /*
  * Lookups the engine with `engine_name` in the engine manager and returns it if
- * it exists. Otherwise returns `NULL`.
+ * it exists. Otherwise, returns `NULL`.
  */
 scriptingEngine *scriptingEngineManagerFind(const char *engine_name) {
     dictEntry *entry = dictFind(engineMgr.engines, engine_name);
@@ -228,7 +218,7 @@ sds scriptingEngineGetName(scriptingEngine *engine) {
     return engine->name;
 }
 
-KVModule *scriptingEngineGetModule(scriptingEngine *engine) {
+ValkeyModule *scriptingEngineGetModule(scriptingEngine *engine) {
     return engine->module;
 }
 
@@ -253,14 +243,14 @@ void scriptingEngineManagerForEachEngine(engineIterCallback callback,
     dictReleaseIterator(iter);
 }
 
-static KVModuleCtx *engineSetupModuleCtx(int module_ctx_cache_index,
+static ValkeyModuleCtx *engineSetupModuleCtx(int module_ctx_cache_index,
                                              scriptingEngine *e,
                                              int add_script_execution_flag,
                                              client *c) {
     serverAssert(e != NULL);
     if (e->module == NULL) return NULL;
 
-    KVModuleCtx *ctx = e->module_ctx_cache[module_ctx_cache_index];
+    ValkeyModuleCtx *ctx = e->module_ctx_cache[module_ctx_cache_index];
     moduleScriptingEngineInitContext(ctx,
                                      e->module,
                                      add_script_execution_flag,
@@ -271,7 +261,7 @@ static KVModuleCtx *engineSetupModuleCtx(int module_ctx_cache_index,
 static void engineTeardownModuleCtx(int module_ctx_cache_index, scriptingEngine *e) {
     serverAssert(e != NULL);
     if (e->module != NULL) {
-        KVModuleCtx *ctx = e->module_ctx_cache[module_ctx_cache_index];
+        ValkeyModuleCtx *ctx = e->module_ctx_cache[module_ctx_cache_index];
         moduleFreeContext(ctx);
     }
 }
@@ -285,7 +275,7 @@ compiledFunction **scriptingEngineCallCompileCode(scriptingEngine *engine,
                                                   robj **err) {
     serverAssert(type == VMSE_EVAL || type == VMSE_FUNCTION);
     compiledFunction **functions = NULL;
-    KVModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, false, NULL);
+    ValkeyModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, false, NULL);
 
     if (engine->impl.methods.version == SCRIPTING_ENGINE_ABI_VERSION_1) {
         functions = engine->impl.methods.compile_code_v1(
@@ -318,7 +308,7 @@ void scriptingEngineCallFreeFunction(scriptingEngine *engine,
                                      subsystemType type,
                                      compiledFunction *compiled_func) {
     serverAssert(type == VMSE_EVAL || type == VMSE_FUNCTION);
-    int is_async = isCalledFromAsyncThread();
+    int is_async = !onServerMainThread();
 
     /* We need to acquire the module GIL when running from an async thread while
      * flushing the script functions. */
@@ -326,7 +316,7 @@ void scriptingEngineCallFreeFunction(scriptingEngine *engine,
         moduleAcquireGIL();
     }
 
-    KVModuleCtx *module_ctx = engineSetupModuleCtx(FREE_FUNCTION_MODULE_CTX_INDEX, engine, false, NULL);
+    ValkeyModuleCtx *module_ctx = engineSetupModuleCtx(FREE_FUNCTION_MODULE_CTX_INDEX, engine, false, NULL);
     engine->impl.methods.free_function(
         module_ctx,
         engine->impl.ctx,
@@ -350,7 +340,7 @@ void scriptingEngineCallFunction(scriptingEngine *engine,
                                  size_t nargs) {
     serverAssert(type == VMSE_EVAL || type == VMSE_FUNCTION);
 
-    KVModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, true, caller);
+    ValkeyModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, true, caller);
 
     engine->impl.methods.call_function(
         module_ctx,
@@ -368,7 +358,7 @@ void scriptingEngineCallFunction(scriptingEngine *engine,
 
 size_t scriptingEngineCallGetFunctionMemoryOverhead(scriptingEngine *engine,
                                                     compiledFunction *compiled_function) {
-    KVModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, false, NULL);
+    ValkeyModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, false, NULL);
     size_t mem = engine->impl.methods.get_function_memory_overhead(
         module_ctx,
         compiled_function);
@@ -379,7 +369,7 @@ size_t scriptingEngineCallGetFunctionMemoryOverhead(scriptingEngine *engine,
 callableLazyEnvReset *scriptingEngineCallResetEnvFunc(scriptingEngine *engine,
                                                       subsystemType type,
                                                       int async) {
-    KVModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, false, NULL);
+    ValkeyModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, false, NULL);
     callableLazyEnvReset *callback = NULL;
 
     if (engine->impl.methods.version < SCRIPTING_ENGINE_ABI_VERSION_3) {
@@ -414,7 +404,7 @@ callableLazyEnvReset *scriptingEngineCallResetEnvFunc(scriptingEngine *engine,
 
 engineMemoryInfo scriptingEngineCallGetMemoryInfo(scriptingEngine *engine,
                                                   subsystemType type) {
-    KVModuleCtx *module_ctx = engineSetupModuleCtx(GET_MEMORY_MODULE_CTX_INDEX, engine, false, NULL);
+    ValkeyModuleCtx *module_ctx = engineSetupModuleCtx(GET_MEMORY_MODULE_CTX_INDEX, engine, false, NULL);
     engineMemoryInfo mem_info = engine->impl.methods.get_memory_info(
         module_ctx,
         engine->impl.ctx,
@@ -441,7 +431,7 @@ debuggerEnableRet scriptingEngineCallDebuggerEnable(scriptingEngine *engine,
         return VMSE_DEBUG_NOT_SUPPORTED;
     }
 
-    KVModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, false, NULL);
+    ValkeyModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, false, NULL);
     debuggerEnableRet ret = engine->impl.methods.debugger_enable(
         module_ctx,
         engine->impl.ctx,
@@ -457,7 +447,7 @@ void scriptingEngineCallDebuggerDisable(scriptingEngine *engine,
     serverAssert(engine->impl.methods.version >= SCRIPTING_ENGINE_ABI_VERSION_4);
     serverAssert(engine->impl.methods.debugger_disable != NULL);
 
-    KVModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, false, NULL);
+    ValkeyModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, false, NULL);
     engine->impl.methods.debugger_disable(
         module_ctx,
         engine->impl.ctx,
@@ -471,7 +461,7 @@ void scriptingEngineCallDebuggerStart(scriptingEngine *engine,
     serverAssert(engine->impl.methods.version >= SCRIPTING_ENGINE_ABI_VERSION_4);
     serverAssert(engine->impl.methods.debugger_start != NULL);
 
-    KVModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, false, NULL);
+    ValkeyModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, false, NULL);
     engine->impl.methods.debugger_start(
         module_ctx,
         engine->impl.ctx,
@@ -485,7 +475,7 @@ void scriptingEngineCallDebuggerEnd(scriptingEngine *engine,
     serverAssert(engine->impl.methods.version >= SCRIPTING_ENGINE_ABI_VERSION_4);
     serverAssert(engine->impl.methods.debugger_end != NULL);
 
-    KVModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, false, NULL);
+    ValkeyModuleCtx *module_ctx = engineSetupModuleCtx(COMMON_MODULE_CTX_INDEX, engine, false, NULL);
     engine->impl.methods.debugger_end(
         module_ctx,
         engine->impl.ctx,
@@ -808,6 +798,10 @@ static robj **readReadCommandInternal(size_t *argc, robj **err) {
 protoerr:
     *err = createStringObject(protocol_error, strlen(protocol_error));
 keep_reading:
+    /* Reset *argc so the caller can retry: if we parsed the bulk count
+     * header before hitting a keep_reading exit, *argc is non-zero and
+     * the precondition assert on the next call would fire. */
+    *argc = 0;
     for (size_t i = 0; i < largc; i++) {
         decrRefCount(argv[i]);
     }
@@ -1050,7 +1044,8 @@ static int findAndExecuteCommand(robj **argv, size_t argc) {
         return CONTINUE_READ_NEXT_COMMAND;
     }
 
-    return cmd->handler(argv, argc, cmd->context);
+    /* Fall back to the engine's own context, which handlers can cast back to their engine context type. */
+    return cmd->handler(argv, argc, cmd->context ? cmd->context : ds.engine->impl.ctx);
 }
 
 void scriptingEngineDebuggerProcessCommands(int *client_disconnected, robj **err) {
@@ -1081,7 +1076,7 @@ void scriptingEngineDebuggerProcessCommands(int *client_disconnected, robj **err
              */
             if (sdslen(ds.cbuf) > 1 << 20) {
                 *err = createStringObject(max_buffer_error, strlen(max_buffer_error));
-                return;
+                break;
             }
         }
 

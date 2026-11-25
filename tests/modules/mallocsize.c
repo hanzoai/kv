@@ -1,4 +1,4 @@
-#include "kvmodule.h"
+#include "valkeymodule.h"
 #include <string.h>
 #include <assert.h>
 #include <unistd.h>
@@ -6,7 +6,7 @@
 #define UNUSED(V) ((void) V)
 
 /* Registered type */
-KVModuleType *mallocsize_type = NULL;
+ValkeyModuleType *mallocsize_type = NULL;
 
 typedef enum {
     UDT_RAW,
@@ -23,8 +23,8 @@ typedef struct {
     udt_type_t type;
     union {
         raw_t raw;
-        KVModuleString *str;
-        KVModuleDict *dict;
+        ValkeyModuleString *str;
+        ValkeyModuleDict *dict;
     } data;
 } udt_t;
 
@@ -32,76 +32,76 @@ void udt_free(void *value) {
     udt_t *udt = value;
     switch (udt->type) {
         case (UDT_RAW): {
-            KVModule_Free(udt->data.raw.ptr);
+            ValkeyModule_Free(udt->data.raw.ptr);
             break;
         }
         case (UDT_STRING): {
-            KVModule_FreeString(NULL, udt->data.str);
+            ValkeyModule_FreeString(NULL, udt->data.str);
             break;
         }
         case (UDT_DICT): {
-            KVModuleString *dk, *dv;
-            KVModuleDictIter *iter = KVModule_DictIteratorStartC(udt->data.dict, "^", NULL, 0);
-            while((dk = KVModule_DictNext(NULL, iter, (void **)&dv)) != NULL) {
-                KVModule_FreeString(NULL, dk);
-                KVModule_FreeString(NULL, dv);
+            ValkeyModuleString *dk, *dv;
+            ValkeyModuleDictIter *iter = ValkeyModule_DictIteratorStartC(udt->data.dict, "^", NULL, 0);
+            while((dk = ValkeyModule_DictNext(NULL, iter, (void **)&dv)) != NULL) {
+                ValkeyModule_FreeString(NULL, dk);
+                ValkeyModule_FreeString(NULL, dv);
             }
-            KVModule_DictIteratorStop(iter);
-            KVModule_FreeDict(NULL, udt->data.dict);
+            ValkeyModule_DictIteratorStop(iter);
+            ValkeyModule_FreeDict(NULL, udt->data.dict);
             break;
         }
     }
-    KVModule_Free(udt);
+    ValkeyModule_Free(udt);
 }
 
-void udt_rdb_save(KVModuleIO *rdb, void *value) {
+void udt_rdb_save(ValkeyModuleIO *rdb, void *value) {
     udt_t *udt = value;
-    KVModule_SaveUnsigned(rdb, udt->type);
+    ValkeyModule_SaveUnsigned(rdb, udt->type);
     switch (udt->type) {
         case (UDT_RAW): {
-            KVModule_SaveStringBuffer(rdb, udt->data.raw.ptr, udt->data.raw.len);
+            ValkeyModule_SaveStringBuffer(rdb, udt->data.raw.ptr, udt->data.raw.len);
             break;
         }
         case (UDT_STRING): {
-            KVModule_SaveString(rdb, udt->data.str);
+            ValkeyModule_SaveString(rdb, udt->data.str);
             break;
         }
         case (UDT_DICT): {
-            KVModule_SaveUnsigned(rdb, KVModule_DictSize(udt->data.dict));
-            KVModuleString *dk, *dv;
-            KVModuleDictIter *iter = KVModule_DictIteratorStartC(udt->data.dict, "^", NULL, 0);
-            while((dk = KVModule_DictNext(NULL, iter, (void **)&dv)) != NULL) {
-                KVModule_SaveString(rdb, dk);
-                KVModule_SaveString(rdb, dv);
-                KVModule_FreeString(NULL, dk); /* Allocated by KVModule_DictNext */
+            ValkeyModule_SaveUnsigned(rdb, ValkeyModule_DictSize(udt->data.dict));
+            ValkeyModuleString *dk, *dv;
+            ValkeyModuleDictIter *iter = ValkeyModule_DictIteratorStartC(udt->data.dict, "^", NULL, 0);
+            while((dk = ValkeyModule_DictNext(NULL, iter, (void **)&dv)) != NULL) {
+                ValkeyModule_SaveString(rdb, dk);
+                ValkeyModule_SaveString(rdb, dv);
+                ValkeyModule_FreeString(NULL, dk); /* Allocated by ValkeyModule_DictNext */
             }
-            KVModule_DictIteratorStop(iter);
+            ValkeyModule_DictIteratorStop(iter);
             break;
         }
     }
 }
 
-void *udt_rdb_load(KVModuleIO *rdb, int encver) {
+void *udt_rdb_load(ValkeyModuleIO *rdb, int encver) {
     if (encver != 0)
         return NULL;
-    udt_t *udt = KVModule_Alloc(sizeof(*udt));
-    udt->type = KVModule_LoadUnsigned(rdb);
+    udt_t *udt = ValkeyModule_Alloc(sizeof(*udt));
+    udt->type = ValkeyModule_LoadUnsigned(rdb);
     switch (udt->type) {
         case (UDT_RAW): {
-            udt->data.raw.ptr = KVModule_LoadStringBuffer(rdb, &udt->data.raw.len);
+            udt->data.raw.ptr = ValkeyModule_LoadStringBuffer(rdb, &udt->data.raw.len);
             break;
         }
         case (UDT_STRING): {
-            udt->data.str = KVModule_LoadString(rdb);
+            udt->data.str = ValkeyModule_LoadString(rdb);
             break;
         }
         case (UDT_DICT): {
-            long long dict_len = KVModule_LoadUnsigned(rdb);
-            udt->data.dict = KVModule_CreateDict(NULL);
+            long long dict_len = ValkeyModule_LoadUnsigned(rdb);
+            udt->data.dict = ValkeyModule_CreateDict(NULL);
             for (int i = 0; i < dict_len; i += 2) {
-                KVModuleString *key = KVModule_LoadString(rdb);
-                KVModuleString *val = KVModule_LoadString(rdb);
-                KVModule_DictSet(udt->data.dict, key, val);
+                ValkeyModuleString *key = ValkeyModule_LoadString(rdb);
+                ValkeyModuleString *val = ValkeyModule_LoadString(rdb);
+                ValkeyModule_DictSet(udt->data.dict, key, val);
             }
             break;
         }
@@ -110,7 +110,7 @@ void *udt_rdb_load(KVModuleIO *rdb, int encver) {
     return udt;
 }
 
-size_t udt_mem_usage(KVModuleKeyOptCtx *ctx, const void *value, size_t sample_size) {
+size_t udt_mem_usage(ValkeyModuleKeyOptCtx *ctx, const void *value, size_t sample_size) {
     UNUSED(ctx);
     UNUSED(sample_size);
     
@@ -119,23 +119,23 @@ size_t udt_mem_usage(KVModuleKeyOptCtx *ctx, const void *value, size_t sample_si
     
     switch (udt->type) {
         case (UDT_RAW): {
-            size += KVModule_MallocSize(udt->data.raw.ptr);
+            size += ValkeyModule_MallocSize(udt->data.raw.ptr);
             break;
         }
         case (UDT_STRING): {
-            size += KVModule_MallocSizeString(udt->data.str);
+            size += ValkeyModule_MallocSizeString(udt->data.str);
             break;
         }
         case (UDT_DICT): {
             void *dk;
             size_t keylen;
-            KVModuleString *dv;
-            KVModuleDictIter *iter = KVModule_DictIteratorStartC(udt->data.dict, "^", NULL, 0);
-            while((dk = KVModule_DictNextC(iter, &keylen, (void **)&dv)) != NULL) {
+            ValkeyModuleString *dv;
+            ValkeyModuleDictIter *iter = ValkeyModule_DictIteratorStartC(udt->data.dict, "^", NULL, 0);
+            while((dk = ValkeyModule_DictNextC(iter, &keylen, (void **)&dv)) != NULL) {
                 size += keylen;
-                size += KVModule_MallocSizeString(dv);
+                size += ValkeyModule_MallocSizeString(dv);
             }
-            KVModule_DictIteratorStop(iter);
+            ValkeyModule_DictIteratorStop(iter);
             break;
         }
     }
@@ -144,94 +144,94 @@ size_t udt_mem_usage(KVModuleKeyOptCtx *ctx, const void *value, size_t sample_si
 }
 
 /* MALLOCSIZE.SETRAW key len */
-int cmd_setraw(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+int cmd_setraw(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
     if (argc != 3)
-        return KVModule_WrongArity(ctx);
+        return ValkeyModule_WrongArity(ctx);
         
-    KVModuleKey *key = KVModule_OpenKey(ctx, argv[1], KVMODULE_WRITE);
+    ValkeyModuleKey *key = ValkeyModule_OpenKey(ctx, argv[1], VALKEYMODULE_WRITE);
 
-    udt_t *udt = KVModule_Alloc(sizeof(*udt));
+    udt_t *udt = ValkeyModule_Alloc(sizeof(*udt));
     udt->type = UDT_RAW;
     
     long long raw_len;
-    KVModule_StringToLongLong(argv[2], &raw_len);
-    udt->data.raw.ptr = KVModule_Alloc(raw_len);
+    ValkeyModule_StringToLongLong(argv[2], &raw_len);
+    udt->data.raw.ptr = ValkeyModule_Alloc(raw_len);
     udt->data.raw.len = raw_len;
     
-    KVModule_ModuleTypeSetValue(key, mallocsize_type, udt);
-    KVModule_CloseKey(key);
+    ValkeyModule_ModuleTypeSetValue(key, mallocsize_type, udt);
+    ValkeyModule_CloseKey(key);
 
-    return KVModule_ReplyWithSimpleString(ctx, "OK");
+    return ValkeyModule_ReplyWithSimpleString(ctx, "OK");
 }
 
 /* MALLOCSIZE.SETSTR key string */
-int cmd_setstr(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+int cmd_setstr(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
     if (argc != 3)
-        return KVModule_WrongArity(ctx);
+        return ValkeyModule_WrongArity(ctx);
         
-    KVModuleKey *key = KVModule_OpenKey(ctx, argv[1], KVMODULE_WRITE);
+    ValkeyModuleKey *key = ValkeyModule_OpenKey(ctx, argv[1], VALKEYMODULE_WRITE);
 
-    udt_t *udt = KVModule_Alloc(sizeof(*udt));
+    udt_t *udt = ValkeyModule_Alloc(sizeof(*udt));
     udt->type = UDT_STRING;
     
     udt->data.str = argv[2];
-    KVModule_RetainString(ctx, argv[2]);
+    ValkeyModule_RetainString(ctx, argv[2]);
     
-    KVModule_ModuleTypeSetValue(key, mallocsize_type, udt);
-    KVModule_CloseKey(key);
+    ValkeyModule_ModuleTypeSetValue(key, mallocsize_type, udt);
+    ValkeyModule_CloseKey(key);
 
-    return KVModule_ReplyWithSimpleString(ctx, "OK");
+    return ValkeyModule_ReplyWithSimpleString(ctx, "OK");
 }
 
 /* MALLOCSIZE.SETDICT key field value [field value ...] */
-int cmd_setdict(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+int cmd_setdict(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
     if (argc < 4 || argc % 2)
-        return KVModule_WrongArity(ctx);
+        return ValkeyModule_WrongArity(ctx);
         
-    KVModuleKey *key = KVModule_OpenKey(ctx, argv[1], KVMODULE_WRITE);
+    ValkeyModuleKey *key = ValkeyModule_OpenKey(ctx, argv[1], VALKEYMODULE_WRITE);
 
-    udt_t *udt = KVModule_Alloc(sizeof(*udt));
+    udt_t *udt = ValkeyModule_Alloc(sizeof(*udt));
     udt->type = UDT_DICT;
     
-    udt->data.dict = KVModule_CreateDict(ctx);
+    udt->data.dict = ValkeyModule_CreateDict(ctx);
     for (int i = 2; i < argc; i += 2) {
-        KVModule_DictSet(udt->data.dict, argv[i], argv[i+1]);
+        ValkeyModule_DictSet(udt->data.dict, argv[i], argv[i+1]);
         /* No need to retain argv[i], it is copied as the rax key */
-        KVModule_RetainString(ctx, argv[i+1]);   
+        ValkeyModule_RetainString(ctx, argv[i+1]);   
     }
     
-    KVModule_ModuleTypeSetValue(key, mallocsize_type, udt);
-    KVModule_CloseKey(key);
+    ValkeyModule_ModuleTypeSetValue(key, mallocsize_type, udt);
+    ValkeyModule_CloseKey(key);
 
-    return KVModule_ReplyWithSimpleString(ctx, "OK");
+    return ValkeyModule_ReplyWithSimpleString(ctx, "OK");
 }
 
-int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+int ValkeyModule_OnLoad(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
     UNUSED(argv);
     UNUSED(argc);
-    if (KVModule_Init(ctx,"mallocsize",1,KVMODULE_APIVER_1)== KVMODULE_ERR)
-        return KVMODULE_ERR;
+    if (ValkeyModule_Init(ctx,"mallocsize",1,VALKEYMODULE_APIVER_1)== VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
         
-    KVModuleTypeMethods tm = {
-        .version = KVMODULE_TYPE_METHOD_VERSION,
+    ValkeyModuleTypeMethods tm = {
+        .version = VALKEYMODULE_TYPE_METHOD_VERSION,
         .rdb_load = udt_rdb_load,
         .rdb_save = udt_rdb_save,
         .free = udt_free,
         .mem_usage2 = udt_mem_usage,
     };
 
-    mallocsize_type = KVModule_CreateDataType(ctx, "allocsize", 0, &tm);
+    mallocsize_type = ValkeyModule_CreateDataType(ctx, "allocsize", 0, &tm);
     if (mallocsize_type == NULL)
-        return KVMODULE_ERR;
+        return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx, "mallocsize.setraw", cmd_setraw, "", 1, 1, 1) == KVMODULE_ERR)
-        return KVMODULE_ERR;
+    if (ValkeyModule_CreateCommand(ctx, "mallocsize.setraw", cmd_setraw, "", 1, 1, 1) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
         
-    if (KVModule_CreateCommand(ctx, "mallocsize.setstr", cmd_setstr, "", 1, 1, 1) == KVMODULE_ERR)
-        return KVMODULE_ERR;
+    if (ValkeyModule_CreateCommand(ctx, "mallocsize.setstr", cmd_setstr, "", 1, 1, 1) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
         
-    if (KVModule_CreateCommand(ctx, "mallocsize.setdict", cmd_setdict, "", 1, 1, 1) == KVMODULE_ERR)
-        return KVMODULE_ERR;
+    if (ValkeyModule_CreateCommand(ctx, "mallocsize.setdict", cmd_setdict, "", 1, 1, 1) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
 
-    return KVMODULE_OK;
+    return VALKEYMODULE_OK;
 }

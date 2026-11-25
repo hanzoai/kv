@@ -77,7 +77,7 @@ proc kill_server config {
     }
 
     # check for leaks
-    if {![dict exists $config "skipleaks"]} {
+    if {$::leaks && ![dict exists $config "skipleaks"]} {
         catch {
             if {[string match {*Darwin*} [exec uname -a]]} {
                 tags {"leaks"} {
@@ -175,7 +175,7 @@ proc ping_server {host port} {
     return $retval
 }
 
-# Return 1 if the server at the specified addr is reachable by PING, otherwise
+# Return 1 if the server at the specified addr is reachable by PING; otherwise,
 # returns 0. Performs a try every 50 milliseconds for the specified number
 # of retries.
 proc server_is_up {host port retrynum} {
@@ -348,7 +348,7 @@ proc spawn_server {executable config_file stdout stderr args} {
     }
 
     if {$::valgrind} {
-        set pid [exec valgrind --track-origins=yes --trace-children=yes --suppressions=[pwd]/src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full {*}$cmd >> $stdout 2>> $stderr &]
+        set pid [exec valgrind --fair-sched=try --track-origins=yes --trace-children=yes --suppressions=[pwd]/src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full {*}$cmd >> $stdout 2>> $stderr &]
     } elseif ($::stack_logging) {
         set pid [exec /usr/bin/env MallocStackLogging=1 MallocLogFile=/tmp/malloc_log.txt {*}$cmd >> $stdout 2>> $stderr &]
     } else {
@@ -364,8 +364,9 @@ proc spawn_server {executable config_file stdout stderr args} {
         read stdin 1
     }
 
-    # Tell the test server about this new instance.
-    send_data_packet $::test_server_fd server-spawned "$pid - $::curfile"
+    # Tell the test server about this new instance. Send the log path too so
+    # the orchestrator can dump it if the test times out.
+    send_data_packet $::test_server_fd server-spawned [list $pid $stdout $::curfile]
     return $pid
 }
 
@@ -398,7 +399,7 @@ proc wait_server_started {executable config_file stdout stderr pid} {
         # Configuration errors are unexpected, but it's helpful to fail fast
         # to give the feedback to the test runner.
         if {[regexp {FATAL CONFIG FILE ERROR} [exec cat $stderr]]} {
-            start_server_error $executable $config_file "Configuration issue prevented KV startup"
+            start_server_error $executable $config_file "Configuration issue prevented Valkey startup"
             break
         }
     }
@@ -420,7 +421,7 @@ proc run_external_server_test {code overrides} {
     set srv {}
     dict set srv "host" $::host
     dict set srv "port" $::port
-    set client [kv $::host $::port 0 $::tls]
+    set client [valkey $::host $::port 0 $::tls]
     dict set srv "client" $client
     if {!$::singledb} {
         $client select 9
@@ -448,7 +449,7 @@ proc run_external_server_test {code overrides} {
         dict set saved_config $param [lindex [r config get $param] 1]
         r config set $param $val
 
-        # If we enable appendonly, wait for for rewrite to complete. This is
+        # If we enable appendonly, wait for rewrite to complete. This is
         # required for tests that begin with a bg* command which will fail if
         # the rewriteaof operation is not completed at this point.
         if {$param == "appendonly" && $val == "yes"} {
@@ -565,7 +566,7 @@ proc start_server {options {code undefined}} {
     if {$start_other_server} {
         set executable $::other_server_path
     } else {
-        set executable $::KV_SERVER_BIN
+        set executable $::VALKEY_SERVER_BIN
     }
     if {![file executable $executable]} {
         error "Server executable file not found or not executable: $executable"
@@ -575,20 +576,20 @@ proc start_server {options {code undefined}} {
     set config {}
     if {$::tls} {
         if {$::tls_module} {
-            lappend config_lines [list "loadmodule" $::KV_TLS_MODULE]
+            lappend config_lines [list "loadmodule" $::VALKEY_TLS_MODULE]
         }
         dict set config "tls-cert-file" [format "%s/tests/tls/server.crt" [pwd]]
         dict set config "tls-key-file" [format "%s/tests/tls/server.key" [pwd]]
         dict set config "tls-client-cert-file" [format "%s/tests/tls/client.crt" [pwd]]
         dict set config "tls-client-key-file" [format "%s/tests/tls/client.key" [pwd]]
-        dict set config "tls-dh-params-file" [format "%s/tests/tls/kv.dh" [pwd]]
+        dict set config "tls-dh-params-file" [format "%s/tests/tls/valkey.dh" [pwd]]
         dict set config "tls-ca-cert-file" [format "%s/tests/tls/ca.crt" [pwd]]
         dict set config "loglevel" "debug"
     }
 
     if {$::io_threads} {
         dict set config "io-threads" 2
-        dict set config "events-per-io-thread" 0
+        dict set config "io-threads-always-active" yes
         dict set config "min-io-threads-avoid-copy-reply" 2
     }
 
@@ -638,7 +639,7 @@ proc start_server {options {code undefined}} {
     }
 
     # write new configuration to temporary file
-    set config_file [tmpfile kv.conf]
+    set config_file [tmpfile valkey.conf]
     create_server_config_file $config_file $config $config_lines
 
     set stdout [format "%s/%s" [dict get $config "dir"] "stdout"]
@@ -676,6 +677,7 @@ proc start_server {options {code undefined}} {
         # for availability. Other test clients may grab the port before we
         # are able to do it for example.
         if {$port_busy} {
+            set previous_ready_count 0
             puts "Port $port was already busy, trying another port..."
             set port [find_available_port $::baseport $::portcount]
             if {$::tls} {
@@ -709,6 +711,8 @@ proc start_server {options {code undefined}} {
             set err {}
             append err [exec cat $stdout] "\n" [exec cat $stderr]
             start_server_error $executable $config_file $err
+            set ::singledb $old_singledb
+            set ::tags [lrange $::tags 0 end-[llength $tags]]
             return
         }
         set server_started 1

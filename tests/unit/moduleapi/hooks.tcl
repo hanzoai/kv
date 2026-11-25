@@ -9,7 +9,7 @@ tags "modules" {
 
         test {Test clients connection / disconnection hooks} {
             for {set j 0} {$j < 2} {incr j} {
-                set rd1 [kv_deferring_client]
+                set rd1 [valkey_deferring_client]
                 $rd1 close
             }
             assert {[r hooks.event_count client-connected] > 1}
@@ -17,7 +17,7 @@ tags "modules" {
         }
 
         test {Test module client change event for blocked client} {
-            set rd [kv_deferring_client]
+            set rd [valkey_deferring_client]
             # select db other than 0
             $rd select 1
             # block on key
@@ -464,6 +464,39 @@ tags "modules" {
             assert_equal [R 0 hooks.event_last atomic-slot-migration-import-complete-jobname] $job_name
             assert_equal [R 3 hooks.event_last atomic-slot-migration-import-complete-jobname] $job_name
             assert_equal [R 2 hooks.event_last atomic-slot-migration-export-complete-jobname] $job_name
+        }
+
+        test {Atomic slot migration import abort hook fires once on a replica when the target is flushed} {
+            set primary_aborts [R 0 hooks.event_count atomic-slot-migration-import-abort-jobname]
+            set replica_aborts [R 3 hooks.event_count atomic-slot-migration-import-abort-jobname]
+            assert_match "OK" [R 2 DEBUG SLOTMIGRATION PREVENT-PAUSE 1]
+            test_defer_fail {R 2 DEBUG SLOTMIGRATION PREVENT-PAUSE 0}
+            set node0_id [R 0 CLUSTER MYID]
+            assert_match "OK" [R 2 CLUSTER MIGRATESLOTS SLOTSRANGE 16382 16382 NODE $node0_id]
+            set job_name [dict get [lindex [R 2 CLUSTER GETSLOTMIGRATIONS] 0] name]
+            wait_for_condition 50 100 {
+                [R 3 hooks.event_last atomic-slot-migration-import-start-jobname] eq $job_name
+            } else {
+                fail "Import start event never triggered on replica"
+            }
+
+            # The flush fails the import on the target. It is replicated and
+            # fails the import on the replica too, before the target is done
+            # with the cleanup and replicates the end of the import.
+            assert_match "OK" [R 0 FLUSHALL SYNC]
+            wait_for_condition 50 100 {
+                [dict get [lsearch -inline [R 0 CLUSTER GETSLOTMIGRATIONS] "name $job_name *"] state] eq "failed"
+            } else {
+                fail "Import did not fail on primary"
+            }
+            wait_for_ofs_sync [Rn 0] [Rn 3]
+
+            assert_equal [expr {$primary_aborts + 1}] [R 0 hooks.event_count atomic-slot-migration-import-abort-jobname]
+            assert_equal [expr {$replica_aborts + 1}] [R 3 hooks.event_count atomic-slot-migration-import-abort-jobname]
+            assert_equal $job_name [R 3 hooks.event_last atomic-slot-migration-import-abort-jobname]
+            assert_equal failed [dict get [lsearch -inline [R 3 CLUSTER GETSLOTMIGRATIONS] "name $job_name *"] state]
+
+            assert_match "OK" [R 2 DEBUG SLOTMIGRATION PREVENT-PAUSE 0]
         }
     }
 }

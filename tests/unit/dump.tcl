@@ -39,6 +39,15 @@ start_server {tags {"dump"}} {
         r get foo
     } {bar}
 
+    test {RESTORE with relative TTL that overflows when basetime is added} {
+        r set foo bar
+        set encoded [r dump foo]
+        r del foo
+        assert_error "ERR invalid expire time in 'restore' command" {r restore foo 9223372036854775807 $encoded}
+        assert_error "ERR invalid expire time in 'restore' command" {r restore foo 9223372036854770000 $encoded}
+        assert_equal 0 [r exists foo]
+    }
+
     test {RESTORE with ABSTTL in the past} {
         r set foo bar
         set encoded [r dump foo]
@@ -142,7 +151,7 @@ start_server {tags {"dump"}} {
         assert_equal {bar} [r get foo]
     }
 
-    test {DUMP of non existing key returns nil} {
+    test {DUMP of nonexistent key returns nil} {
         r dump nonexisting_key
     } {}
 
@@ -163,8 +172,11 @@ start_server {tags {"dump"}} {
     } {} {external:skip}
 
     test {MIGRATE cached connections are released after some time} {
-        after 15000
-        assert_match {*migrate_cached_sockets:0*} [r info]
+        wait_for_condition 20 1000 {
+            [string match {*migrate_cached_sockets:0*} [r info]]
+        } else {
+            fail "MIGRATE cached connections were not released after some time"
+        }
     }
 
     test {MIGRATE is able to migrate a key between two instances} {
@@ -303,7 +315,7 @@ start_server {tags {"dump"}} {
             assert {[$first exists key] == 1}
             assert {[$second exists key] == 0}
 
-            set rd [kv_deferring_client]
+            set rd [valkey_deferring_client]
             $rd debug sleep 1.0 ; # Make second server unable to reply.
             after 100; # wait to make sure DEBUG command was executed.
             set e {}
@@ -453,6 +465,10 @@ start_server {tags {"dump"}} {
         #   6a6b6c          - "jkl"
         #   ff              - ZIPMAP_END
         #
+        # Pre-patch: validation passes (overlong encoding walks in-bounds),
+        # then zipmapNext() misaligns by 4 bytes, interpreting 0x61 ('a') as a
+        # 97-byte field length → heap buffer over-read / crash.
+        #
         # Post-patch: zipmapValidateIntegrity() rejects (l < 254 && s != 1).
         #
         # RESTORE payload: <type=09><rdb-string-len=18><zipmap><rdb-ver=5000><crc=0>
@@ -460,6 +476,40 @@ start_server {tags {"dump"}} {
         r debug set-skip-checksum-validation 1
         set payload "\x09\x18\x02\xfe\x03\x00\x00\x00\x61\x62\x63\x03\x00\x64\x65\x66\x03\x67\x68\x69\x03\x00\x6a\x6b\x6c\xff\x50\x00\x00\x00\x00\x00\x00\x00\x00\x00"
         catch {r restore zipmap_test 0 $payload} err
+        r debug set-skip-checksum-validation 0
+        assert_match {*Bad data format*} $err
+    } {} {needs:debug}
+
+    test {RESTORE rejects stream with shared NACK across consumers} {
+        # Create a valid stream with consumer group and two consumers
+        r DEL mystream
+        r XADD mystream 1-1 f v
+        r XADD mystream 2-1 f v
+        r XGROUP CREATE mystream grp 0
+        r XREADGROUP GROUP grp consumer1 COUNT 1 STREAMS mystream ">"
+        r XREADGROUP GROUP grp consumer2 COUNT 1 STREAMS mystream ">"
+
+        set dump [r DUMP mystream]
+        r DEL mystream
+
+        # In the dump, consumer2's PEL entry contains message ID 2-1.
+        # Replace it with 1-1 (same as consumer1's) to create a shared NACK.
+        # Message ID 2-1 in big-endian: \x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x01
+        # Message ID 1-1 in big-endian: \x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x01
+        # Find the last occurrence of ID 2-1 (in consumer2's PEL) and replace with 1-1
+        set id_2_1 "\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x01"
+        set id_1_1 "\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x01"
+
+        # Find the last occurrence (consumer2's PEL entry, not the global PEL)
+        set last_pos [string last $id_2_1 $dump]
+        if {$last_pos == -1} {
+            fail "Could not find message ID 2-1 in dump"
+        }
+        set corrupt_dump [string replace $dump $last_pos [expr {$last_pos + 15}] $id_1_1]
+
+        # Skip CRC validation since we modified the payload
+        r debug set-skip-checksum-validation 1
+        catch {r RESTORE mystream 0 $corrupt_dump} err
         r debug set-skip-checksum-validation 0
         assert_match {*Bad data format*} $err
     } {} {needs:debug}

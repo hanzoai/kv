@@ -109,12 +109,27 @@ start_server {tags {"modules"}} {
         }
     }
 
+    test {RESP3 Pub/Sub client can be blocked by a module command} {
+        if {[lsearch $::denytags "resp3"] >= 0} {
+            error "skipped:resp3 denied"
+        }
+        set rd [valkey_client]
+        $rd hello 3
+        $rd readraw 1
+        assert_equal {#t} [$rd do_fake_bg_true]
+        $rd readraw 0
+        assert_equal {subscribe foo 1} [$rd subscribe foo]
+        $rd readraw 1
+        assert_equal {#t} [$rd do_fake_bg_true]
+        $rd close
+    }
+
 foreach call_type {nested normal} {
     test "Busy module command - $call_type" {
         set busy_time_limit 50
         set old_time_limit [lindex [r config get busy-reply-threshold] 1]
         r config set busy-reply-threshold $busy_time_limit
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
 
         # run command that blocks until released
         set start [clock clicks -milliseconds]
@@ -171,7 +186,7 @@ foreach call_type {nested normal} {
         # trigger slow operation
         r set_slow_bg_operation 1
         r hset hash foo bar
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
         set start [clock clicks -milliseconds]
         $rd do_bg_rm_call hgetall hash
 
@@ -284,7 +299,7 @@ foreach call_type {nested normal} {
 
     test {block time is shorter than timer period} {
         # This command does not have the reply.
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
         $rd unblock_by_timer 100 10
         # Wait for the client to unlock.
         after 120
@@ -297,6 +312,12 @@ foreach call_type {nested normal} {
         assert_match "OK" [r unblock_by_timer 100 100]
     }
     
+    test {Unmatched POSTPONED_LEN reply from a thread safe context does not crash the server} {
+        assert_equal {} [r postponed_unmatched_thread]
+        assert_equal OK [r postponed_unmatched_free]
+        assert_equal PONG [r ping]
+    }
+
     test "Unload the module - blockedclient" {
         assert_equal {OK} [r module unload blockedclient]
     }

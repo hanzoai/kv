@@ -27,7 +27,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "../../kvmodule.h"
+#include "../../valkeymodule.h"
 #include "script_lua.h"
 #include "debug_lua.h"
 #include "engine_structs.h"
@@ -60,9 +60,9 @@
 #define LL_WARNING 3
 
 typedef struct luaFuncCallCtx {
-    KVModuleCtx *module_ctx;
-    KVModuleScriptingEngineServerRuntimeCtx *run_ctx;
-    KVModuleScriptingEngineSubsystemType type;
+    ValkeyModuleCtx *module_ctx;
+    ValkeyModuleScriptingEngineServerRuntimeCtx *run_ctx;
+    ValkeyModuleScriptingEngineSubsystemType type;
     int replication_flags;
     int resp;
     int lua_enable_insecure_api;
@@ -170,30 +170,10 @@ static void _serverPanic(const char *file, int line, const char *msg, ...) {
 
 #define serverPanic(...) _serverPanic(__FILE__, __LINE__, __VA_ARGS__)
 
-typedef uint64_t monotime;
-
-monotime getMonotonicUs(void) {
-    /* clock_gettime() is specified in POSIX.1b (1993).  Even so, some systems
-     * did not support this until much later.  CLOCK_MONOTONIC is technically
-     * optional and may not be supported - but it appears to be universal.
-     * If this is not supported, provide a system-specific alternate version.  */
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ((uint64_t)ts.tv_sec) * 1000000 + ts.tv_nsec / 1000;
-}
-
-inline uint64_t elapsedUs(monotime start_time) {
-    return getMonotonicUs() - start_time;
-}
-
-inline uint64_t elapsedMs(monotime start_time) {
-    return elapsedUs(start_time) / 1000;
-}
-
 static int server_math_random(lua_State *L);
 static int server_math_randomseed(lua_State *L);
 
-static void luaReplyToServerReply(KVModuleCtx *ctx, int resp_version, lua_State *lua);
+static void luaReplyToServerReply(ValkeyModuleCtx *ctx, int resp_version, lua_State *lua);
 
 /*
  * Save the give pointer on Lua registry, used to save the Lua context and
@@ -221,10 +201,10 @@ void *luaGetFromRegistry(lua_State *lua, const char *name) {
         return NULL;
     }
     /* must be light user data */
-    KVModule_Assert(lua_islightuserdata(lua, -1));
+    ValkeyModule_Assert(lua_islightuserdata(lua, -1));
 
     void *ptr = (void *)lua_topointer(lua, -1);
-    KVModule_Assert(ptr);
+    ValkeyModule_Assert(ptr);
 
     /* pops the value */
     lua_pop(lua, 1);
@@ -236,10 +216,16 @@ char *lm_asprintf(char const *fmt, ...) {
     va_list args;
 
     va_start(args, fmt);
-    size_t str_len = vsnprintf(NULL, 0, fmt, args) + 1;
+    int len = vsnprintf(NULL, 0, fmt, args);
     va_end(args);
 
-    char *str = KVModule_Alloc(str_len);
+    /* vsnprintf() fails if the output would be longer than INT_MAX, which a
+     * script can cause with a long enough string. Return an empty string
+     * instead of a buffer that nothing writes to. */
+    if (len < 0) return lm_strcpy("");
+
+    size_t str_len = (size_t)len + 1;
+    char *str = ValkeyModule_Alloc(str_len);
 
     va_start(args, fmt);
     vsnprintf(str, str_len, fmt, args);
@@ -250,7 +236,7 @@ char *lm_asprintf(char const *fmt, ...) {
 
 char *lm_strcpy(const char *str) {
     size_t len = strlen(str);
-    char *res = KVModule_Alloc(len + 1);
+    char *res = ValkeyModule_Alloc(len + 1);
     memcpy(res, str, len + 1);
     return res;
 }
@@ -284,15 +270,16 @@ static void luaPushErrorBuff(lua_State *lua, const char *err_buffer) {
     if (ldbIsEnabled()) {
         char *msg = lm_asprintf("<error> %s", err_buffer);
         ldbLogCString(msg);
-        KVModule_Free(msg);
+        ValkeyModule_Free(msg);
     }
 
     char *final_msg = NULL;
     /* There are two possible formats for the received `error` string:
-     * 1) "-CODE msg": in this case we remove the leading '-' since we don't store it as part of the lua error format.
-     * 2) "msg": in this case we prepend a generic 'ERR' code since all error statuses need some error code.
+     * 1) "-CODE msg": we remove the leading '-' since we don't store it as part of the lua error format.
+     * 2) "msg":       we prepend a generic 'ERR' code since all error statuses need some error code.
      * We support format (1) so this function can reuse the error messages used in other places.
      * We support format (2) so it'll be easy to pass descriptive errors to this function without worrying about format.
+     * Callers must not embed an error code in the message — pass "-CODE msg" if they want a specific code.
      */
     if (err_buffer[0] == '-') {
         /* derive error code from the message */
@@ -309,7 +296,7 @@ static void luaPushErrorBuff(lua_State *lua, const char *err_buffer) {
     } else {
         msg = lm_strcpy(err_buffer);
         msg = lm_strtrim(msg, "\r\n");
-        final_msg = lm_asprintf("%s", msg);
+        final_msg = lm_asprintf("ERR %s", msg);
     }
     /* Trim newline at end of string. If we reuse the ready-made error objects (case 1 above) then we might
      * have a newline that needs to be trimmed. In any case the lua server error table shouldn't end with a newline. */
@@ -319,8 +306,8 @@ static void luaPushErrorBuff(lua_State *lua, const char *err_buffer) {
     lua_pushstring(lua, final_msg);
     lua_settable(lua, -3);
 
-    KVModule_Free(msg);
-    KVModule_Free(final_msg);
+    ValkeyModule_Free(msg);
+    ValkeyModule_Free(final_msg);
 }
 
 void luaPushError(lua_State *lua, const char *error) {
@@ -333,210 +320,6 @@ void luaPushError(lua_State *lua, const char *error) {
  * script will be halted. */
 int luaError(lua_State *lua) {
     return lua_error(lua);
-}
-
-/* ---------------------------------------------------------------------------
- * Server reply to Lua type conversion functions.
- * ------------------------------------------------------------------------- */
-
-static void callReplyToLuaType(lua_State *lua, KVModuleCallReply *reply, int resp) {
-    int type = KVModule_CallReplyType(reply);
-    switch (type) {
-    case KVMODULE_REPLY_STRING: {
-        if (!lua_checkstack(lua, 1)) {
-            /* Increase the Lua stack if needed, to make sure there is enough room
-             * to push elements to the stack. On failure, exit with panic. */
-            serverPanic("lua stack limit reach when parsing server.call reply");
-        }
-        size_t len = 0;
-        const char *str = KVModule_CallReplyStringPtr(reply, &len);
-        lua_pushlstring(lua, str, len);
-        break;
-    }
-    case KVMODULE_REPLY_SIMPLE_STRING: {
-        if (!lua_checkstack(lua, 3)) {
-            /* Increase the Lua stack if needed, to make sure there is enough room
-             * to push elements to the stack. On failure, exit with panic. */
-            serverPanic("lua stack limit reach when parsing server.call reply");
-        }
-        size_t len = 0;
-        const char *str = KVModule_CallReplyStringPtr(reply, &len);
-        lua_newtable(lua);
-        lua_pushstring(lua, "ok");
-        lua_pushlstring(lua, str, len);
-        lua_settable(lua, -3);
-        break;
-    }
-    case KVMODULE_REPLY_INTEGER: {
-        if (!lua_checkstack(lua, 1)) {
-            /* Increase the Lua stack if needed, to make sure there is enough room
-             * to push elements to the stack. On failure, exit with panic. */
-            serverPanic("lua stack limit reach when parsing server.call reply");
-        }
-        long long val = KVModule_CallReplyInteger(reply);
-        lua_pushnumber(lua, (lua_Number)val);
-        break;
-    }
-    case KVMODULE_REPLY_ARRAY: {
-        if (!lua_checkstack(lua, 2)) {
-            /* Increase the Lua stack if needed, to make sure there is enough room
-             * to push elements to the stack. On failure, exit with panic. */
-            serverPanic("lua stack limit reach when parsing server.call reply");
-        }
-        size_t items = KVModule_CallReplyLength(reply);
-        lua_createtable(lua, items, 0);
-
-        for (size_t i = 0; i < items; i++) {
-            KVModuleCallReply *val = KVModule_CallReplyArrayElement(reply, i);
-
-            lua_pushnumber(lua, i + 1);
-            callReplyToLuaType(lua, val, resp);
-            lua_settable(lua, -3);
-        }
-        break;
-    }
-    case KVMODULE_REPLY_NULL:
-    case KVMODULE_REPLY_ARRAY_NULL:
-        if (!lua_checkstack(lua, 1)) {
-            /* Increase the Lua stack if needed, to make sure there is enough room
-             * to push elements to the stack. On failure, exit with panic. */
-            serverPanic("lua stack limit reach when parsing server.call reply");
-        }
-        if (resp == 2) {
-            lua_pushboolean(lua, 0);
-        } else {
-            lua_pushnil(lua);
-        }
-        break;
-    case KVMODULE_REPLY_MAP: {
-        if (!lua_checkstack(lua, 3)) {
-            /* Increase the Lua stack if needed, to make sure there is enough room
-             * to push elements to the stack. On failure, exit with panic. */
-            serverPanic("lua stack limit reach when parsing server.call reply");
-        }
-
-        size_t items = KVModule_CallReplyLength(reply);
-        lua_newtable(lua);
-        lua_pushstring(lua, "map");
-        lua_createtable(lua, 0, items);
-
-        for (size_t i = 0; i < items; i++) {
-            KVModuleCallReply *key = NULL;
-            KVModuleCallReply *val = NULL;
-            KVModule_CallReplyMapElement(reply, i, &key, &val);
-
-            callReplyToLuaType(lua, key, resp);
-            callReplyToLuaType(lua, val, resp);
-            lua_settable(lua, -3);
-        }
-        lua_settable(lua, -3);
-        break;
-    }
-    case KVMODULE_REPLY_SET: {
-        if (!lua_checkstack(lua, 3)) {
-            /* Increase the Lua stack if needed, to make sure there is enough room
-             * to push elements to the stack. On failure, exit with panic. */
-            serverPanic("lua stack limit reach when parsing server.call reply");
-        }
-
-        size_t items = KVModule_CallReplyLength(reply);
-        lua_newtable(lua);
-        lua_pushstring(lua, "set");
-        lua_createtable(lua, 0, items);
-
-        for (size_t i = 0; i < items; i++) {
-            KVModuleCallReply *val = KVModule_CallReplySetElement(reply, i);
-
-            callReplyToLuaType(lua, val, resp);
-            lua_pushboolean(lua, 1);
-            lua_settable(lua, -3);
-        }
-        lua_settable(lua, -3);
-        break;
-    }
-    case KVMODULE_REPLY_BOOL: {
-        if (!lua_checkstack(lua, 1)) {
-            /* Increase the Lua stack if needed, to make sure there is enough room
-             * to push elements to the stack. On failure, exit with panic. */
-            serverPanic("lua stack limit reach when parsing server.call reply");
-        }
-        int b = KVModule_CallReplyBool(reply);
-        lua_pushboolean(lua, b);
-        break;
-    }
-    case KVMODULE_REPLY_DOUBLE: {
-        if (!lua_checkstack(lua, 3)) {
-            /* Increase the Lua stack if needed, to make sure there is enough room
-             * to push elements to the stack. On failure, exit with panic. */
-            serverPanic("lua stack limit reach when parsing server.call reply");
-        }
-        double d = KVModule_CallReplyDouble(reply);
-        lua_newtable(lua);
-        lua_pushstring(lua, "double");
-        lua_pushnumber(lua, d);
-        lua_settable(lua, -3);
-        break;
-    }
-
-    case KVMODULE_REPLY_BIG_NUMBER: {
-        if (!lua_checkstack(lua, 3)) {
-            /* Increase the Lua stack if needed, to make sure there is enough room
-             * to push elements to the stack. On failure, exit with panic. */
-            serverPanic("lua stack limit reach when parsing server.call reply");
-        }
-        size_t len = 0;
-        const char *str = KVModule_CallReplyBigNumber(reply, &len);
-        lua_newtable(lua);
-        lua_pushstring(lua, "big_number");
-        lua_pushlstring(lua, str, len);
-        lua_settable(lua, -3);
-        break;
-    }
-    case KVMODULE_REPLY_VERBATIM_STRING: {
-        if (!lua_checkstack(lua, 5)) {
-            /* Increase the Lua stack if needed, to make sure there is enough room
-             * to push elements to the stack. On failure, exit with panic. */
-            serverPanic("lua stack limit reach when parsing server.call reply");
-        }
-        size_t len = 0;
-        const char *format = NULL;
-        const char *str = KVModule_CallReplyVerbatim(reply, &len, &format);
-        lua_newtable(lua);
-        lua_pushstring(lua, "verbatim_string");
-        lua_newtable(lua);
-        lua_pushstring(lua, "string");
-        lua_pushlstring(lua, str, len);
-        lua_settable(lua, -3);
-        lua_pushstring(lua, "format");
-        lua_pushlstring(lua, format, 3);
-        lua_settable(lua, -3);
-        lua_settable(lua, -3);
-        break;
-    }
-    case KVMODULE_REPLY_ERROR: {
-        if (!lua_checkstack(lua, 3)) {
-            /* Increase the Lua stack if needed, to make sure there is enough room
-             * to push elements to the stack. On failure, exit with panic. */
-            serverPanic("lua stack limit reach when parsing server.call reply");
-        }
-        const char *err = KVModule_CallReplyStringPtr(reply, NULL);
-        luaPushErrorBuff(lua, err);
-        /* push a field indicate to ignore updating the stats on this error
-         * because it was already updated when executing the command. */
-        lua_pushstring(lua, "ignore_error_stats_update");
-        lua_pushboolean(lua, 1);
-        lua_settable(lua, -3);
-        break;
-    }
-    case KVMODULE_REPLY_ATTRIBUTE: {
-        /* Currently, we do not expose the attribute to the Lua script. */
-        break;
-    }
-    case KVMODULE_REPLY_PROMISE:
-    case KVMODULE_REPLY_UNKNOWN:
-    default:
-        KVModule_Assert(0);
-    }
 }
 
 /* ---------------------------------------------------------------------------
@@ -560,7 +343,7 @@ char *strmapchars(char *s, const char *from, const char *to, size_t setlen) {
 char *copy_string_from_lua_stack(lua_State *lua) {
     const char *str = lua_tostring(lua, -1);
     size_t len = lua_strlen(lua, -1);
-    char *res = KVModule_Alloc(len + 1);
+    char *res = ValkeyModule_Alloc(len + 1);
     strncpy(res, str, len);
     res[len] = 0;
     return res;
@@ -568,7 +351,7 @@ char *copy_string_from_lua_stack(lua_State *lua) {
 
 /* Reply to client 'c' converting the top element in the Lua stack to a
  * server reply. As a side effect the element is consumed from the stack.  */
-static void luaReplyToServerReply(KVModuleCtx *ctx, int resp_version, lua_State *lua) {
+static void luaReplyToServerReply(ValkeyModuleCtx *ctx, int resp_version, lua_State *lua) {
     int t = lua_type(lua, -1);
 
     if (!lua_checkstack(lua, 4)) {
@@ -576,28 +359,28 @@ static void luaReplyToServerReply(KVModuleCtx *ctx, int resp_version, lua_State 
          * to push 4 elements to the stack. On failure, return error.
          * Notice that we need, in the worst case, 4 elements because returning a map might
          * require push 4 elements to the Lua stack.*/
-        KVModule_ReplyWithError(ctx, "ERR reached lua stack limit");
+        ValkeyModule_ReplyWithError(ctx, "ERR reached lua stack limit");
         lua_pop(lua, 1); /* pop the element from the stack */
         return;
     }
 
     switch (t) {
     case LUA_TSTRING:
-        KVModule_ReplyWithStringBuffer(ctx, lua_tostring(lua, -1), lua_strlen(lua, -1));
+        ValkeyModule_ReplyWithStringBuffer(ctx, lua_tostring(lua, -1), lua_strlen(lua, -1));
         break;
     case LUA_TBOOLEAN:
         if (resp_version == 2) {
             int b = lua_toboolean(lua, -1);
             if (b) {
-                KVModule_ReplyWithLongLong(ctx, 1);
+                ValkeyModule_ReplyWithLongLong(ctx, 1);
             } else {
-                KVModule_ReplyWithNull(ctx);
+                ValkeyModule_ReplyWithNull(ctx);
             }
         } else {
-            KVModule_ReplyWithBool(ctx, lua_toboolean(lua, -1));
+            ValkeyModule_ReplyWithBool(ctx, lua_toboolean(lua, -1));
         }
         break;
-    case LUA_TNUMBER: KVModule_ReplyWithLongLong(ctx, (long long)lua_tonumber(lua, -1)); break;
+    case LUA_TNUMBER: ValkeyModule_ReplyWithLongLong(ctx, (long long)lua_tonumber(lua, -1)); break;
     case LUA_TTABLE:
         /* We need to check if it is an array, an error, or a status reply.
          * Error are returned as a single element table with 'err' field.
@@ -614,7 +397,7 @@ static void luaReplyToServerReply(KVModuleCtx *ctx, int resp_version, lua_State 
                     1); /* pop the error message, we will use luaExtractErrorInformation to get error information */
             errorInfo err_info = {0};
             luaExtractErrorInformation(lua, &err_info);
-            KVModule_ReplyWithCustomErrorFormat(ctx, !err_info.ignore_err_stats_update, "%s", err_info.msg);
+            ValkeyModule_ReplyWithCustomErrorFormat(ctx, !err_info.ignore_err_stats_update, "%s", err_info.msg);
             luaErrorInformationDiscard(&err_info);
             lua_pop(lua, 1); /* pop the result table */
             return;
@@ -628,8 +411,8 @@ static void luaReplyToServerReply(KVModuleCtx *ctx, int resp_version, lua_State 
         if (t == LUA_TSTRING) {
             char *ok = copy_string_from_lua_stack(lua);
             strmapchars(ok, "\r\n", "  ", 2);
-            KVModule_ReplyWithSimpleString(ctx, ok);
-            KVModule_Free(ok);
+            ValkeyModule_ReplyWithSimpleString(ctx, ok);
+            ValkeyModule_Free(ok);
             lua_pop(lua, 2);
             return;
         }
@@ -640,7 +423,7 @@ static void luaReplyToServerReply(KVModuleCtx *ctx, int resp_version, lua_State 
         lua_rawget(lua, -2);
         t = lua_type(lua, -1);
         if (t == LUA_TNUMBER) {
-            KVModule_ReplyWithDouble(ctx, lua_tonumber(lua, -1));
+            ValkeyModule_ReplyWithDouble(ctx, lua_tonumber(lua, -1));
             lua_pop(lua, 2);
             return;
         }
@@ -653,8 +436,8 @@ static void luaReplyToServerReply(KVModuleCtx *ctx, int resp_version, lua_State 
         if (t == LUA_TSTRING) {
             char *big_num = copy_string_from_lua_stack(lua);
             strmapchars(big_num, "\r\n", "  ", 2);
-            KVModule_ReplyWithBigNumber(ctx, big_num, strlen(big_num));
-            KVModule_Free(big_num);
+            ValkeyModule_ReplyWithBigNumber(ctx, big_num, strlen(big_num));
+            ValkeyModule_Free(big_num);
             lua_pop(lua, 2);
             return;
         }
@@ -676,7 +459,7 @@ static void luaReplyToServerReply(KVModuleCtx *ctx, int resp_version, lua_State 
                 if (t == LUA_TSTRING) {
                     size_t len;
                     char *str = (char *)lua_tolstring(lua, -1, &len);
-                    KVModule_ReplyWithVerbatimStringType(ctx, str, len, format);
+                    ValkeyModule_ReplyWithVerbatimStringType(ctx, str, len, format);
                     lua_pop(lua, 4);
                     return;
                 }
@@ -692,7 +475,7 @@ static void luaReplyToServerReply(KVModuleCtx *ctx, int resp_version, lua_State 
         t = lua_type(lua, -1);
         if (t == LUA_TTABLE) {
             int maplen = 0;
-            KVModule_ReplyWithMap(ctx, KVMODULE_POSTPONED_LEN);
+            ValkeyModule_ReplyWithMap(ctx, VALKEYMODULE_POSTPONED_LEN);
             /* we took care of the stack size on function start */
             lua_pushnil(lua); /* Use nil to start iteration. */
             while (lua_next(lua, -2)) {
@@ -703,7 +486,7 @@ static void luaReplyToServerReply(KVModuleCtx *ctx, int resp_version, lua_State 
                 /* Stack now: table, key. */
                 maplen++;
             }
-            KVModule_ReplySetMapLength(ctx, maplen);
+            ValkeyModule_ReplySetMapLength(ctx, maplen);
             lua_pop(lua, 2);
             return;
         }
@@ -715,7 +498,7 @@ static void luaReplyToServerReply(KVModuleCtx *ctx, int resp_version, lua_State 
         t = lua_type(lua, -1);
         if (t == LUA_TTABLE) {
             int setlen = 0;
-            KVModule_ReplyWithSet(ctx, KVMODULE_POSTPONED_LEN);
+            ValkeyModule_ReplyWithSet(ctx, VALKEYMODULE_POSTPONED_LEN);
             /* we took care of the stack size on function start */
             lua_pushnil(lua); /* Use nil to start iteration. */
             while (lua_next(lua, -2)) {
@@ -726,14 +509,14 @@ static void luaReplyToServerReply(KVModuleCtx *ctx, int resp_version, lua_State 
                 /* Stack now: table, key. */
                 setlen++;
             }
-            KVModule_ReplySetSetLength(ctx, setlen);
+            ValkeyModule_ReplySetSetLength(ctx, setlen);
             lua_pop(lua, 2);
             return;
         }
         lua_pop(lua, 1); /* Discard field name pushed before. */
 
         /* Handle the array reply. */
-        KVModule_ReplyWithArray(ctx, KVMODULE_POSTPONED_LEN);
+        ValkeyModule_ReplyWithArray(ctx, VALKEYMODULE_POSTPONED_LEN);
         int j = 1, mbulklen = 0;
         while (1) {
             /* we took care of the stack size on function start */
@@ -747,9 +530,9 @@ static void luaReplyToServerReply(KVModuleCtx *ctx, int resp_version, lua_State 
             luaReplyToServerReply(ctx, resp_version, lua);
             mbulklen++;
         }
-        KVModule_ReplySetArrayLength(ctx, mbulklen);
+        ValkeyModule_ReplySetArrayLength(ctx, mbulklen);
         break;
-    default: KVModule_ReplyWithNull(ctx);
+    default: ValkeyModule_ReplyWithNull(ctx);
     }
     lua_pop(lua, 1);
 }
@@ -757,7 +540,7 @@ static void luaReplyToServerReply(KVModuleCtx *ctx, int resp_version, lua_State 
 /* ---------------------------------------------------------------------------
  * Lua server.* functions implementations.
  * ------------------------------------------------------------------------- */
-void freeLuaServerArgv(KVModuleCtx *ctx, KVModuleString **argv, int argc);
+void freeLuaServerArgv(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc);
 
 /* Return the number of digits of 'v' when converted to string in radix 10.
  * See ll2string() for more information. */
@@ -888,13 +671,13 @@ static int double2ll(double d, long long *out) {
         return 1;
     }
 #else
-    KVMODULE_NOT_USED(d);
-    KVMODULE_NOT_USED(out);
+    VALKEYMODULE_NOT_USED(d);
+    VALKEYMODULE_NOT_USED(out);
 #endif
     return 0;
 }
 
-static KVModuleString **luaArgsToServerArgv(KVModuleCtx *ctx, lua_State *lua, int *argc) {
+static ValkeyModuleString **luaArgsToServerArgv(ValkeyModuleCtx *ctx, lua_State *lua, int *argc) {
     int j;
     /* Require at least one argument */
     *argc = lua_gettop(lua);
@@ -903,7 +686,7 @@ static KVModuleString **luaArgsToServerArgv(KVModuleCtx *ctx, lua_State *lua, in
         return NULL;
     }
 
-    KVModuleString **lua_argv = KVModule_Alloc(sizeof(KVModuleString *) * *argc);
+    ValkeyModuleString **lua_argv = ValkeyModule_Alloc(sizeof(ValkeyModuleString *) * *argc);
 
     for (j = 0; j < *argc; j++) {
         char *obj_s;
@@ -931,7 +714,7 @@ static KVModuleString **luaArgsToServerArgv(KVModuleCtx *ctx, lua_State *lua, in
             if (obj_s == NULL) break; /* Not a string. */
         }
 
-        lua_argv[j] = KVModule_CreateString(ctx, obj_s, obj_len);
+        lua_argv[j] = ValkeyModule_CreateString(ctx, obj_s, obj_len);
     }
 
     /* Pop all arguments from the stack, we do not need them anymore
@@ -943,59 +726,63 @@ static KVModuleString **luaArgsToServerArgv(KVModuleCtx *ctx, lua_State *lua, in
      * integers as well). */
     if (j != *argc) {
         freeLuaServerArgv(ctx, lua_argv, j);
-        luaPushError(lua, "ERR Command arguments must be strings or integers");
+        luaPushError(lua, "Command arguments must be strings or integers");
         return NULL;
     }
 
     return lua_argv;
 }
 
-void freeLuaServerArgv(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+void freeLuaServerArgv(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
     int j;
     for (j = 0; j < argc; j++) {
-        KVModuleString *o = argv[j];
-        KVModule_FreeString(ctx, o);
+        ValkeyModuleString *o = argv[j];
+        ValkeyModule_FreeString(ctx, o);
     }
-    KVModule_Free(argv);
+    ValkeyModule_Free(argv);
 }
 
-static void luaProcessReplyError(KVModuleCallReply *reply, lua_State *lua) {
-    const char *err = KVModule_CallReplyStringPtr(reply, NULL);
+static void luaProcessReplyError(const char *err, lua_State *lua) {
     int push_error = 1;
-
     /* The following error messages rewrites are required to keep the backward compatibility
-     * with the previous Lua engine that was implemented in KV core. */
+     * with the previous Lua engine that was implemented in Valkey core. */
     if (errno == ESPIPE) {
         if (strncmp(err, "ERR command ", strlen("ERR command ")) == 0) {
-            luaPushError(lua, "ERR This KV command is not allowed from script");
+            luaPushError(lua, "This Valkey command is not allowed from script");
             push_error = 0;
         }
     } else if (errno == EINVAL) {
         if (strncmp(err, "ERR wrong number of arguments for ", strlen("ERR wrong number of arguments for ")) == 0) {
-            luaPushError(lua, "ERR Wrong number of args calling command from script");
+            luaPushError(lua, "Wrong number of args calling command from script");
             push_error = 0;
         }
     } else if (errno == ENOENT) {
         if (strncmp(err, "ERR unknown command '", strlen("ERR unknown command '")) == 0) {
-            luaPushError(lua, "ERR Unknown command called from script");
+            luaPushError(lua, "Unknown command called from script");
             push_error = 0;
         }
     } else if (errno == EACCES) {
         if (strncmp(err, "NOPERM ", strlen("NOPERM ")) == 0) {
-            const char *err_prefix = "ERR ACL failure in script: ";
+            const char *err_prefix = "ACL failure in script: ";
             size_t err_len = strlen(err_prefix) + strlen(err + strlen("NOPERM ")) + 1;
-            char *err_msg = KVModule_Alloc(err_len * sizeof(char));
+            char *err_msg = ValkeyModule_Alloc(err_len * sizeof(char));
             bzero(err_msg, err_len);
             strcpy(err_msg, err_prefix);
             strcat(err_msg, err + strlen("NOPERM "));
             luaPushError(lua, err_msg);
-            KVModule_Free(err_msg);
+            ValkeyModule_Free(err_msg);
             push_error = 0;
         }
     }
 
     if (push_error) {
-        luaPushError(lua, err);
+        /* The reply parser strips the leading '-' from the RESP error, so `err`
+         * is of the form "CODE msg" (e.g. "OOM command not allowed..."). Re-add
+         * the '-' so luaPushErrorBuff() treats the leading word as the error
+         * code and doesn't prepend another "ERR" code. */
+        char *err_with_dash = lm_asprintf("-%s", err);
+        luaPushError(lua, err_with_dash);
+        ValkeyModule_Free(err_with_dash);
     }
     /* push a field indicate to ignore updating the stats on this error
      * because it was already updated when executing the command. */
@@ -1004,13 +791,356 @@ static void luaProcessReplyError(KVModuleCallReply *reply, lua_State *lua) {
     lua_settable(lua, -3);
 }
 
+#define MAX_NESTED_COLLECTIONS_DEPTH 256
+
+enum CollectionType {
+    COLLECTION_TYPE_ARRAY = 1,
+    COLLECTION_TYPE_MAP = 2,
+    COLLECTION_TYPE_SET = 3,
+};
+
+typedef struct callCtx {
+    lua_State *lua;
+    ValkeyModuleCtx *module_ctx;
+    int error;
+    int in_collection;
+    size_t collection_item_count[MAX_NESTED_COLLECTIONS_DEPTH];
+    enum CollectionType collection_type[MAX_NESTED_COLLECTIONS_DEPTH];
+} callCtx;
+
+/* ---------------------------------------------------------------------------
+ * Server reply to Lua type conversion functions.
+ * ------------------------------------------------------------------------- */
+
+/* Take a server reply in the RESP format and convert it into a
+ * Lua type.
+ *
+ * Errors are returned as a table with a single 'err' field set to the
+ * error string.
+ */
+
+static void processCollectionElementBegin(callCtx *ctx) {
+    lua_State *lua = ctx->lua;
+    if (ctx->in_collection >= 0) {
+        ctx->collection_item_count[ctx->in_collection]++;
+
+        if (ctx->collection_type[ctx->in_collection] == COLLECTION_TYPE_ARRAY) {
+            lua_pushnumber(lua, ctx->collection_item_count[ctx->in_collection]);
+        }
+    }
+}
+
+static void processCollectionElementEnd(callCtx *ctx) {
+    lua_State *lua = ctx->lua;
+    if (ctx->in_collection >= 0) {
+        if (ctx->collection_type[ctx->in_collection] == COLLECTION_TYPE_MAP) {
+            if (ctx->collection_item_count[ctx->in_collection] % 2 == 0) {
+                lua_settable(lua, -3);
+            }
+        }
+
+        if (ctx->collection_type[ctx->in_collection] == COLLECTION_TYPE_SET) {
+            if (!lua_checkstack(lua, 1)) {
+                /* Increase the Lua stack if needed, to make sure there is enough room
+                 * to push elements to the stack. On failure, exit with panic.
+                 * Notice that here we need to check the stack again because the recursive
+                 * call to redisProtocolToLuaType might have use the room allocated in the stack*/
+                serverPanic("lua stack limit reach when parsing server.call reply");
+            }
+            lua_pushboolean(lua, 1);
+            lua_settable(lua, -3);
+        }
+
+        if (ctx->collection_type[ctx->in_collection] == COLLECTION_TYPE_ARRAY) {
+            lua_settable(lua, -3);
+        }
+    }
+}
+
+static void integerCallback(void *ctx, long long val) {
+    processCollectionElementBegin(ctx);
+    lua_State *lua = ((callCtx *)ctx)->lua;
+
+    if (!lua_checkstack(lua, 1)) {
+        /* Increase the Lua stack if needed, to make sure there is enough room
+         * to push elements to the stack. On failure, exit with panic. */
+        serverPanic("lua stack limit reach when parsing server.call reply");
+    }
+    lua_pushnumber(lua, (lua_Number)val);
+    processCollectionElementEnd(ctx);
+}
+
+static void nullCallback(void *ctx) {
+    processCollectionElementBegin(ctx);
+    lua_State *lua = ((callCtx *)ctx)->lua;
+    if (!lua_checkstack(lua, 1)) {
+        /* Increase the Lua stack if needed, to make sure there is enough room
+         * to push elements to the stack. On failure, exit with panic. */
+        serverPanic("lua stack limit reach when parsing server.call reply");
+    }
+    lua_pushnil(lua);
+    processCollectionElementEnd(ctx);
+}
+
+static void nullArrayCallback(void *ctx) {
+    processCollectionElementBegin(ctx);
+    lua_State *lua = ((callCtx *)ctx)->lua;
+    if (!lua_checkstack(lua, 1)) {
+        /* Increase the Lua stack if needed, to make sure there is enough room
+         * to push elements to the stack. On failure, exit with panic. */
+        serverPanic("lua stack limit reach when parsing server.call reply");
+    }
+    lua_pushboolean(lua, 0);
+    processCollectionElementEnd(ctx);
+}
+
+static void nullBulkString(void *ctx) {
+    processCollectionElementBegin(ctx);
+    lua_State *lua = ((callCtx *)ctx)->lua;
+    if (!lua_checkstack(lua, 1)) {
+        /* Increase the Lua stack if needed, to make sure there is enough room
+         * to push elements to the stack. On failure, exit with panic. */
+        serverPanic("lua stack limit reach when parsing server.call reply");
+    }
+    lua_pushboolean(lua, 0);
+    processCollectionElementEnd(ctx);
+}
+
+static void bulkStringCallback(void *ctx, const char *str, size_t len) {
+    processCollectionElementBegin(ctx);
+    lua_State *lua = ((callCtx *)ctx)->lua;
+    if (!lua_checkstack(lua, 1)) {
+        /* Increase the Lua stack if needed, to make sure there is enough room
+         * to push elements to the stack. On failure, exit with panic. */
+        serverPanic("lua stack limit reach when parsing server.call reply");
+    }
+    lua_pushlstring(lua, str, len);
+    processCollectionElementEnd(ctx);
+}
+
+static void simpleStringCallback(void *ctx, const char *str, size_t len) {
+    processCollectionElementBegin(ctx);
+    lua_State *lua = ((callCtx *)ctx)->lua;
+    if (!lua_checkstack(lua, 3)) {
+        /* Increase the Lua stack if needed, to make sure there is enough room
+         * to push elements to the stack. On failure, exit with panic. */
+        serverPanic("lua stack limit reach when parsing server.call reply");
+    }
+    lua_newtable(lua);
+    lua_pushstring(lua, "ok");
+    lua_pushlstring(lua, str, len);
+    lua_settable(lua, -3);
+    processCollectionElementEnd(ctx);
+}
+
+static void errorCallback(void *ctx, const char *msg, size_t len) {
+    VALKEYMODULE_NOT_USED(len);
+
+    callCtx *call_ctx = ctx;
+    lua_State *lua = call_ctx->lua;
+    if (!lua_checkstack(lua, 3)) {
+        /* Increase the Lua stack if needed, to make sure there is enough room
+         * to push elements to the stack. On failure, exit with panic. */
+        serverPanic("lua stack limit reach when parsing server.call reply");
+    }
+
+    if (errno != 0) {
+        ValkeyModule_Log(call_ctx->module_ctx, "debug", "command returned an error: %s errno=%d", msg, errno);
+        luaProcessReplyError(msg, lua);
+    } else {
+        /* The reply parser strips the leading '-' from the RESP error, so
+         * `msg` is of the form "CODE rest" (e.g. "WRONGTYPE Operation..."
+         * or "ERR DB index is out of range"). Re-add the '-' so
+         * luaPushErrorBuff() goes through its "-CODE msg" branch and
+         * preserves the code instead of double-prefixing with "ERR ". */
+        char *msg_with_dash = lm_asprintf("-%s", msg);
+        luaPushErrorBuff(lua, msg_with_dash);
+        ValkeyModule_Free(msg_with_dash);
+        /* push a field indicate to ignore updating the stats on this error
+         * because it was already updated when executing the command. */
+        lua_pushstring(lua, "ignore_error_stats_update");
+        lua_pushboolean(lua, 1);
+        lua_settable(lua, -3);
+    }
+
+    call_ctx->error = 1;
+}
+
+static void mapStartCallback(void *ctx, size_t len) {
+    processCollectionElementBegin(ctx);
+    callCtx *call_ctx = ctx;
+    lua_State *lua = call_ctx->lua;
+    if (!lua_checkstack(lua, 3)) {
+        /* Increase the Lua stack if needed, to make sure there is enough room
+         * to push elements to the stack. On failure, exit with panic. */
+        serverPanic("lua stack limit reach when parsing server.call reply");
+    }
+    lua_newtable(lua);
+    lua_pushstring(lua, "map");
+    lua_createtable(lua, 0, len);
+    call_ctx->in_collection++;
+    call_ctx->collection_item_count[call_ctx->in_collection] = 0;
+    call_ctx->collection_type[call_ctx->in_collection] = COLLECTION_TYPE_MAP;
+}
+
+static void mapEndCallback(void *ctx) {
+    callCtx *call_ctx = ctx;
+    lua_State *lua = call_ctx->lua;
+    lua_settable(lua, -3);
+    call_ctx->in_collection--;
+    processCollectionElementEnd(ctx);
+}
+
+static void setStartCallback(void *ctx, size_t len) {
+    processCollectionElementBegin(ctx);
+    callCtx *call_ctx = ctx;
+    lua_State *lua = call_ctx->lua;
+    if (!lua_checkstack(lua, 3)) {
+        /* Increase the Lua stack if needed, to make sure there is enough room
+         * to push elements to the stack. On failure, exit with panic. */
+        serverPanic("lua stack limit reach when parsing server.call reply");
+    }
+    lua_newtable(lua);
+    lua_pushstring(lua, "set");
+    lua_createtable(lua, 0, len);
+    call_ctx->in_collection++;
+    call_ctx->collection_item_count[call_ctx->in_collection] = 0;
+    call_ctx->collection_type[call_ctx->in_collection] = COLLECTION_TYPE_SET;
+}
+
+static void setEndCallback(void *ctx) {
+    callCtx *call_ctx = ctx;
+    lua_State *lua = call_ctx->lua;
+    lua_settable(lua, -3);
+    call_ctx->in_collection--;
+    processCollectionElementEnd(ctx);
+}
+
+static void arrayStartCallback(void *ctx, size_t len) {
+    processCollectionElementBegin(ctx);
+    callCtx *call_ctx = ctx;
+    lua_State *lua = call_ctx->lua;
+    if (!lua_checkstack(lua, 3)) {
+        /* Increase the Lua stack if needed, to make sure there is enough room
+         * to push elements to the stack. On failure, exit with panic. */
+        serverPanic("lua stack limit reach when parsing server.call reply");
+    }
+    lua_createtable(lua, len, 0);
+    call_ctx->in_collection++;
+    call_ctx->collection_item_count[call_ctx->in_collection] = 0;
+    call_ctx->collection_type[call_ctx->in_collection] = COLLECTION_TYPE_ARRAY;
+}
+
+static void arrayEndCallback(void *ctx) {
+    callCtx *call_ctx = ctx;
+    call_ctx->in_collection--;
+    processCollectionElementEnd(ctx);
+}
+
+static void verbatimStringCallback(void *ctx, const char *str, size_t len, const char *fmt) {
+    processCollectionElementBegin(ctx);
+    lua_State *lua = ((callCtx *)ctx)->lua;
+    if (!lua_checkstack(lua, 5)) {
+        /* Increase the Lua stack if needed, to make sure there is enough room
+         * to push elements to the stack. On failure, exit with panic. */
+        serverPanic("lua stack limit reach when parsing server.call reply");
+    }
+    lua_newtable(lua);
+    lua_pushstring(lua, "verbatim_string");
+    lua_newtable(lua);
+    lua_pushstring(lua, "string");
+    lua_pushlstring(lua, str, len);
+    lua_settable(lua, -3);
+    lua_pushstring(lua, "format");
+    lua_pushlstring(lua, fmt, 3);
+    lua_settable(lua, -3);
+    lua_settable(lua, -3);
+    processCollectionElementEnd(ctx);
+}
+
+static void bigNumberCallback(void *ctx, const char *str, size_t len) {
+    processCollectionElementBegin(ctx);
+    lua_State *lua = ((callCtx *)ctx)->lua;
+    if (!lua_checkstack(lua, 3)) {
+        /* Increase the Lua stack if needed, to make sure there is enough room
+         * to push elements to the stack. On failure, exit with panic. */
+        serverPanic("lua stack limit reach when parsing server.call reply");
+    }
+    lua_newtable(lua);
+    lua_pushstring(lua, "big_number");
+    lua_pushlstring(lua, str, len);
+    lua_settable(lua, -3);
+    processCollectionElementEnd(ctx);
+}
+
+static void boolCallback(void *ctx, int val) {
+    processCollectionElementBegin(ctx);
+    lua_State *lua = ((callCtx *)ctx)->lua;
+    if (!lua_checkstack(lua, 1)) {
+        /* Increase the Lua stack if needed, to make sure there is enough room
+         * to push elements to the stack. On failure, exit with panic. */
+        serverPanic("lua stack limit reach when parsing server.call reply");
+    }
+    lua_pushboolean(lua, val);
+    processCollectionElementEnd(ctx);
+}
+
+static void doubleCallback(void *ctx, double val) {
+    processCollectionElementBegin(ctx);
+    lua_State *lua = ((callCtx *)ctx)->lua;
+    if (!lua_checkstack(lua, 3)) {
+        /* Increase the Lua stack if needed, to make sure there is enough room
+         * to push elements to the stack. On failure, exit with panic. */
+        serverPanic("lua stack limit reach when parsing server.call reply");
+    }
+    lua_newtable(lua);
+    lua_pushstring(lua, "double");
+    lua_pushnumber(lua, val);
+    lua_settable(lua, -3);
+    processCollectionElementEnd(ctx);
+}
+
+static int callArgvOnAvailableCallback(void *ctx, ValkeyModuleCtx *mctx, const char *proto, size_t proto_len) {
+    VALKEYMODULE_NOT_USED(ctx);
+    VALKEYMODULE_NOT_USED(mctx);
+    VALKEYMODULE_NOT_USED(proto_len);
+
+    /* If the debugger is active, log the reply from the server. */
+    if (ldbIsEnabled()) {
+        ValkeyModule_ScriptingEngineDebuggerLogRespReplyStr(proto);
+    }
+
+    return 1;
+}
+
+static ValkeyModuleReplyHandlers handlers = {
+    .version = VALKEYMODULE_REPLY_HANDLERS_VERSION,
+    .null = nullCallback,
+    .nullArray = nullArrayCallback,
+    .nullBulkString = nullBulkString,
+    .bulkString = bulkStringCallback,
+    .simpleString = simpleStringCallback,
+    .integer = integerCallback,
+    .mapStart = mapStartCallback,
+    .mapEnd = mapEndCallback,
+    .setStart = setStartCallback,
+    .setEnd = setEndCallback,
+    .arrayStart = arrayStartCallback,
+    .arrayEnd = arrayEndCallback,
+    .verbatimString = verbatimStringCallback,
+    .bigNumber = bigNumberCallback,
+    .boolVal = boolCallback,
+    .doubleVal = doubleCallback,
+    .error = errorCallback,
+    .onRespAvailable = callArgvOnAvailableCallback,
+};
+
 static int luaServerGenericCommand(lua_State *lua, int raise_error) {
     luaFuncCallCtx *rctx = luaGetFromRegistry(lua, REGISTRY_RUN_CTX_NAME);
-    KVModule_Assert(rctx); /* Only supported inside script invocation */
-    KVModuleCallReply *reply;
+    ValkeyModule_Assert(rctx); /* Only supported inside script invocation */
 
     int argc = 0;
-    KVModuleString **argv = luaArgsToServerArgv(rctx->module_ctx, lua, &argc);
+    ValkeyModuleString **argv = luaArgsToServerArgv(rctx->module_ctx, lua, &argc);
     if (argv == NULL) {
         return raise_error ? luaError(lua) : 1;
     }
@@ -1024,7 +1154,7 @@ static int luaServerGenericCommand(lua_State *lua, int raise_error) {
     if (inuse) {
         char *recursion_warning = "luaRedisGenericCommand() recursive call detected. "
                                   "Are you doing funny stuff with Lua debug hooks?";
-        KVModule_Log(rctx->module_ctx, "warning", "%s", recursion_warning);
+        ValkeyModule_Log(rctx->module_ctx, "warning", "%s", recursion_warning);
         luaPushError(lua, recursion_warning);
         return 1;
     }
@@ -1033,83 +1163,62 @@ static int luaServerGenericCommand(lua_State *lua, int raise_error) {
     /* Log the command if debugging is active. */
     if (ldbIsEnabled()) {
         const char *cmd_prefix = "<command>";
-        char *cmdlog = KVModule_Calloc(strlen(cmd_prefix) + 1, sizeof(char));
+        char *cmdlog = ValkeyModule_Calloc(strlen(cmd_prefix) + 1, sizeof(char));
         strcpy(cmdlog, cmd_prefix);
         for (int i = 0; i < argc; i++) {
             if (i == 10) {
                 char *new_cmdlog = lm_asprintf("%s ... (%d more)", cmdlog, argc - i - 1);
-                KVModule_Free(cmdlog);
+                ValkeyModule_Free(cmdlog);
                 cmdlog = new_cmdlog;
                 break;
             } else {
-                const char *argv_cstr = KVModule_StringPtrLen(argv[i], NULL);
+                const char *argv_cstr = ValkeyModule_StringPtrLen(argv[i], NULL);
                 char *new_cmdlog = lm_asprintf("%s %s", cmdlog, argv_cstr);
-                KVModule_Free(cmdlog);
+                ValkeyModule_Free(cmdlog);
                 cmdlog = new_cmdlog;
             }
         }
         ldbLogCString(cmdlog);
-        KVModule_Free(cmdlog);
+        ValkeyModule_Free(cmdlog);
     }
 
-    char fmt[13] = "v!EMSX";
-    int fmt_idx = 6; /* Index of the last char in fmt[] */
-
-    KVModuleString *username = KVModule_GetCurrentUserName(rctx->module_ctx);
-    if (username != NULL) {
-        fmt[fmt_idx++] = 'C';
-        KVModule_FreeString(rctx->module_ctx, username);
-    }
+    int flags = VALKEYMODULE_CALL_ARGV_SCRIPT_MODE |
+                VALKEYMODULE_CALL_ARGV_REPLICATE |
+                VALKEYMODULE_CALL_ARGV_ERRORS_AS_REPLIES |
+                VALKEYMODULE_CALL_ARGV_RESPECT_DENY_OOM |
+                VALKEYMODULE_CALL_ARGV_REPLY_EXACT;
 
     if (!(rctx->replication_flags & PROPAGATE_AOF)) {
-        fmt[fmt_idx++] = 'A';
+        flags |= VALKEYMODULE_CALL_ARGV_NO_AOF;
     }
     if (!(rctx->replication_flags & PROPAGATE_REPL)) {
-        fmt[fmt_idx++] = 'R';
+        flags |= VALKEYMODULE_CALL_ARGV_NO_REPLICAS;
     }
     if (!rctx->replication_flags) {
         /* PROPAGATE_NONE case */
-        fmt[fmt_idx++] = 'A';
-        fmt[fmt_idx++] = 'R';
+        flags |= VALKEYMODULE_CALL_ARGV_NO_AOF | VALKEYMODULE_CALL_ARGV_NO_REPLICAS;
     }
     if (rctx->resp == 3) {
-        fmt[fmt_idx++] = '3';
+        flags |= VALKEYMODULE_CALL_ARGV_RESP_3;
     }
-    fmt[fmt_idx] = '\0';
 
-    const char *cmdname = KVModule_StringPtrLen(argv[0], NULL);
+    callCtx call_ctx = {
+        .lua = lua,
+        .module_ctx = rctx->module_ctx,
+        .error = 0,
+        .in_collection = -1,
+        .collection_item_count = {0},
+        .collection_type = {0},
+    };
 
     errno = 0;
-    reply = KVModule_Call(rctx->module_ctx, cmdname, fmt, argv + 1, argc - 1);
+    int res = ValkeyModule_CallArgv(rctx->module_ctx, argv, argc, flags, &handlers, &call_ctx);
+    ValkeyModule_Assert(res == VALKEYMODULE_OK);
     freeLuaServerArgv(rctx->module_ctx, argv, argc);
-    int reply_type = KVModule_CallReplyType(reply);
-    if (errno != 0) {
-        KVModule_Assert(reply_type == KVMODULE_REPLY_ERROR);
-
-        const char *err = KVModule_CallReplyStringPtr(reply, NULL);
-        KVModule_Log(rctx->module_ctx, "debug", "command returned an error: %s errno=%d", err, errno);
-
-        luaProcessReplyError(reply, lua);
-        goto cleanup;
-    } else if (raise_error && reply_type != KVMODULE_REPLY_ERROR) {
-        raise_error = 0;
-    }
-
-    callReplyToLuaType(lua, reply, rctx->resp);
-
-    /* If the debugger is active, log the reply from the server. */
-    if (ldbIsEnabled()) {
-        KVModule_ScriptingEngineDebuggerLogRespReply(reply);
-    }
-
-cleanup:
-    /* Clean up. Command code may have changed argv/argc so we use the
-     * argv/argc of the client instead of the local variables. */
-    KVModule_FreeCallReply(reply);
 
     inuse--;
 
-    if (raise_error) {
+    if (raise_error && call_ctx.error) {
         /* If we are here we should have an error in the stack, in the
          * form of a table with an "err" field. Extract the string to
          * return the plain error. */
@@ -1162,7 +1271,7 @@ static int luaRedisPCallCommand(lua_State *lua) {
  *
  * 'digest' should point to a 41 bytes buffer: 40 for SHA1 converted into an
  * hexadecimal number, plus 1 byte for null term. */
-void sha1hex(char *digest, char *script, size_t len) {
+__attribute__((weak)) void sha1hex(char *digest, char *script, size_t len) {
     SHA1_CTX ctx;
     unsigned char hash[20];
     char *cset = "0123456789abcdef";
@@ -1234,7 +1343,7 @@ static int luaRedisErrorReplyCommand(lua_State *lua) {
         err_buff = lm_strcpy(err);
     }
     luaPushErrorBuff(lua, err_buff);
-    KVModule_Free(err_buff);
+    ValkeyModule_Free(err_buff);
     return 1;
 }
 
@@ -1251,7 +1360,7 @@ static int luaRedisSetReplCommand(lua_State *lua) {
     int flags, argc = lua_gettop(lua);
 
     luaFuncCallCtx *rctx = luaGetFromRegistry(lua, REGISTRY_RUN_CTX_NAME);
-    KVModule_Assert(rctx); /* Only supported inside script invocation */
+    ValkeyModule_Assert(rctx); /* Only supported inside script invocation */
 
     if (argc != 1) {
         luaPushError(lua, "server.set_repl() requires one argument.");
@@ -1274,34 +1383,34 @@ static int luaRedisSetReplCommand(lua_State *lua) {
  * Checks ACL permissions for given command for the current user. */
 static int luaRedisAclCheckCmdPermissionsCommand(lua_State *lua) {
     luaFuncCallCtx *rctx = luaGetFromRegistry(lua, REGISTRY_RUN_CTX_NAME);
-    KVModule_Assert(rctx); /* Only supported inside script invocation */
+    ValkeyModule_Assert(rctx); /* Only supported inside script invocation */
 
     int raise_error = 0;
 
     int argc = 0;
-    KVModuleString **argv = luaArgsToServerArgv(rctx->module_ctx, lua, &argc);
+    ValkeyModuleString **argv = luaArgsToServerArgv(rctx->module_ctx, lua, &argc);
 
     /* Require at least one argument */
     if (argv == NULL) return luaError(lua);
 
-    KVModuleString *username = KVModule_GetCurrentUserName(rctx->module_ctx);
-    KVModuleUser *user = KVModule_GetModuleUserFromUserName(username);
-    int dbid = KVModule_GetSelectedDb(rctx->module_ctx);
-    KVModule_FreeString(rctx->module_ctx, username);
+    ValkeyModuleString *username = ValkeyModule_GetCurrentUserName(rctx->module_ctx);
+    ValkeyModuleUser *user = ValkeyModule_GetModuleUserFromUserName(username);
+    int dbid = ValkeyModule_GetSelectedDb(rctx->module_ctx);
+    ValkeyModule_FreeString(rctx->module_ctx, username);
 
-    if (KVModule_ACLCheckPermissions(user, argv, argc, dbid, NULL) != KVMODULE_OK) {
+    if (ValkeyModule_ACLCheckPermissions(user, argv, argc, dbid, NULL) != VALKEYMODULE_OK) {
         if (errno == EINVAL) {
-            luaPushError(lua, "ERR Invalid command passed to server.acl_check_cmd()");
+            luaPushError(lua, "Invalid command passed to server.acl_check_cmd()");
             raise_error = 1;
         } else {
-            KVModule_Assert(errno == EACCES);
+            ValkeyModule_Assert(errno == EACCES);
             lua_pushboolean(lua, 0);
         }
     } else {
         lua_pushboolean(lua, 1);
     }
 
-    KVModule_FreeModuleUser(user);
+    ValkeyModule_FreeModuleUser(user);
     freeLuaServerArgv(rctx->module_ctx, argv, argc);
     if (raise_error)
         return luaError(lua);
@@ -1312,8 +1421,8 @@ static int luaRedisAclCheckCmdPermissionsCommand(lua_State *lua) {
 
 /* server.log() */
 static int luaLogCommand(lua_State *lua) {
+    /* There is no run context when called from a library body during FUNCTION LOAD. */
     luaFuncCallCtx *rctx = luaGetFromRegistry(lua, REGISTRY_RUN_CTX_NAME);
-    KVModule_Assert(rctx); /* Only supported inside script invocation */
 
     int j, argc = lua_gettop(lua);
     int level;
@@ -1332,21 +1441,24 @@ static int luaLogCommand(lua_State *lua) {
     }
 
     /* Glue together all the arguments */
-    char *log = NULL;
+    ValkeyModuleString *log = ValkeyModule_CreateString(NULL, "", 0);
     for (j = 1; j < argc; j++) {
-        size_t len;
         char *s;
 
-        s = (char *)lua_tolstring(lua, (-argc) + j, &len);
+        s = (char *)lua_tostring(lua, (-argc) + j);
         if (s) {
-            if (j != 1) {
-                char *next_log = lm_asprintf("%s %s", log, s);
-                KVModule_Free(log);
-                log = next_log;
-            } else {
-                log = lm_asprintf("%s", s);
-            }
+            if (j != 1) ValkeyModule_StringAppendBuffer(NULL, log, " ", 1);
+            /* Stop each argument at a NUL, like the "%s" that logs it. */
+            ValkeyModule_StringAppendBuffer(NULL, log, s, strlen(s));
         }
+    }
+
+    /* The legacy log format writes the message verbatim, so a line break
+     * would let the script start a record without the module tag. */
+    size_t len;
+    char *msg = (char *)ValkeyModule_StringPtrLen(log, &len);
+    for (size_t i = 0; i < len; i++) {
+        if (msg[i] == '\r' || msg[i] == '\n') msg[i] = ' ';
     }
 
     const char *level_str = NULL;
@@ -1355,18 +1467,18 @@ static int luaLogCommand(lua_State *lua) {
     case LL_VERBOSE: level_str = "verbose"; break;
     case LL_NOTICE: level_str = "notice"; break;
     case LL_WARNING: level_str = "warning"; break;
-    default: KVModule_Assert(0);
+    default: ValkeyModule_Assert(0);
     }
 
-    KVModule_Log(rctx->module_ctx, level_str, "%s", log);
-    KVModule_Free(log);
+    ValkeyModule_Log(rctx ? rctx->module_ctx : NULL, level_str, "%s", msg);
+    ValkeyModule_FreeString(NULL, log);
     return 0;
 }
 
 /* server.setresp() */
 static int luaSetResp(lua_State *lua) {
     luaFuncCallCtx *rctx = luaGetFromRegistry(lua, REGISTRY_RUN_CTX_NAME);
-    KVModule_Assert(rctx); /* Only supported inside script invocation */
+    ValkeyModule_Assert(rctx); /* Only supported inside script invocation */
 
     int argc = lua_gettop(lua);
 
@@ -1422,7 +1534,7 @@ static int luaProtectedTableError(lua_State *lua) {
     luaFuncCallCtx *rctx = luaGetFromRegistry(lua, REGISTRY_RUN_CTX_NAME);
     int argc = lua_gettop(lua);
     if (argc != 2) {
-        KVModule_Log(rctx->module_ctx, "warning", "malicious code trying to call luaProtectedTableError with wrong arguments");
+        ValkeyModule_Log(rctx->module_ctx, "warning", "malicious code trying to call luaProtectedTableError with wrong arguments");
         luaL_error(lua, "Wrong number of arguments to luaProtectedTableError");
     }
     if (!lua_isstring(lua, -1) && !lua_isnumber(lua, -1)) {
@@ -1451,7 +1563,7 @@ static int luaNewIndexAllowList(lua_State *lua) {
     luaFuncCallCtx *rctx = luaGetFromRegistry(lua, REGISTRY_RUN_CTX_NAME);
     int argc = lua_gettop(lua);
     if (argc != 3) {
-        KVModule_Log(rctx->module_ctx, "warning", "malicious code trying to call luaNewIndexAllowList with wrong arguments");
+        ValkeyModule_Log(rctx->module_ctx, "warning", "malicious code trying to call luaNewIndexAllowList with wrong arguments");
         luaL_error(lua, "Wrong number of arguments to luaNewIndexAllowList");
     }
     if (!lua_istable(lua, -3)) {
@@ -1499,7 +1611,7 @@ static int luaNewIndexAllowList(lua_State *lua) {
             }
         }
         if (!*c && !deprecated) {
-            KVModule_Log(rctx->module_ctx, "warning",
+            ValkeyModule_Log(rctx->module_ctx, "warning",
                              "A key '%s' was added to Lua globals which is neither on the globals allow list nor listed on the "
                              "deny list.",
                              variable_name);
@@ -1593,13 +1705,13 @@ void luaRegisterVersion(luaEngineCtx *ctx, lua_State *lua) {
     lua_pushstring(lua, ctx->redis_version);
     lua_settable(lua, -3);
 
-    /* Now push the KV version information. */
-    lua_pushstring(lua, "KV_VERSION_NUM");
-    lua_pushnumber(lua, ctx->kv_version_num);
+    /* Now push the Valkey version information. */
+    lua_pushstring(lua, "VALKEY_VERSION_NUM");
+    lua_pushnumber(lua, ctx->valkey_version_num);
     lua_settable(lua, -3);
 
-    lua_pushstring(lua, "KV_VERSION");
-    lua_pushstring(lua, ctx->kv_version);
+    lua_pushstring(lua, "VALKEY_VERSION");
+    lua_pushstring(lua, ctx->valkey_version);
     lua_settable(lua, -3);
 
     lua_pushstring(lua, "SERVER_NAME");
@@ -1658,7 +1770,7 @@ void luaRegisterServerAPI(luaEngineCtx *ctx, lua_State *lua) {
 
     luaSaveOnRegistry(lua, REGISTRY_RUN_CTX_NAME, NULL);
 
-    /* Before Redis OSS 7, Lua used to return error messages as strings from pcall function. With KV (or Redis OSS 7), Lua now returns
+    /* Before Redis OSS 7, Lua used to return error messages as strings from pcall function. With Valkey (or Redis OSS 7), Lua now returns
      * error messages as tables. To keep backwards compatibility, we wrap the Lua pcall function with our own
      * implementation of C function that converts table to string. */
     lua_pushcfunction(lua, luaRedisPcall);
@@ -1752,13 +1864,13 @@ void luaRegisterServerAPI(luaEngineCtx *ctx, lua_State *lua) {
 
 /* Set an array of String Objects as a Lua array (table) stored into a
  * global variable. */
-static void luaCreateArray(lua_State *lua, KVModuleString **elev, int elec) {
+static void luaCreateArray(lua_State *lua, ValkeyModuleString **elev, int elec) {
     int j;
 
     lua_createtable(lua, elec, 0);
     for (j = 0; j < elec; j++) {
         size_t len = 0;
-        const char *str = KVModule_StringPtrLen(elev[j], &len);
+        const char *str = ValkeyModule_StringPtrLen(elev[j], &len);
         lua_pushlstring(lua, str, len);
         lua_rawseti(lua, -2, j + 1);
     }
@@ -1809,20 +1921,20 @@ static int server_math_randomseed(lua_State *L) {
 
 /* This is the Lua script "count" hook that we use to detect scripts timeout. */
 static void luaMaskCountHook(lua_State *lua, lua_Debug *ar) {
-    KVMODULE_NOT_USED(ar);
+    VALKEYMODULE_NOT_USED(ar);
 
     luaFuncCallCtx *rctx = luaGetFromRegistry(lua, REGISTRY_RUN_CTX_NAME);
-    KVModule_Assert(rctx); /* Only supported inside script invocation */
+    ValkeyModule_Assert(rctx); /* Only supported inside script invocation */
 
-    KVModuleScriptingEngineExecutionState state = KVModule_GetFunctionExecutionState(rctx->run_ctx);
+    ValkeyModuleScriptingEngineExecutionState state = ValkeyModule_GetFunctionExecutionState(rctx->run_ctx);
     if (state == VMSE_STATE_KILLED) {
         char *err = NULL;
         if (rctx->type == VMSE_EVAL) {
-            err = "ERR Script killed by user with SCRIPT KILL.";
+            err = "Script killed by user with SCRIPT KILL.";
         } else {
-            err = "ERR Script killed by user with FUNCTION KILL.";
+            err = "Script killed by user with FUNCTION KILL.";
         }
-        KVModule_Log(NULL, "notice", "%s", err);
+        ValkeyModule_Log(NULL, "notice", "%s", err);
 
         /*
          * Set the hook to invoke all the time so the user
@@ -1837,9 +1949,9 @@ static void luaMaskCountHook(lua_State *lua, lua_Debug *ar) {
 }
 
 void luaErrorInformationDiscard(errorInfo *err_info) {
-    if (err_info->msg) KVModule_Free(err_info->msg);
-    if (err_info->source) KVModule_Free(err_info->source);
-    if (err_info->line) KVModule_Free(err_info->line);
+    if (err_info->msg) ValkeyModule_Free(err_info->msg);
+    if (err_info->source) ValkeyModule_Free(err_info->source);
+    if (err_info->line) ValkeyModule_Free(err_info->line);
 }
 
 void luaExtractErrorInformation(lua_State *lua, errorInfo *err_info) {
@@ -1851,25 +1963,29 @@ void luaExtractErrorInformation(lua_State *lua, errorInfo *err_info) {
         return;
     }
 
-    lua_getfield(lua, -1, "err");
+    lua_pushstring(lua, "err");
+    lua_rawget(lua, -2);
     if (lua_isstring(lua, -1)) {
         err_info->msg = lm_strcpy(lua_tostring(lua, -1));
     }
     lua_pop(lua, 1);
 
-    lua_getfield(lua, -1, "source");
+    lua_pushstring(lua, "source");
+    lua_rawget(lua, -2);
     if (lua_isstring(lua, -1)) {
         err_info->source = lm_strcpy(lua_tostring(lua, -1));
     }
     lua_pop(lua, 1);
 
-    lua_getfield(lua, -1, "line");
+    lua_pushstring(lua, "line");
+    lua_rawget(lua, -2);
     if (lua_isstring(lua, -1)) {
         err_info->line = lm_strcpy(lua_tostring(lua, -1));
     }
     lua_pop(lua, 1);
 
-    lua_getfield(lua, -1, "ignore_error_stats_update");
+    lua_pushstring(lua, "ignore_error_stats_update");
+    lua_rawget(lua, -2);
     if (lua_isboolean(lua, -1)) {
         err_info->ignore_err_stats_update = lua_toboolean(lua, -1);
     }
@@ -1884,8 +2000,8 @@ void luaExtractErrorInformation(lua_State *lua, errorInfo *err_info) {
 /* This is the core of our Lua debugger, called each time Lua is about
  * to start executing a new line. */
 void luaLdbLineHook(lua_State *lua, lua_Debug *ar) {
-    KVModuleScriptingEngineServerRuntimeCtx *rctx = luaGetFromRegistry(lua, REGISTRY_RUN_CTX_NAME);
-    KVModule_Assert(rctx); /* Only supported inside script invocation */
+    ValkeyModuleScriptingEngineServerRuntimeCtx *rctx = luaGetFromRegistry(lua, REGISTRY_RUN_CTX_NAME);
+    ValkeyModule_Assert(rctx); /* Only supported inside script invocation */
     lua_getstack(lua, 0, ar);
     lua_getinfo(lua, "Sl", ar);
     ldbSetCurrentLine(ar->currentline);
@@ -1916,7 +2032,7 @@ void luaLdbLineHook(lua_State *lua, lua_Debug *ar) {
             reason = "timeout reached, infinite loop?";
         ldbSetStepMode(0);
         ldbSetBreakpointOnNextLine(0);
-        KVModuleString *msg = KVModule_CreateStringPrintf(NULL, "* Stopped at %d, stop reason = %s", ldbGetCurrentLine(), reason);
+        ValkeyModuleString *msg = ValkeyModule_CreateStringPrintf(NULL, "* Stopped at %d, stop reason = %s", ldbGetCurrentLine(), reason);
         ldbLog(msg);
         ldbLogSourceLine(ldbGetCurrentLine());
         ldbSendLogs();
@@ -1931,20 +2047,20 @@ void luaLdbLineHook(lua_State *lua, lua_Debug *ar) {
     }
 }
 
-void luaCallFunction(KVModuleCtx *ctx,
-                     KVModuleScriptingEngineServerRuntimeCtx *run_ctx,
-                     KVModuleScriptingEngineSubsystemType type,
+void luaCallFunction(ValkeyModuleCtx *ctx,
+                     ValkeyModuleScriptingEngineServerRuntimeCtx *run_ctx,
+                     ValkeyModuleScriptingEngineSubsystemType type,
                      lua_State *lua,
-                     KVModuleString **keys,
+                     ValkeyModuleString **keys,
                      size_t nkeys,
-                     KVModuleString **args,
+                     ValkeyModuleString **args,
                      size_t nargs,
                      int debug_enabled,
                      int lua_enable_insecure_api) {
     int delhook = 0;
 
     /* We must set it before we set the Lua hook, theoretically the
-     * Lua hook might be called wheneven we run any Lua instruction
+     * Lua hook might be called whenever we run any Lua instruction
      * such as 'luaSetGlobalArray' and we want the run_ctx to be available
      * each time the Lua hook is invoked. */
 
@@ -2024,12 +2140,12 @@ void luaCallFunction(KVModuleCtx *ctx,
             if (lua_isstring(lua, -1)) {
                 msg = lua_tostring(lua, -1);
             }
-            KVModule_ReplyWithErrorFormat(ctx, "ERR Error running script, %.100s\n", msg);
+            ValkeyModule_ReplyWithErrorFormat(ctx, "ERR Error running script, %.100s\n", msg);
         } else {
             errorInfo err_info = {0};
             luaExtractErrorInformation(lua, &err_info);
             if (err_info.line && err_info.source) {
-                KVModule_ReplyWithCustomErrorFormat(
+                ValkeyModule_ReplyWithCustomErrorFormat(
                     ctx,
                     !err_info.ignore_err_stats_update,
                     "%s script: on %s:%s.",
@@ -2037,7 +2153,7 @@ void luaCallFunction(KVModuleCtx *ctx,
                     err_info.source,
                     err_info.line);
             } else {
-                KVModule_ReplyWithCustomErrorFormat(
+                ValkeyModule_ReplyWithCustomErrorFormat(
                     ctx,
                     !err_info.ignore_err_stats_update,
                     "%s",
