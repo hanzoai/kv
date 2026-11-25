@@ -1,4 +1,32 @@
-# This test suite tests shutdown when there are lagging replicas connected.
+# This test suite tests shutdown behavior.
+
+test "Shutdown cleans up IO threads with pipelined commands" {
+    start_server {overrides {save "" enable-module-command local io-threads 4 io-threads-always-active yes}} {
+        set server_pid [srv 0 pid]
+        set rd [valkey_deferring_client]
+
+        # Avoid Lua's unload hook draining the IO queues before shutdown.
+        set modules [lmap module [r module list] {dict get $module name}]
+        if {[lsearch -exact $modules lua] != -1} {
+            assert_equal {OK} [r module unload lua]
+        }
+
+        # Make the pipeline arrive in one read so SHUTDOWN can leave
+        # batched argument-cleanup jobs queued.
+        pause_process $server_pid
+        for {set i 0} {$i < 200} {incr i} {
+            $rd set shutdown-io-key:$i $i
+        }
+        $rd shutdown nosave
+        $rd flush
+        resume_process $server_pid
+
+        wait_for_log_messages 0 {"*ready to exit, bye bye*"} 0 1000 20
+        assert_equal 3 [count_log_message 0 "IO thread.*terminated"]
+        assert_equal 0 [count_log_message 0 "BUG REPORT START"]
+        $rd close
+    }
+} {} {external:skip}
 
 # Fill up the OS socket send buffer for the replica connection 1M at a time.
 # When the replication buffer memory increases beyond 2M (often after writing 4M
@@ -56,7 +84,7 @@ foreach how {sigterm shutdown} {
                         exec kill -SIGTERM $master_pid
                     }
                     shutdown {
-                        set rd [kv_deferring_client -1]
+                        set rd [valkey_deferring_client -1]
                         $rd shutdown
                     }
                 }
@@ -152,8 +180,8 @@ test "Shutting down master waits for replica then fails" {
             $master incr k
 
             # Two clients call blocking SHUTDOWN in parallel.
-            set rd1 [kv_deferring_client -1]
-            set rd2 [kv_deferring_client -1]
+            set rd1 [valkey_deferring_client -1]
+            set rd2 [valkey_deferring_client -1]
             $rd1 shutdown
             $rd2 shutdown
             wait_for_condition 50 100 {
@@ -211,8 +239,8 @@ test "Shutting down master waits for replica then aborted" {
             $master incr k
 
             # Two clients call blocking SHUTDOWN in parallel.
-            set rd1 [kv_deferring_client -1]
-            set rd2 [kv_deferring_client -1]
+            set rd1 [valkey_deferring_client -1]
+            set rd2 [valkey_deferring_client -1]
             $rd1 shutdown
             $rd2 shutdown
             wait_for_condition 50 100 {
@@ -249,7 +277,7 @@ test "Shutting down primary wait for replica after previous block" {
     start_server {overrides {save "" repl-backlog-size 1MB}} {
         start_server {overrides {save "" repl-backlog-size 1MB}} {
             set primary [srv -1 client]
-            set primary_deferring [kv_deferring_client -1]
+            set primary_deferring [valkey_deferring_client -1]
             set primary_host [srv -1 host]
             set primary_port [srv -1 port]
             set primary_pid [srv -1 pid]

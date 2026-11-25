@@ -64,7 +64,7 @@ start_server {tags {"modules"}} {
         r config set busy-reply-threshold 5000 ;# make sure we're using a high default
         # trigger slow loading
         r datatype.slow_loading 1
-        set rd [kv_deferring_client]
+        set rd [valkey_deferring_client]
         set start [clock clicks -milliseconds]
         $rd debug reload
 
@@ -114,7 +114,7 @@ start_server {tags {"modules"}} {
         assert_equal 1 [llength $keys]    
     }
 
-    test {SCAN module datatype with case sensitive} {
+    test {SCAN module datatype with case-sensitive} {
         r flushdb
         populate 1000
         r datatype.set foo 111 bar

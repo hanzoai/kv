@@ -1,5 +1,7 @@
 *.gcda
 *.gcno
 *.gcov
-kv.info
+valkey.info
 lcov-html
+generated_*
+unit/wrapped/

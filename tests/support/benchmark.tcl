@@ -1,4 +1,4 @@
-proc kvbenchmark_tls_config {testsdir} {
+proc valkeybenchmark_tls_config {testsdir} {
     set tlsdir [file join $testsdir tls]
     set cert [file join $tlsdir client.crt]
     set key [file join $tlsdir client.key]
@@ -11,23 +11,23 @@ proc kvbenchmark_tls_config {testsdir} {
     }
 }
 
-proc kvbenchmark {host port {opts {}}} {
-    set cmd [list $::KV_BENCHMARK_BIN -h $host -p $port]
-    lappend cmd {*}[kvbenchmark_tls_config "tests"]
+proc valkeybenchmark {host port {opts {}}} {
+    set cmd [list $::VALKEY_BENCHMARK_BIN -h $host -p $port]
+    lappend cmd {*}[valkeybenchmark_tls_config "tests"]
     lappend cmd {*}$opts
     return $cmd
 }
 
-proc kvbenchmarkuri {host port {opts {}}} {
-    set cmd [list $::KV_BENCHMARK_BIN -u kv://$host:$port]
-    lappend cmd {*}[kvbenchmark_tls_config "tests"]
+proc valkeybenchmarkuri {host port {opts {}}} {
+    set cmd [list $::VALKEY_BENCHMARK_BIN -u valkey://$host:$port]
+    lappend cmd {*}[valkeybenchmark_tls_config "tests"]
     lappend cmd {*}$opts
     return $cmd
 }
 
-proc kvbenchmarkuriuserpass {host port user pass {opts {}}} {
-    set cmd [list $::KV_BENCHMARK_BIN -u kv://$user:$pass@$host:$port]
-    lappend cmd {*}[kvbenchmark_tls_config "tests"]
+proc valkeybenchmarkuriuserpass {host port user pass {opts {}}} {
+    set cmd [list $::VALKEY_BENCHMARK_BIN -u valkey://$user:$pass@$host:$port]
+    lappend cmd {*}[valkeybenchmark_tls_config "tests"]
     lappend cmd {*}$opts
     return $cmd
 }

@@ -11,11 +11,11 @@ else
 	SHOBJ_LDFLAGS ?= -bundle -undefined dynamic_lookup
 endif
 
-# OS X 11.x doesn't have /usr/lib/libSystem.dylib and needs an explicit setting.
+# Link with the compiler driver on macOS so libSystem is resolved from the
+# active SDK; raw ld can't parse newer SDKs' libSystem.tbd stubs.
 ifeq ($(uname_S),Darwin)
-ifeq ("$(wildcard /usr/lib/libSystem.dylib)","")
-LIBS = -L /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib -lsystem
-endif
+# CFLAGS may select a non-native architecture and must reach the driver.
+LD = $(CC) $(CFLAGS)
 endif
 
 .SUFFIXES: .c .so .xo .o
@@ -25,42 +25,42 @@ all: helloworld.so hellotype.so helloblock.so hellocluster.so hellotimer.so hell
 .c.xo:
 	$(CC) -I. $(CFLAGS) $(SHOBJ_CFLAGS) -fPIC -c $< -o $@
 
-helloworld.xo: ../kvmodule.h
+helloworld.xo: ../valkeymodule.h
 
 helloworld.so: helloworld.xo
 	$(LD) -o $@ $^ $(SHOBJ_LDFLAGS) $(LIBS) -lc
 
-hellotype.xo: ../kvmodule.h
+hellotype.xo: ../valkeymodule.h
 
 hellotype.so: hellotype.xo
 	$(LD) -o $@ $^ $(SHOBJ_LDFLAGS) $(LIBS) -lc
 
-helloblock.xo: ../kvmodule.h
+helloblock.xo: ../valkeymodule.h
 
 helloblock.so: helloblock.xo
 	$(LD) -o $@ $^ $(SHOBJ_LDFLAGS) $(LIBS) -lpthread -lc
 
-hellocluster.xo: ../kvmodule.h
+hellocluster.xo: ../valkeymodule.h
 
 hellocluster.so: hellocluster.xo
 	$(LD) -o $@ $^ $(SHOBJ_LDFLAGS) $(LIBS) -lc
 
-hellotimer.xo: ../kvmodule.h
+hellotimer.xo: ../valkeymodule.h
 
 hellotimer.so: hellotimer.xo
 	$(LD) -o $@ $^ $(SHOBJ_LDFLAGS) $(LIBS) -lc
 
-hellodict.xo: ../kvmodule.h
+hellodict.xo: ../valkeymodule.h
 
 hellodict.so: hellodict.xo
 	$(LD) -o $@ $^ $(SHOBJ_LDFLAGS) $(LIBS) -lc
 
-hellohook.xo: ../kvmodule.h
+hellohook.xo: ../valkeymodule.h
 
 hellohook.so: hellohook.xo
 	$(LD) -o $@ $^ $(SHOBJ_LDFLAGS) $(LIBS) -lc
 
-helloacl.xo: ../kvmodule.h
+helloacl.xo: ../valkeymodule.h
 
 helloacl.so: helloacl.xo
 	$(LD) -o $@ $^ $(SHOBJ_LDFLAGS) $(LIBS) -lc

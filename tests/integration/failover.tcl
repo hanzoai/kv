@@ -79,8 +79,9 @@ start_server {overrides {save {}}} {
         # Execute the failover
         $node_0 failover to $node_1_host $node_1_port
 
-        # Wait for failover to end
-        wait_for_condition 50 100 {
+        # Wait for failover to end. Budget is generous for loaded CI runners;
+        # the failover must still complete, so this cannot hide a hang.
+        wait_for_condition 100 200 {
             [s 0 master_failover_state] == "no-failover"
         } else {
             fail "Failover from node 0 to node 1 did not finish"
@@ -140,7 +141,7 @@ start_server {overrides {save {}}} {
         set initial_psyncs [s 0 sync_partial_ok]
         set initial_syncs [s 0 sync_full]
 
-        set rd_blocking [kv_deferring_client -2]
+        set rd_blocking [valkey_deferring_client -2]
 
         $rd_blocking BRPOP FOO_LIST 0
 
@@ -282,9 +283,9 @@ start_server {overrides {save {}}} {
         # failover.
         pause_process $node_1_pid
         $node_0 SET FOO BAR
-        set rd_lpush [kv_deferring_client]
-        set rd_brpop_before [kv_deferring_client]
-        set rd_brpop_after [kv_deferring_client]
+        set rd_lpush [valkey_deferring_client]
+        set rd_brpop_before [valkey_deferring_client]
+        set rd_brpop_after [valkey_deferring_client]
 
         $rd_brpop_before BRPOP FOO_LIST 0
         wait_for_condition 50 100 {

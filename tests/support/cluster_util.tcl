@@ -22,7 +22,7 @@ proc get_instance_id_by_port {type port} {
 # as a starting point to talk with the cluster.
 proc cluster_write_test {port} {
     set prefix [randstring 20 20 alpha]
-    set cluster [kv_cluster 127.0.0.1:$port]
+    set cluster [valkey_cluster 127.0.0.1:$port]
     for {set j 0} {$j < 100} {incr j} {
         $cluster set key.$j $prefix.$j
     }
@@ -70,18 +70,18 @@ proc cluster_find_available_replica {first} {
 
 proc fix_cluster {addr} {
     set code [catch {
-        exec $::KV_CLI_BIN {*}[kvcli_tls_config "./tests"] --cluster fix $addr << yes
+        exec $::VALKEY_CLI_BIN {*}[valkeycli_tls_config "./tests"] --cluster fix $addr << yes
     } result]
     if {$code != 0} {
-        puts "kv-cli --cluster fix returns non-zero exit code, output below:\n$result"
+        puts "valkey-cli --cluster fix returns non-zero exit code, output below:\n$result"
     }
-    # Note: kv-cli --cluster fix may return a non-zero exit code if nodes don't agree,
+    # Note: valkey-cli --cluster fix may return a non-zero exit code if nodes don't agree,
     # but we can ignore that and rely on the check below.
     wait_for_cluster_state ok
     wait_for_condition 100 100 {
-        [catch {exec $::KV_CLI_BIN {*}[kvcli_tls_config "./tests"] --cluster check $addr} result] == 0
+        [catch {exec $::VALKEY_CLI_BIN {*}[valkeycli_tls_config "./tests"] --cluster check $addr} result] == 0
     } else {
-        puts "kv-cli --cluster check returns non-zero exit code, output below:\n$result"
+        puts "valkey-cli --cluster check returns non-zero exit code, output below:\n$result"
         fail "Cluster could not settle with configuration"
     }
 }
@@ -126,7 +126,7 @@ proc cluster_size_consistent {cluster_size} {
 
 # Wait for cluster configuration to propagate and be consistent across nodes.
 proc wait_for_cluster_propagation {} {
-    wait_for_condition 1000 50 {
+    wait_for_condition 1200 50 {
         [cluster_config_consistent] eq 1
     } else {
         for {set j 0} {$j < [llength $::servers]} {incr j} {
@@ -148,6 +148,7 @@ proc wait_for_cluster_size {cluster_size} {
 # Check that cluster nodes agree about "state", or raise an error.
 proc wait_for_cluster_state {state} {
     for {set j 0} {$j < [llength $::servers]} {incr j} {
+        if {![process_is_alive [srv -$j pid]]} continue
         if {[process_is_paused [srv -$j pid]]} continue
         wait_for_condition 1000 50 {
             [CI $j cluster_state] eq $state
@@ -207,9 +208,15 @@ proc cluster_allocate_replicas {masters replicas} {
     }
 }
 
+# Replica allocator that does not attach any replica to a primary. Pass it as
+# the replica_allocator argument of start_cluster when a test needs the extra
+# nodes to stay unassigned at setup time, e.g. to add them later as replicas
+# with a particular replication configuration.
+proc no_replica_allocation {primaries replicas} {}
+
 # Setup method to be executed to configure the cluster before the
 # tests run.
-proc cluster_setup {masters replicas node_count slot_allocator replica_allocator code options} {
+proc cluster_setup {masters replicas node_count slot_allocator replica_allocator options} {
     # Make it easier to understand how a particular server interacts
     # with other nodes when reading the server logs by assigning human
     # nodenames R0, R1, R2 etc.
@@ -260,8 +267,6 @@ proc cluster_setup {masters replicas node_count slot_allocator replica_allocator
 
     wait_for_cluster_propagation
     wait_for_cluster_state "ok"
-
-    uplevel 1 $code
 }
 
 # Start a cluster with the given number of masters and replicas. Replicas
@@ -270,12 +275,14 @@ proc start_cluster {masters replicas options code {slot_allocator continuous_slo
     set node_count [expr $masters + $replicas]
 
     # Set the final code to be the tests + cluster setup
-    set code [list cluster_setup $masters $replicas $node_count $slot_allocator $replica_allocator $code $options]
+    set setup_code [list cluster_setup $masters $replicas $node_count $slot_allocator $replica_allocator $options]
+    set teardown_code {}
+    set code [list test_fixture "start_cluster" $setup_code $teardown_code $code]
 
     # Configure the starting of multiple servers. Set cluster node timeout
     # aggressively since many tests depend on ping/pong messages.
 
-    set cluster_options [list overrides [list cluster-enabled yes cluster-ping-interval 100 cluster-node-timeout 3000 cluster-databases 16 cluster-slot-stats-enabled yes]]
+    set cluster_options [list overrides [list cluster-enabled yes cluster-ping-interval 100 cluster-node-timeout 3000 cluster-databases 16 cluster-slot-stats-enabled yes latency-monitor-threshold 1]]
     set options [concat $cluster_options $options]
 
     # Cluster mode only supports a single database, so before executing the tests
@@ -289,6 +296,20 @@ proc start_cluster {masters replicas options code {slot_allocator continuous_slo
 # Test node for flag.
 proc cluster_has_flag {node flag} {
     expr {[lsearch -exact [dict get $node flags] $flag] != -1}
+}
+
+# Returns 1 only when every server instance in `srv_idxs` sees every
+# node id in `node_ids` carrying `flag` in its CLUSTER NODES output.
+proc cluster_all_see_flag {srv_idxs node_ids flag} {
+    foreach idx $srv_idxs {
+        foreach id $node_ids {
+            set node [cluster_get_node_by_id $idx $id]
+            if {![cluster_has_flag $node $flag]} {
+                return 0
+            }
+        }
+    }
+    return 1
 }
 
 # Returns the parsed "myself" node entry as a dictionary.
@@ -352,6 +373,13 @@ proc get_myself id {
         if {[cluster_has_flag $n myself]} {return $n}
     }
     return {}
+}
+
+# Returns 1 if the instance 'instance_id' agrees that the node 'replica_id' is a
+# replica and is a replica of the node 'primary_id'.
+proc cluster_node_is_replica_of {instance_id replica_id primary_id} {
+    set node [cluster_get_node_by_id $instance_id $replica_id]
+    expr {[cluster_has_flag $node slave] && [dict get $node slaveof] eq $primary_id}
 }
 
 # Returns 1 if no node knows node_id, 0 if any node knows it.

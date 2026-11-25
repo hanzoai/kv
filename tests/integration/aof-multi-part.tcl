@@ -93,6 +93,7 @@ tags {"external:skip"} {
             append_to_manifest "file appendonly.aof.3.incr.aof seq 3 type i\n"
         }
 
+        close [open $server_path/stdout "w"]
         start_server_aof_ex [list dir $server_path] [list wait_ready false] {
             wait_for_condition 100 50 {
                 ! [is_alive [srv pid]]
@@ -179,6 +180,7 @@ tags {"external:skip"} {
             append_to_manifest "file appendonly.aof.1.incr.aof seq 1 type i\n"
         }
 
+        close [open $server_path/stdout "w"]
         start_server_aof_ex [list dir $server_path] [list wait_ready false] {
             wait_for_condition 100 50 {
                 ! [is_alive [srv pid]]
@@ -186,7 +188,7 @@ tags {"external:skip"} {
                 fail "AOF loading didn't fail"
             }
 
-            assert_equal 2 [count_message_lines $server_path/stdout "Invalid AOF manifest file format"]
+            assert_equal 1 [count_message_lines $server_path/stdout "Invalid AOF manifest file format"]
         }
 
         clean_aof_persistence $aof_dirpath
@@ -206,6 +208,7 @@ tags {"external:skip"} {
             append_to_manifest "file appendonly.aof.1.incr.aof type i\n"
         }
 
+        close [open $server_path/stdout "w"]
         start_server_aof_ex [list dir $server_path] [list wait_ready false] {
             wait_for_condition 100 50 {
                 ! [is_alive [srv pid]]
@@ -213,7 +216,7 @@ tags {"external:skip"} {
                 fail "AOF loading didn't fail"
             }
 
-            assert_equal 3 [count_message_lines $server_path/stdout "Invalid AOF manifest file format"]
+            assert_equal 1 [count_message_lines $server_path/stdout "Invalid AOF manifest file format"]
         }
 
         clean_aof_persistence $aof_dirpath
@@ -260,6 +263,7 @@ tags {"external:skip"} {
             append_to_manifest "file appendonly.aof.1.incr.aof seq 1 type i newkey\n"
         }
 
+        close [open $server_path/stdout "w"]
         start_server_aof_ex [list dir $server_path] [list wait_ready false] {
             wait_for_condition 100 50 {
                 ! [is_alive [srv pid]]
@@ -267,7 +271,7 @@ tags {"external:skip"} {
                 fail "AOF loading didn't fail"
             }
 
-            assert_equal 4 [count_message_lines $server_path/stdout "Invalid AOF manifest file format"]
+            assert_equal 1 [count_message_lines $server_path/stdout "Invalid AOF manifest file format"]
         }
 
         clean_aof_persistence $aof_dirpath
@@ -294,7 +298,7 @@ tags {"external:skip"} {
         start_server_aof [list dir $server_path] {
             assert_equal 1 [is_alive [srv pid]]
 
-            set client [kv [srv host] [srv port] 0 $::tls]
+            set client [valkey [srv host] [srv port] 0 $::tls]
 
             assert_equal OK [$client set k1 v1]
             assert_equal v1 [$client get k1]
@@ -332,7 +336,7 @@ tags {"external:skip"} {
 
         start_server_aof [list dir $server_path] {
             assert_equal 1 [is_alive [srv pid]]
-            set client [kv [srv host] [srv port] 0 $::tls]
+            set client [valkey [srv host] [srv port] 0 $::tls]
             wait_done_loading $client
 
             assert_equal v1 [$client get k1]
@@ -364,7 +368,7 @@ tags {"external:skip"} {
 
         start_server_aof [list dir $server_path] {
             assert_equal 1 [is_alive [srv pid]]
-            set client [kv [srv host] [srv port] 0 $::tls]
+            set client [valkey [srv host] [srv port] 0 $::tls]
             wait_done_loading $client
 
             assert_equal v1 [$client get k1]
@@ -395,7 +399,7 @@ tags {"external:skip"} {
 
         start_server_aof [list dir $server_path] {
             assert_equal 1 [is_alive [srv pid]]
-            set client [kv [srv host] [srv port] 0 $::tls]
+            set client [valkey [srv host] [srv port] 0 $::tls]
             wait_done_loading $client
 
             assert_equal v1 [$client get k1]
@@ -406,7 +410,7 @@ tags {"external:skip"} {
         clean_aof_persistence $aof_dirpath
     }
 
-    test {Multi Part AOF can load data from old version kv (rdb preamble no)} {
+    test {Multi Part AOF can load data from old version valkey (rdb preamble no)} {
         create_aof $server_path $aof_old_name_old_path {
             append_to_aof [formatCommand set k1 v1]
             append_to_aof [formatCommand set k2 v2]
@@ -416,7 +420,7 @@ tags {"external:skip"} {
         start_server_aof [list dir $server_path] {
             assert_equal 1 [is_alive [srv pid]]
 
-            set client [kv [srv host] [srv port] 0 $::tls]
+            set client [valkey [srv host] [srv port] 0 $::tls]
             wait_done_loading $client
 
             assert_equal v1 [$client get k1]
@@ -452,12 +456,12 @@ tags {"external:skip"} {
         clean_aof_persistence $aof_dirpath
     }
 
-    test {Multi Part AOF can load data from old version kv (rdb preamble yes)} {
+    test {Multi Part AOF can load data from old version valkey (rdb preamble yes)} {
         exec cp tests/assets/rdb-preamble.aof $aof_old_name_old_path
         start_server_aof [list dir $server_path] {
             assert_equal 1 [is_alive [srv pid]]
 
-            set client [kv [srv host] [srv port] 0 $::tls]
+            set client [valkey [srv host] [srv port] 0 $::tls]
             wait_done_loading $client
 
             # k1 k2 in rdb header and k3 in AOF tail
@@ -494,6 +498,43 @@ tags {"external:skip"} {
         clean_aof_persistence $aof_dirpath
     }
 
+    test {Old-style RDB-preamble AOF preserves preamble on truncated MULTI} {
+        start_server {overrides {appendonly no aof-use-rdb-preamble yes save {}}} {
+            r select 0
+            r set rdb-key rdb-value
+
+            r config set appendonly yes
+            waitForBgrewriteaof r
+
+            file mkdir $server_path
+            file copy -force [get_base_aof_path r] $aof_old_name_old_path
+        }
+
+        set fp [open $aof_old_name_old_path a]
+        append_to_aof [formatCommand multi]
+        append_to_aof [formatCommand set transaction-key transaction-value]
+        append_to_aof [string range [formatCommand exec] 0 end-1]
+        close $fp
+
+        start_server_aof [list dir $server_path aof-load-truncated yes] {
+            set client [valkey [srv host] [srv port] 0 $::tls]
+            wait_done_loading $client
+            assert_equal rdb-value [$client get rdb-key]
+            assert_equal {} [$client get transaction-key]
+            assert_equal OK [$client set post-recovery-key post-recovery-value]
+
+            restart_server 0 true false
+
+            set client [valkey [srv host] [srv port] 0 $::tls]
+            wait_done_loading $client
+            assert_equal rdb-value [$client get rdb-key]
+            assert_equal {} [$client get transaction-key]
+            assert_equal post-recovery-value [$client get post-recovery-key]
+        }
+
+        clean_aof_persistence $aof_dirpath
+    }
+
     test {Multi Part AOF can continue the upgrade from the interrupted upgrade state} {
         create_aof $server_path $aof_old_name_old_path {
             append_to_aof [formatCommand set k1 v1]
@@ -509,7 +550,7 @@ tags {"external:skip"} {
         start_server_aof [list dir $server_path] {
             assert_equal 1 [is_alive [srv pid]]
 
-            set client [kv [srv host] [srv port] 0 $::tls]
+            set client [valkey [srv host] [srv port] 0 $::tls]
             wait_done_loading $client
 
             assert_equal v1 [$client get k1]
@@ -548,7 +589,7 @@ tags {"external:skip"} {
         start_server_aof [list dir $server_path] {
             assert_equal 1 [is_alive [srv pid]]
 
-            set client [kv [srv host] [srv port] 0 $::tls]
+            set client [valkey [srv host] [srv port] 0 $::tls]
             wait_done_loading $client
 
             assert_equal 0 [$client exists k1]
@@ -590,7 +631,7 @@ tags {"external:skip"} {
         clean_aof_persistence $aof_dirpath
     }
 
-    test {Multi Part AOF can upgrade when when two servers share the same server dir} {
+    test {Multi Part AOF can upgrade when two servers share the same server dir} {
         create_aof $server_path $aof_old_name_old_path {
             append_to_aof [formatCommand set k1 v1]
             append_to_aof [formatCommand set k2 v2]
@@ -604,71 +645,71 @@ tags {"external:skip"} {
         }
 
         start_server_aof [list dir $server_path] {
-            set kv1 [kv [srv host] [srv port] 0 $::tls]
+            set valkey1 [valkey [srv host] [srv port] 0 $::tls]
 
             start_server [list overrides [list dir $server_path appendonly yes appendfilename appendonly.aof2]] {
-                set kv2 [kv [srv host] [srv port] 0 $::tls]
+                set valkey2 [valkey [srv host] [srv port] 0 $::tls]
 
-                test "Multi Part AOF can upgrade when when two servers share the same server dir (server1)" {
-                    wait_done_loading $kv1
-                    assert_equal v1 [$kv1 get k1]
-                    assert_equal v2 [$kv1 get k2]
-                    assert_equal v3 [$kv1 get k3]
+                test "Multi Part AOF can upgrade when two servers share the same server dir (server1)" {
+                    wait_done_loading $valkey1
+                    assert_equal v1 [$valkey1 get k1]
+                    assert_equal v2 [$valkey1 get k2]
+                    assert_equal v3 [$valkey1 get k3]
 
-                    assert_equal 0 [$kv1 exists k4]
-                    assert_equal 0 [$kv1 exists k5]
-                    assert_equal 0 [$kv1 exists k6]
+                    assert_equal 0 [$valkey1 exists k4]
+                    assert_equal 0 [$valkey1 exists k5]
+                    assert_equal 0 [$valkey1 exists k6]
 
                     assert_aof_manifest_content $aof_manifest_file  {
                         {file appendonly.aof seq 1 type b}
                         {file appendonly.aof.1.incr.aof seq 1 type i}
                     }
 
-                    $kv1 bgrewriteaof
-                    waitForBgrewriteaof $kv1
+                    $valkey1 bgrewriteaof
+                    waitForBgrewriteaof $valkey1
 
-                    assert_equal OK [$kv1 set k v]
+                    assert_equal OK [$valkey1 set k v]
 
                     assert_aof_manifest_content $aof_manifest_file {
                         {file appendonly.aof.2.base.rdb seq 2 type b}
                         {file appendonly.aof.2.incr.aof seq 2 type i}
                     }
 
-                    set d1 [$kv1 debug digest]
-                    $kv1 debug loadaof
-                    set d2 [$kv1 debug digest]
+                    set d1 [$valkey1 debug digest]
+                    $valkey1 debug loadaof
+                    set d2 [$valkey1 debug digest]
                     assert {$d1 eq $d2}
                 }
 
-                test "Multi Part AOF can upgrade when when two servers share the same server dir (server2)" {
-                    wait_done_loading $kv2
+                test "Multi Part AOF can upgrade when two servers share the same server dir (server2)" {
+                    wait_done_loading $valkey2
 
-                    assert_equal 0 [$kv2 exists k1]
-                    assert_equal 0 [$kv2 exists k2]
-                    assert_equal 0 [$kv2 exists k3]
+                    assert_equal 0 [$valkey2 exists k1]
+                    assert_equal 0 [$valkey2 exists k2]
+                    assert_equal 0 [$valkey2 exists k3]
 
-                    assert_equal v4 [$kv2 get k4]
-                    assert_equal v5 [$kv2 get k5]
-                    assert_equal v6 [$kv2 get k6]
+                    assert_equal v4 [$valkey2 get k4]
+                    assert_equal v5 [$valkey2 get k5]
+                    assert_equal v6 [$valkey2 get k6]
 
                     assert_aof_manifest_content $aof_manifest_file2  {
                         {file appendonly.aof2 seq 1 type b}
                         {file appendonly.aof2.1.incr.aof seq 1 type i}
                     }
 
-                    $kv2 bgrewriteaof
-                    waitForBgrewriteaof $kv2
+                    $valkey2 bgrewriteaof
+                    waitForBgrewriteaof $valkey2
 
-                    assert_equal OK [$kv2 set k v]
+                    assert_equal OK [$valkey2 set k v]
 
                     assert_aof_manifest_content $aof_manifest_file2 {
                         {file appendonly.aof2.2.base.rdb seq 2 type b}
                         {file appendonly.aof2.2.incr.aof seq 2 type i}
                     }
 
-                    set d1 [$kv2 debug digest]
-                    $kv2 debug loadaof
-                    set d2 [$kv2 debug digest]
+                    set d1 [$valkey2 debug digest]
+                    $valkey2 debug loadaof
+                    set d2 [$valkey2 debug digest]
                     assert {$d1 eq $d2}
                 }
             }
@@ -677,23 +718,23 @@ tags {"external:skip"} {
 
     test {Multi Part AOF can handle appendfilename contains whitespaces} {
         start_server [list overrides [list appendonly yes appendfilename "\" file seq \\n\\n.aof \""]] {
-            set dir [get_kv_dir]
+            set dir [get_valkey_dir]
             set aof_manifest_name [format "%s/%s/%s%s" $dir "appendonlydir" " file seq \n\n.aof " $::manifest_suffix]
-            set kv [kv [srv host] [srv port] 0 $::tls]
+            set valkey [valkey [srv host] [srv port] 0 $::tls]
 
-            assert_equal OK [$kv set k1 v1]
+            assert_equal OK [$valkey set k1 v1]
 
-            $kv bgrewriteaof
-            waitForBgrewriteaof $kv
+            $valkey bgrewriteaof
+            waitForBgrewriteaof $valkey
 
             assert_aof_manifest_content $aof_manifest_name {
                 {file " file seq \n\n.aof .2.base.rdb" seq 2 type b}
                 {file " file seq \n\n.aof .2.incr.aof" seq 2 type i}
             }
 
-            set d1 [$kv debug digest]
-            $kv debug loadaof
-            set d2 [$kv debug digest]
+            set d1 [$valkey debug digest]
+            $valkey debug loadaof
+            set d2 [$valkey debug digest]
             assert {$d1 eq $d2}
         }
 
@@ -702,7 +743,7 @@ tags {"external:skip"} {
 
     test {Multi Part AOF can create BASE (RDB format) when server starts from empty} {
         start_server_aof [list dir $server_path] {
-            set client [kv [srv host] [srv port] 0 $::tls]
+            set client [valkey [srv host] [srv port] 0 $::tls]
             wait_done_loading $client
 
             assert_equal 1 [check_file_exist $aof_dirpath "${aof_basename}.1${::base_aof_suffix}${::rdb_format_suffix}"]
@@ -725,7 +766,7 @@ tags {"external:skip"} {
 
     test {Multi Part AOF can create BASE (AOF format) when server starts from empty} {
         start_server_aof [list dir $server_path aof-use-rdb-preamble no] {
-            set client [kv [srv host] [srv port] 0 $::tls]
+            set client [valkey [srv host] [srv port] 0 $::tls]
             wait_done_loading $client
 
             assert_equal 1 [check_file_exist $aof_dirpath "${aof_basename}.1${::base_aof_suffix}${::aof_format_suffix}"]
@@ -788,7 +829,7 @@ tags {"external:skip"} {
 
 
     start_server {tags {"Multi Part AOF"} overrides {aof-use-rdb-preamble {yes} appendonly {no} save {}}} {
-        set dir [get_kv_dir]
+        set dir [get_valkey_dir]
         set aof_basename "appendonly.aof"
         set aof_dirname "appendonlydir"
         set aof_dirpath "$dir/$aof_dirname"
@@ -1206,7 +1247,7 @@ tags {"external:skip"} {
         }
 
         start_server {overrides {aof-use-rdb-preamble {yes} appendonly {no} save {}}} {
-            set dir [get_kv_dir]
+            set dir [get_valkey_dir]
             set aof_basename "appendonly.aof"
             set aof_dirname "appendonlydir"
             set aof_dirpath "$dir/$aof_dirname"

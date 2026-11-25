@@ -1,5 +1,5 @@
 /*
- * Copyright (c) KV Contributors
+ * Copyright (c) Valkey Contributors
  * All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -17,22 +17,22 @@
 #ifdef USE_LTTNG
 
 #undef LTTNG_UST_TRACEPOINT_PROVIDER
-#define LTTNG_UST_TRACEPOINT_PROVIDER kv_db
+#define LTTNG_UST_TRACEPOINT_PROVIDER valkey_db
 
 #undef LTTNG_UST_TRACEPOINT_INCLUDE
 #define LTTNG_UST_TRACEPOINT_INCLUDE "./trace_db.h"
 
-#if !defined(__KV_TRACE_DB_H__) || defined(LTTNG_UST_TRACEPOINT_HEADER_MULTI_READ)
-#define __KV_TRACE_DB_H__
+#if !defined(__VALKEY_TRACE_DB_H__) || defined(LTTNG_UST_TRACEPOINT_HEADER_MULTI_READ)
+#define __VALKEY_TRACE_DB_H__
 
 #include <lttng/tracepoint.h>
 
 LTTNG_UST_TRACEPOINT_EVENT_CLASS(
     /* Tracepoint class provider name */
-    kv_db,
+    valkey_db,
 
     /* Tracepoint class name */
-    kv_db_class,
+    valkey_db_class,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -47,7 +47,7 @@ LTTNG_UST_TRACEPOINT_EVENT_CLASS(
 
 LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     /* Name of the tracepoint class provider */
-    kv_db, kv_db_class, kv_db, expire_del,
+    valkey_db, valkey_db_class, valkey_db, expire_del,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -57,7 +57,7 @@ LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
 
 LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     /* Name of the tracepoint class provider */
-    kv_db, kv_db_class, kv_db, active_defrag_cycle,
+    valkey_db, valkey_db_class, valkey_db, active_defrag_cycle,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -67,7 +67,7 @@ LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
 
 LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     /* Name of the tracepoint class provider */
-    kv_db, kv_db_class, kv_db, eviction_del,
+    valkey_db, valkey_db_class, valkey_db, eviction_del,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -77,7 +77,7 @@ LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
 
 LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     /* Name of the tracepoint class provider */
-    kv_db, kv_db_class, kv_db, eviction_lazyfree,
+    valkey_db, valkey_db_class, valkey_db, eviction_lazyfree,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -87,7 +87,7 @@ LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
 
 LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     /* Name of the tracepoint class provider */
-    kv_db, kv_db_class, kv_db, eviction_cycle,
+    valkey_db, valkey_db_class, valkey_db, eviction_cycle,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -97,7 +97,7 @@ LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
 
 LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     /* Name of the tracepoint class provider */
-    kv_db, kv_db_class, kv_db, expire_cycle,
+    valkey_db, valkey_db_class, valkey_db, expire_cycle,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -107,7 +107,7 @@ LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
 
 LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     /* Name of the tracepoint class provider */
-    kv_db, kv_db_class, kv_db, expire_cycle_keys,
+    valkey_db, valkey_db_class, valkey_db, expire_cycle_keys,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -117,7 +117,7 @@ LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
 
 LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     /* Name of the tracepoint class provider */
-    kv_db, kv_db_class, kv_db, expire_cycle_fields,
+    valkey_db, valkey_db_class, valkey_db, expire_cycle_fields,
 
     /* List of tracepoint arguments (input) */
     LTTNG_UST_TP_ARGS(
@@ -125,25 +125,25 @@ LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(
     )
 )
 
-#define kv_db_trace(...) lttng_ust_tracepoint(__VA_ARGS__)
+#define valkey_db_trace(...) lttng_ust_tracepoint(__VA_ARGS__)
 
-#endif /* __KV_TRACE_DB_H__ */
+#endif /* __VALKEY_TRACE_DB_H__ */
 
 #include <lttng/tracepoint-event.h>
 
 #else /* USE_LTTNG */
 
-#ifndef __KV_TRACE_DB_H__
-#define __KV_TRACE_DB_H__
+#ifndef __VALKEY_TRACE_DB_H__
+#define __VALKEY_TRACE_DB_H__
 
 /* avoid compiler warning on empty source file */
-static inline void __kv_db_trace(void) {
+static inline void __valkey_db_trace(void) {
 }
 
-#define kv_db_trace(...) \
+#define valkey_db_trace(...) \
     do {                     \
     } while (0)
 
-#endif /* __KV_TRACE_DB_H__ */
+#endif /* __VALKEY_TRACE_DB_H__ */
 
 #endif /* USE_LTTNG */

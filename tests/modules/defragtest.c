@@ -1,10 +1,10 @@
 /* A module that implements defrag callback mechanisms.
  */
 
-#include "kvmodule.h"
+#include "valkeymodule.h"
 #include <stdlib.h>
 
-static KVModuleType *FragType;
+static ValkeyModuleType *FragType;
 
 struct FragObject {
     unsigned long len;
@@ -14,6 +14,7 @@ struct FragObject {
 
 /* Make sure we get the expected cursor */
 unsigned long int last_set_cursor = 0;
+unsigned long int last_set_global_cursor = 0;
 
 unsigned long int datatype_attempts = 0;
 unsigned long int datatype_defragged = 0;
@@ -21,61 +22,96 @@ unsigned long int datatype_resumes = 0;
 unsigned long int datatype_wrong_cursor = 0;
 unsigned long int global_attempts = 0;
 unsigned long int global_defragged = 0;
+unsigned long int global_resumes = 0;
+unsigned long int global_wrong_cursor = 0;
+
+/* Set by FRAG.STALL. */
+int datatype_stall = 0;
 
 int global_strings_len = 0;
-KVModuleString **global_strings = NULL;
+ValkeyModuleString **global_strings = NULL;
+/* If non-zero, the global defrag callback stops after this many strings per
+ * invocation, forcing it to resume via the cursor on later calls. */
+int global_maxstep = 0;
 
-static void createGlobalStrings(KVModuleCtx *ctx, int count)
+static void createGlobalStrings(ValkeyModuleCtx *ctx, int count)
 {
     global_strings_len = count;
-    global_strings = KVModule_Alloc(sizeof(KVModuleString *) * count);
+    global_strings = ValkeyModule_Alloc(sizeof(ValkeyModuleString *) * count);
 
     for (int i = 0; i < count; i++) {
-        global_strings[i] = KVModule_CreateStringFromLongLong(ctx, i);
+        global_strings[i] = ValkeyModule_CreateStringFromLongLong(ctx, i);
     }
 }
 
-static void defragGlobalStrings(KVModuleDefragCtx *ctx)
+static void defragGlobalStrings(ValkeyModuleDefragCtx *ctx)
 {
-    for (int i = 0; i < global_strings_len; i++) {
-        KVModuleString *new = KVModule_DefragKVModuleString(ctx, global_strings[i]);
+    unsigned long i = 0;
+    int steps = 0;
+
+    /* Resume from the saved cursor, validating it's what we set last time. */
+    if (ValkeyModule_DefragCursorGet(ctx, &i) == VALKEYMODULE_OK) {
+        if (i > 0) global_resumes++;
+        if (i != last_set_global_cursor) global_wrong_cursor++;
+    } else {
+        if (last_set_global_cursor != 0) global_wrong_cursor++;
+    }
+
+    for (; i < (unsigned long)global_strings_len; i++) {
+        ValkeyModuleString *new = ValkeyModule_DefragValkeyModuleString(ctx, global_strings[i]);
         global_attempts++;
         if (new != NULL) {
             global_strings[i] = new;
             global_defragged++;
         }
+
+        /* Stop after maxstep strings, or when out of time, saving progress in
+         * the cursor so the next invocation resumes here. */
+        if ((global_maxstep && ++steps >= global_maxstep) ||
+            ValkeyModule_DefragShouldStop(ctx))
+        {
+            ValkeyModule_DefragCursorSet(ctx, i + 1);
+            last_set_global_cursor = i + 1;
+            return;
+        }
     }
+
+    /* Finished: reset the cursor to 0 so core sees this module as done. */
+    ValkeyModule_DefragCursorSet(ctx, 0);
+    last_set_global_cursor = 0;
 }
 
-static void FragInfo(KVModuleInfoCtx *ctx, int for_crash_report) {
-    KVMODULE_NOT_USED(for_crash_report);
+static void FragInfo(ValkeyModuleInfoCtx *ctx, int for_crash_report) {
+    VALKEYMODULE_NOT_USED(for_crash_report);
 
-    KVModule_InfoAddSection(ctx, "stats");
-    KVModule_InfoAddFieldLongLong(ctx, "datatype_attempts", datatype_attempts);
-    KVModule_InfoAddFieldLongLong(ctx, "datatype_defragged", datatype_defragged);
-    KVModule_InfoAddFieldLongLong(ctx, "datatype_resumes", datatype_resumes);
-    KVModule_InfoAddFieldLongLong(ctx, "datatype_wrong_cursor", datatype_wrong_cursor);
-    KVModule_InfoAddFieldLongLong(ctx, "global_attempts", global_attempts);
-    KVModule_InfoAddFieldLongLong(ctx, "global_defragged", global_defragged);
+    ValkeyModule_InfoAddSection(ctx, "stats");
+    ValkeyModule_InfoAddFieldLongLong(ctx, "datatype_attempts", datatype_attempts);
+    ValkeyModule_InfoAddFieldLongLong(ctx, "datatype_defragged", datatype_defragged);
+    ValkeyModule_InfoAddFieldLongLong(ctx, "datatype_resumes", datatype_resumes);
+    ValkeyModule_InfoAddFieldLongLong(ctx, "datatype_wrong_cursor", datatype_wrong_cursor);
+    ValkeyModule_InfoAddFieldLongLong(ctx, "global_attempts", global_attempts);
+    ValkeyModule_InfoAddFieldLongLong(ctx, "global_defragged", global_defragged);
+    ValkeyModule_InfoAddFieldLongLong(ctx, "global_resumes", global_resumes);
+    ValkeyModule_InfoAddFieldLongLong(ctx, "global_wrong_cursor", global_wrong_cursor);
 }
 
 struct FragObject *createFragObject(unsigned long len, unsigned long size, int maxstep) {
-    struct FragObject *o = KVModule_Alloc(sizeof(*o));
+    struct FragObject *o = ValkeyModule_Alloc(sizeof(*o));
     o->len = len;
-    o->values = KVModule_Alloc(sizeof(KVModuleString*) * len);
+    o->values = ValkeyModule_Alloc(sizeof(ValkeyModuleString*) * len);
     o->maxstep = maxstep;
 
     for (unsigned long i = 0; i < len; i++) {
-        o->values[i] = KVModule_Calloc(1, size);
+        o->values[i] = ValkeyModule_Calloc(1, size);
     }
 
     return o;
 }
 
 /* FRAG.RESETSTATS */
-static int fragResetStatsCommand(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
+static int fragResetStatsCommand(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
 
     datatype_attempts = 0;
     datatype_defragged = 0;
@@ -83,73 +119,88 @@ static int fragResetStatsCommand(KVModuleCtx *ctx, KVModuleString **argv, int ar
     datatype_wrong_cursor = 0;
     global_attempts = 0;
     global_defragged = 0;
+    global_resumes = 0;
+    global_wrong_cursor = 0;
 
-    KVModule_ReplyWithSimpleString(ctx, "OK");
-    return KVMODULE_OK;
+    ValkeyModule_ReplyWithSimpleString(ctx, "OK");
+    return VALKEYMODULE_OK;
+}
+
+/* FRAG.STALL 0|1
+ * When set, FragDefrag stops making progress, so its key stays on defrag_later. */
+static int fragStallCommand(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
+    long long stall;
+    if (argc != 2)
+        return ValkeyModule_WrongArity(ctx);
+    if (ValkeyModule_StringToLongLong(argv[1], &stall) != VALKEYMODULE_OK)
+        return ValkeyModule_ReplyWithError(ctx, "ERR invalid value");
+
+    datatype_stall = (stall != 0);
+    return ValkeyModule_ReplyWithSimpleString(ctx, "OK");
 }
 
 /* FRAG.CREATE key len size maxstep */
-static int fragCreateCommand(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+static int fragCreateCommand(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
     if (argc != 5)
-        return KVModule_WrongArity(ctx);
+        return ValkeyModule_WrongArity(ctx);
 
-    KVModuleKey *key = KVModule_OpenKey(ctx,argv[1],
-                                              KVMODULE_READ|KVMODULE_WRITE);
-    int type = KVModule_KeyType(key);
-    if (type != KVMODULE_KEYTYPE_EMPTY)
+    ValkeyModuleKey *key = ValkeyModule_OpenKey(ctx,argv[1],
+                                              VALKEYMODULE_READ|VALKEYMODULE_WRITE);
+    int type = ValkeyModule_KeyType(key);
+    if (type != VALKEYMODULE_KEYTYPE_EMPTY)
     {
-        return KVModule_ReplyWithError(ctx, "ERR key exists");
+        return ValkeyModule_ReplyWithError(ctx, "ERR key exists");
     }
 
     long long len;
-    if ((KVModule_StringToLongLong(argv[2], &len) != KVMODULE_OK)) {
-        return KVModule_ReplyWithError(ctx, "ERR invalid len");
+    if ((ValkeyModule_StringToLongLong(argv[2], &len) != VALKEYMODULE_OK)) {
+        return ValkeyModule_ReplyWithError(ctx, "ERR invalid len");
     }
 
     long long size;
-    if ((KVModule_StringToLongLong(argv[3], &size) != KVMODULE_OK)) {
-        return KVModule_ReplyWithError(ctx, "ERR invalid size");
+    if ((ValkeyModule_StringToLongLong(argv[3], &size) != VALKEYMODULE_OK)) {
+        return ValkeyModule_ReplyWithError(ctx, "ERR invalid size");
     }
 
     long long maxstep;
-    if ((KVModule_StringToLongLong(argv[4], &maxstep) != KVMODULE_OK)) {
-        return KVModule_ReplyWithError(ctx, "ERR invalid maxstep");
+    if ((ValkeyModule_StringToLongLong(argv[4], &maxstep) != VALKEYMODULE_OK)) {
+        return ValkeyModule_ReplyWithError(ctx, "ERR invalid maxstep");
     }
 
     struct FragObject *o = createFragObject(len, size, maxstep);
-    KVModule_ModuleTypeSetValue(key, FragType, o);
-    KVModule_ReplyWithSimpleString(ctx, "OK");
-    KVModule_CloseKey(key);
+    ValkeyModule_ModuleTypeSetValue(key, FragType, o);
+    ValkeyModule_ReplyWithSimpleString(ctx, "OK");
+    ValkeyModule_CloseKey(key);
 
-    return KVMODULE_OK;
+    return VALKEYMODULE_OK;
 }
 
 void FragFree(void *value) {
     struct FragObject *o = value;
 
     for (unsigned long i = 0; i < o->len; i++)
-        KVModule_Free(o->values[i]);
-    KVModule_Free(o->values);
-    KVModule_Free(o);
+        ValkeyModule_Free(o->values[i]);
+    ValkeyModule_Free(o->values);
+    ValkeyModule_Free(o);
 }
 
-size_t FragFreeEffort(KVModuleString *key, const void *value) {
-    KVMODULE_NOT_USED(key);
+size_t FragFreeEffort(ValkeyModuleString *key, const void *value) {
+    VALKEYMODULE_NOT_USED(key);
 
     const struct FragObject *o = value;
     return o->len;
 }
 
-int FragDefrag(KVModuleDefragCtx *ctx, KVModuleString *key, void **value) {
-    KVMODULE_NOT_USED(key);
+int FragDefrag(ValkeyModuleDefragCtx *ctx, ValkeyModuleString *key, void **value) {
+    VALKEYMODULE_NOT_USED(key);
     unsigned long i = 0;
     int steps = 0;
 
-    int dbid = KVModule_GetDbIdFromDefragCtx(ctx);
-    KVModule_Assert(dbid != -1);
+    int dbid = ValkeyModule_GetDbIdFromDefragCtx(ctx);
+    ValkeyModule_Assert(dbid != -1);
 
-    /* Attempt to get cursor, validate it's what we're exepcting */
-    if (KVModule_DefragCursorGet(ctx, &i) == KVMODULE_OK) {
+    /* Attempt to get cursor, validate it's what we're expecting */
+    if (ValkeyModule_DefragCursorGet(ctx, &i) == VALKEYMODULE_OK) {
         if (i > 0) datatype_resumes++;
 
         /* Validate we're expecting this cursor */
@@ -160,7 +211,7 @@ int FragDefrag(KVModuleDefragCtx *ctx, KVModuleString *key, void **value) {
 
     /* Attempt to defrag the object itself */
     datatype_attempts++;
-    struct FragObject *o = KVModule_DefragAlloc(ctx, *value);
+    struct FragObject *o = ValkeyModule_DefragAlloc(ctx, *value);
     if (o == NULL) {
         /* Not defragged */
         o = *value;
@@ -170,19 +221,26 @@ int FragDefrag(KVModuleDefragCtx *ctx, KVModuleString *key, void **value) {
         datatype_defragged++;
     }
 
+    /* Report "not done" without moving the cursor. */
+    if (datatype_stall) {
+        ValkeyModule_DefragCursorSet(ctx, i);
+        last_set_cursor = i;
+        return 1;
+    }
+
     /* Deep defrag now */
     for (; i < o->len; i++) {
         datatype_attempts++;
-        void *new = KVModule_DefragAlloc(ctx, o->values[i]);
+        void *new = ValkeyModule_DefragAlloc(ctx, o->values[i]);
         if (new) {
             o->values[i] = new;
             datatype_defragged++;
         }
 
         if ((o->maxstep && ++steps > o->maxstep) ||
-            ((i % 64 == 0) && KVModule_DefragShouldStop(ctx)))
+            ((i % 64 == 0) && ValkeyModule_DefragShouldStop(ctx)))
         {
-            KVModule_DefragCursorSet(ctx, i);
+            ValkeyModule_DefragCursorSet(ctx, i);
             last_set_cursor = i;
             return 1;
         }
@@ -192,44 +250,57 @@ int FragDefrag(KVModuleDefragCtx *ctx, KVModuleString *key, void **value) {
     return 0;
 }
 
-int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
+int ValkeyModule_OnLoad(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
 
-    if (KVModule_Init(ctx, "defragtest", 1, KVMODULE_APIVER_1)
-        == KVMODULE_ERR) return KVMODULE_ERR;
+    if (ValkeyModule_Init(ctx, "defragtest", 1, VALKEYMODULE_APIVER_1)
+        == VALKEYMODULE_ERR) return VALKEYMODULE_ERR;
 
-    if (KVModule_GetTypeMethodVersion() < KVMODULE_TYPE_METHOD_VERSION) {
-        return KVMODULE_ERR;
+    if (ValkeyModule_GetTypeMethodVersion() < VALKEYMODULE_TYPE_METHOD_VERSION) {
+        return VALKEYMODULE_ERR;
     }
 
     long long glen;
-    if (argc != 1 || KVModule_StringToLongLong(argv[0], &glen) == KVMODULE_ERR) {
-        return KVMODULE_ERR;
+    if (argc < 1 || argc > 2 || ValkeyModule_StringToLongLong(argv[0], &glen) == VALKEYMODULE_ERR) {
+        return VALKEYMODULE_ERR;
+    }
+
+    /* Optional 2nd arg: global defrag step limit per callback invocation. */
+    if (argc == 2) {
+        long long gmaxstep;
+        if (ValkeyModule_StringToLongLong(argv[1], &gmaxstep) == VALKEYMODULE_ERR) {
+            return VALKEYMODULE_ERR;
+        }
+        global_maxstep = gmaxstep;
     }
 
     createGlobalStrings(ctx, glen);
 
-    KVModuleTypeMethods tm = {
-            .version = KVMODULE_TYPE_METHOD_VERSION,
+    ValkeyModuleTypeMethods tm = {
+            .version = VALKEYMODULE_TYPE_METHOD_VERSION,
             .free = FragFree,
             .free_effort = FragFreeEffort,
             .defrag = FragDefrag
     };
 
-    FragType = KVModule_CreateDataType(ctx, "frag_type", 0, &tm);
-    if (FragType == NULL) return KVMODULE_ERR;
+    FragType = ValkeyModule_CreateDataType(ctx, "frag_type", 0, &tm);
+    if (FragType == NULL) return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx, "frag.create",
-                                  fragCreateCommand, "write deny-oom", 1, 1, 1) == KVMODULE_ERR)
-        return KVMODULE_ERR;
+    if (ValkeyModule_CreateCommand(ctx, "frag.create",
+                                  fragCreateCommand, "write deny-oom", 1, 1, 1) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx, "frag.resetstats",
-                                  fragResetStatsCommand, "write deny-oom", 1, 1, 1) == KVMODULE_ERR)
-        return KVMODULE_ERR;
+    if (ValkeyModule_CreateCommand(ctx, "frag.resetstats",
+                                  fragResetStatsCommand, "write deny-oom", 1, 1, 1) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
 
-    KVModule_RegisterInfoFunc(ctx, FragInfo);
-    KVModule_RegisterDefragFunc(ctx, defragGlobalStrings);
+    if (ValkeyModule_CreateCommand(ctx, "frag.stall",
+                                  fragStallCommand, "fast", 0, 0, 0) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
 
-    return KVMODULE_OK;
+    ValkeyModule_RegisterInfoFunc(ctx, FragInfo);
+    ValkeyModule_RegisterDefragFunc(ctx, defragGlobalStrings);
+
+    return VALKEYMODULE_OK;
 }

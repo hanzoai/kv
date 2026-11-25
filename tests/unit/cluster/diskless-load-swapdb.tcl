@@ -47,13 +47,14 @@ test "Main db not affected when fail to diskless load" {
     # backlog size is very small, and dumping rdb will cost several seconds.
     set num 10000
     set value [string repeat A 1024]
-    set rd [kv_deferring_client kv $master_id]
+    set rd [valkey_deferring_client valkey $master_id]
+    $rd client reply off
     for {set j 0} {$j < $num} {incr j} {
         $rd set $j $value
+        if {$j % 1000 == 0} {$rd flush}
     }
-    for {set j 0} {$j < $num} {incr j} {
-        $rd read
-    }
+    $rd client reply on
+    assert_equal OK [$rd read]
 
     # Start the replica again
     resume_process [srv $replica_id pid]

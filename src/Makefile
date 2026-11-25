@@ -1,12 +1,12 @@
-# KV Makefile
+# Valkey Makefile
 # Copyright (C) 2009 Redis Ltd.
 # This file is released under the BSD license, see the COPYING file
 #
 # The Makefile composes the final FINAL_CFLAGS and FINAL_LDFLAGS using
-# what is needed for KV plus the standard CFLAGS and LDFLAGS passed.
-# However when building the dependencies (Jemalloc, Lua, libkv, ...)
+# what is needed for Valkey plus the standard CFLAGS and LDFLAGS passed.
+# However when building the dependencies (Jemalloc, Lua, libvalkey, ...)
 # CFLAGS and LDFLAGS are propagated to the dependencies, so to pass
-# flags only to be used when compiling / linking KV itself SERVER_CFLAGS
+# flags only to be used when compiling / linking Valkey itself SERVER_CFLAGS
 # and SERVER_LDFLAGS are used instead (this is the case of 'make gcov').
 #
 # Dependencies are stored in the Makefile.dep file. To rebuild this file
@@ -31,8 +31,9 @@ endif
 ifneq ($(OPTIMIZATION),-O0)
 	OPTIMIZATION+=-fno-omit-frame-pointer
 endif
-DEPENDENCY_TARGETS=libkv linenoise hdr_histogram fpconv
+DEPENDENCY_TARGETS=libvalkey linenoise hdr_histogram fpconv lz4
 NODEPS:=clean distclean
+CLEAN_ONLY := $(if $(MAKECMDGOALS),$(if $(filter-out $(NODEPS),$(MAKECMDGOALS)),,yes))
 
 # Default settings
 STD=-pedantic
@@ -77,7 +78,7 @@ ifeq ($(uname_S),Linux)
 	MALLOC=jemalloc
 endif
 
-# To get ARM stack traces if KV crashes we need a special C flag.
+# To get ARM stack traces if Valkey crashes we need a special C flag.
 ifneq (,$(filter aarch64 armv%,$(uname_M)))
         CFLAGS+=-funwind-tables
 endif
@@ -136,7 +137,7 @@ ifeq ($(DEBUG_FORCE_DEFRAG), yes)
 	SERVER_CFLAGS +=-DHAVE_DEFRAG -DDEBUG_FORCE_DEFRAG
 endif
 
-FINAL_CFLAGS=$(STD) $(WARN) $(OPT) $(DEBUG) $(CFLAGS) $(SERVER_CFLAGS)
+FINAL_CFLAGS=$(STD) $(WARN) $(OPT) $(DEBUG) $(CFLAGS) $(SERVER_CFLAGS) $(CPPFLAGS)
 FINAL_LDFLAGS=$(LDFLAGS) $(OPT) $(SERVER_LDFLAGS) $(DEBUG)
 FINAL_LIBS=-lm
 DEBUG=-g -ggdb
@@ -171,6 +172,7 @@ ifeq ($(uname_S),SunOS)
 else
 ifeq ($(uname_S),Darwin)
 	# Darwin
+	FINAL_LDFLAGS+= -Wl,-export_dynamic
 	FINAL_LIBS+= -ldl
 	# Homebrew's OpenSSL is not linked to /usr/local to avoid
 	# conflicts with the system's LibreSSL installation so it
@@ -209,18 +211,22 @@ ifeq ($(uname_S),NetBSD)
 else
 ifeq ($(uname_S),FreeBSD)
 	# FreeBSD
+	FINAL_LDFLAGS+= -rdynamic
 	FINAL_LIBS+= -lpthread -lexecinfo
 else
 ifeq ($(uname_S),DragonFly)
 	# DragonFly
+	FINAL_LDFLAGS+= -rdynamic
 	FINAL_LIBS+= -lpthread -lexecinfo
 else
 ifeq ($(uname_S),OpenBSD)
 	# OpenBSD
+	FINAL_LDFLAGS+= -rdynamic
 	FINAL_LIBS+= -lpthread -lexecinfo
 else
 ifeq ($(uname_S),NetBSD)
 	# NetBSD
+	FINAL_LDFLAGS+= -rdynamic
 	FINAL_LIBS+= -lpthread -lexecinfo
 else
 ifeq ($(uname_S),Haiku)
@@ -251,25 +257,80 @@ ifdef OPENSSL_PREFIX
 endif
 
 # Include paths to dependencies
-FINAL_CFLAGS+= -I../deps/libkv/include -I../deps/linenoise -I../deps/hdr_histogram -I../deps/fpconv
+FINAL_CFLAGS+= -I../deps/libvalkey/include -I../deps/linenoise -I../deps/hdr_histogram -I../deps/fpconv -I../deps/fast_float -I../deps/lz4
+
+# Zstandard support is disabled by default.
+BUILD_ZSTD ?= no
+
+ifneq ($(CLEAN_ONLY),yes)
+ifneq ($(filter $(BUILD_ZSTD),yes no),$(BUILD_ZSTD))
+$(error BUILD_ZSTD must be yes or no)
+endif
+endif
+
+ifeq ($(BUILD_ZSTD),yes)
+ifneq ($(CLEAN_ONLY),yes)
+ifdef ZSTD_PREFIX
+ZSTD_STATIC_ARCHIVE := $(firstword $(wildcard \
+    $(ZSTD_PREFIX)/lib/libzstd.a \
+    $(ZSTD_PREFIX)/lib64/libzstd.a))
+	ZSTD_CFLAGS := -I$(ZSTD_PREFIX)/include
+	ZSTD_LIBS := $(ZSTD_STATIC_ARCHIVE)
+else
+ZSTD_PKGCONFIG_LIBDIR := $(shell $(PKG_CONFIG) --variable=libdir libzstd 2>/dev/null)
+ZSTD_PKGCONFIG_PCFILEDIR := $(shell $(PKG_CONFIG) --variable=pcfiledir libzstd 2>/dev/null)
+# Debian and Ubuntu ship libzstd.pc with libdir=/usr/lib while installing the
+# archive to the multiarch directory, so also probe next to the .pc file.
+ZSTD_STATIC_ARCHIVE := $(firstword $(wildcard \
+    $(if $(ZSTD_PKGCONFIG_LIBDIR),$(ZSTD_PKGCONFIG_LIBDIR)/libzstd.a) \
+    $(if $(ZSTD_PKGCONFIG_PCFILEDIR),$(abspath $(ZSTD_PKGCONFIG_PCFILEDIR)/..)/libzstd.a)))
+ZSTD_PKGCONFIG := $(shell $(PKG_CONFIG) --atleast-version=1.4.7 libzstd >/dev/null 2>&1 && test -n "$(ZSTD_STATIC_ARCHIVE)" && echo $$?)
+ifneq ($(ZSTD_PKGCONFIG),0)
+$(error BUILD_ZSTD=yes requires static Zstandard 1.4.7 or newer)
+endif
+	ZSTD_CFLAGS := $(shell $(PKG_CONFIG) --cflags libzstd)
+	ZSTD_LIBS := $(ZSTD_STATIC_ARCHIVE) $(filter-out -lzstd,$(shell $(PKG_CONFIG) --libs --static libzstd))
+endif
+ifeq ($(ZSTD_STATIC_ARCHIVE),)
+$(error BUILD_ZSTD=yes requires a static Zstandard library)
+endif
+	FINAL_CFLAGS += -DHAVE_ZSTD $(ZSTD_CFLAGS)
+	FINAL_LIBS += $(ZSTD_LIBS)
+endif
+endif
 
 # Lua scripting engine module
-LUA_MODULE_NAME:=modules/lua/libkvlua.so
 ifeq ($(BUILD_LUA),no)
+	LUA_MODULE_NAME=
 	LUA_MODULE=
 	LUA_MODULE_INSTALL=
-else
+	FINAL_CFLAGS+=-DSTATIC_LUA=0
+else ifeq ($(BUILD_LUA),module)
+	LUA_MODULE_NAME=modules/lua/libvalkeylua.so
 	LUA_MODULE=$(LUA_MODULE_NAME)
 	LUA_MODULE_INSTALL=install-lua-module
 
 	current_dir = $(shell pwd)
-	FINAL_CFLAGS+=-DLUA_ENABLED -DLUA_LIB=libkvlua.so
-ifeq ($(uname_S),Darwin)
-	FINAL_LDFLAGS+= -Wl,-rpath,$(PREFIX)/lib
-	FINAL_LDFLAGS+= -Wl,-rpath,$(current_dir)/modules/lua
+	FINAL_CFLAGS+=-DLUA_ENABLED -DLUA_LIB=libvalkeylua.so -DSTATIC_LUA=0
+	ifeq ($(uname_S),Darwin)
+		FINAL_LDFLAGS+= -Wl,-rpath,$(PREFIX)/lib
+		FINAL_LDFLAGS+= -Wl,-rpath,$(current_dir)/modules/lua
+	else
+		FINAL_LDFLAGS+= -Wl,-rpath,$(PREFIX)/lib:$(current_dir)/modules/lua -Wl,--disable-new-dtags
+	endif
 else
-	FINAL_LDFLAGS+= -Wl,-rpath,$(PREFIX)/lib:$(current_dir)/modules/lua -Wl,--disable-new-dtags
-endif
+	# The default: building Lua as a static module.
+	LUA_MODULE_NAME=modules/lua/libvalkeylua.a
+	LUA_MODULE=$(LUA_MODULE_NAME)
+	current_dir = $(shell pwd)
+	FINAL_CFLAGS+=-DLUA_ENABLED -DSTATIC_LUA=1
+	ifeq ($(uname_S),Darwin)
+		LUA_LDFLAGS=-Wl,-export_dynamic -Wl,-force_load,$(current_dir)/modules/lua/libvalkeylua.a ../deps/lua/src/liblua.a
+	else ifeq ($(uname_S),FreeBSD)
+		LUA_LDFLAGS=-Wl,--export-dynamic -Wl,--whole-archive $(current_dir)/modules/lua/libvalkeylua.a -Wl,--no-whole-archive ../deps/lua/src/liblua.a
+	else
+		LUA_LDFLAGS=-Wl,--whole-archive $(current_dir)/modules/lua/libvalkeylua.a -Wl,--no-whole-archive ../deps/lua/src/liblua.a
+	endif
 endif
 
 # Determine systemd support and/or build preference (defaulting to auto-detection)
@@ -342,15 +403,15 @@ BUILD_MODULE:=2
 ifeq ($(BUILD_TLS),yes)
 	FINAL_CFLAGS+=-DUSE_OPENSSL=$(BUILD_YES) $(OPENSSL_CFLAGS) -DBUILD_TLS_MODULE=$(BUILD_NO)
 	FINAL_LDFLAGS+=$(OPENSSL_LDFLAGS)
-	FINAL_LIBS += ../deps/libkv/lib/libkv_tls.a $(LIBSSL_LIBS) $(LIBCRYPTO_LIBS)
+	FINAL_LIBS += ../deps/libvalkey/lib/libvalkey_tls.a $(LIBSSL_LIBS) $(LIBCRYPTO_LIBS)
 endif
 
 TLS_MODULE=
-TLS_MODULE_NAME:=kv-tls$(PROG_SUFFIX).so
+TLS_MODULE_NAME:=valkey-tls$(PROG_SUFFIX).so
 TLS_MODULE_CFLAGS:=$(FINAL_CFLAGS)
 ifeq ($(BUILD_TLS),module)
 	FINAL_CFLAGS+=-DUSE_OPENSSL=$(BUILD_MODULE) $(OPENSSL_CFLAGS)
-	TLS_CLIENT_LIBS = ../deps/libkv/lib/libkv_tls.a $(LIBSSL_LIBS) $(LIBCRYPTO_LIBS)
+	TLS_CLIENT_LIBS = ../deps/libvalkey/lib/libvalkey_tls.a $(LIBSSL_LIBS) $(LIBCRYPTO_LIBS)
 	TLS_MODULE=$(TLS_MODULE_NAME)
 	TLS_MODULE_CFLAGS+=-DUSE_OPENSSL=$(BUILD_MODULE) $(OPENSSL_CFLAGS) -DBUILD_TLS_MODULE=$(BUILD_MODULE)
 endif
@@ -365,15 +426,15 @@ endif
 
 ifeq ($(BUILD_RDMA),yes)
 	FINAL_CFLAGS+=-DUSE_RDMA=$(BUILD_YES) -DBUILD_RDMA_MODULE=$(BUILD_NO)
-	FINAL_LIBS += ../deps/libkv/lib/libkv_rdma.a $(RDMA_LIBS)
+	FINAL_LIBS += ../deps/libvalkey/lib/libvalkey_rdma.a $(RDMA_LIBS)
 endif
 
 RDMA_MODULE=
-RDMA_MODULE_NAME:=kv-rdma$(PROG_SUFFIX).so
+RDMA_MODULE_NAME:=valkey-rdma$(PROG_SUFFIX).so
 RDMA_MODULE_CFLAGS:=$(FINAL_CFLAGS)
 ifeq ($(BUILD_RDMA),module)
 	FINAL_CFLAGS+=-DUSE_RDMA=$(BUILD_MODULE)
-	RDMA_CLIENT_LIBS = ../deps/libkv/lib/libkv_rdma.a $(RDMA_LIBS)
+	RDMA_CLIENT_LIBS = ../deps/libvalkey/lib/libvalkey_rdma.a
 	RDMA_MODULE=$(RDMA_MODULE_NAME)
 	RDMA_MODULE_CFLAGS+=-DUSE_RDMA=$(BUILD_MODULE) -DBUILD_RDMA_MODULE=$(BUILD_MODULE) $(RDMA_LIBS)
 endif
@@ -384,13 +445,32 @@ ifndef V
         @$(INSTALL) $(1) $(2)
     endef
 
+    define INSTALL_REDIS_SYMLINK
+        @printf '    %b %b %b %b %b %b %b\n' \
+        $(LINKCOLOR)INSTALL SYMLINK$(ENDCOLOR) \
+        $(BINCOLOR)$(subst $(ENGINE_NAME),redis,$(1))$(ENDCOLOR) -\> $(BINCOLOR)$(1)$(ENDCOLOR) 1>&2
+        @ln -sf $(1) $(2)/$(subst $(ENGINE_NAME),redis,$(1))
+    endef
 else
     define MAKE_INSTALL
         $(INSTALL) $(1) $(2)
     endef
 
+    define INSTALL_REDIS_SYMLINK
+        ln -sf $(1) $(2)/$(subst $(ENGINE_NAME),redis,$(1))
+    endef
 endif
 
+# Determine install/uninstall Redis symlinks for compatibility when
+# installing/uninstalling Valkey binaries (defaulting to `yes`)
+USE_REDIS_SYMLINKS?=yes
+ifeq ($(USE_REDIS_SYMLINKS),yes)
+	MAYBE_INSTALL_REDIS_SYMLINK=$(INSTALL_REDIS_SYMLINK)
+	MAYBE_UNINSTALL_REDIS_SYMLINK=@rm -f $(1)/$(subst $(ENGINE_NAME),redis,$(2))
+else
+	MAYBE_INSTALL_REDIS_SYMLINK=
+	MAYBE_UNINSTALL_REDIS_SYMLINK=
+endif
 
 SERVER_CC=$(QUIET_CC)$(CC) $(FINAL_CFLAGS) -I.
 SERVER_AR=$(QUIET_AR)$(AR)
@@ -438,6 +518,7 @@ ENGINE_SERVER_OBJ = \
     allocator_defrag.o \
     anet.o \
     aof.o \
+	bgiteration.o \
     bio.o \
     bitops.o \
     blocked.o \
@@ -449,6 +530,10 @@ ENGINE_SERVER_OBJ = \
     cluster_slot_stats.o \
     commandlog.o \
     commands.o \
+    compression.o \
+    compression_lz4.o \
+    compression_zstd.o \
+    compression_stream.o \
     config.o \
     connection.o \
     crc16.o \
@@ -459,17 +544,20 @@ ENGINE_SERVER_OBJ = \
     db.o \
     debug.o \
     defrag.o \
-    dict.o \
     entry.o \
     eval.o \
     evict.o \
     expire.o \
+    fbtree.o \
     fifo.o \
+	forkless.o \
     functions.o \
     geo.o \
     geohash.o \
     geohash_helper.o \
     hashtable.o \
+    hotkeys.o \
+    space_saving.o \
     hyperloglog.o \
     intset.o \
     io_threads.o \
@@ -496,12 +584,14 @@ ENGINE_SERVER_OBJ = \
     networking.o \
     notify.o \
     object.o \
+    ordered_index.o \
     pqsort.o \
     pubsub.o \
     quicklist.o \
     rand.o \
     rax.o \
     rdb.o \
+    rdb_transcoder.o \
     rdma.o \
     release.o \
     replication.o \
@@ -525,6 +615,7 @@ ENGINE_SERVER_OBJ = \
     syscheck.o \
     t_hash.o \
     t_list.o \
+    t_path_hash.o \
     t_set.o \
     t_stream.o \
     t_string.o \
@@ -535,13 +626,19 @@ ENGINE_SERVER_OBJ = \
     tracking.o \
     unix.o \
     util.o \
-    kv-check-aof.o \
-    kv-check-rdb.o \
+    valkey-check-aof.o \
+    valkey-check-rdb.o \
+    valkey_strtod.o \
     vector.o \
     vset.o \
     ziplist.o \
     zipmap.o \
-    zmalloc.o
+    zmalloc.o \
+    queues.o \
+    throttle_token_bucket.o \
+    stat_calc.o \
+    throttle_repl.o \
+    throttle.o
 ENGINE_SERVER_OBJ+=$(ENGINE_TRACE_OBJ)
 ENGINE_CLI_NAME=$(ENGINE_NAME)-cli$(PROG_SUFFIX)
 ENGINE_CLI_OBJ = \
@@ -554,7 +651,7 @@ ENGINE_CLI_OBJ = \
     crc64.o \
     crccombine.o \
     crcspeed.o \
-    dict.o \
+    hashtable.o \
     monotonic.o \
     mt19937-64.o \
     release.o \
@@ -564,7 +661,8 @@ ENGINE_CLI_OBJ = \
     siphash.o \
     strl.o \
     util.o \
-    kv-cli.o \
+    valkey-cli.o \
+    valkey_strtod.o \
     zmalloc.o
 ENGINE_BENCHMARK_NAME=$(ENGINE_NAME)-benchmark$(PROG_SUFFIX)
 ENGINE_BENCHMARK_OBJ = \
@@ -577,9 +675,9 @@ ENGINE_BENCHMARK_OBJ = \
     crc64.o \
     crccombine.o \
     crcspeed.o \
-    dict.o \
     fuzzer_client.o \
     fuzzer_command_generator.o \
+    hashtable.o \
     monotonic.o \
     mt19937-64.o \
     release.o \
@@ -589,26 +687,15 @@ ENGINE_BENCHMARK_OBJ = \
     siphash.o \
     strl.o \
     util.o \
-    kv-benchmark.o \
+    valkey-benchmark.o \
+    valkey-benchmark-dataset.o \
+    valkey_strtod.o \
     zmalloc.o
 ENGINE_CHECK_RDB_NAME=$(ENGINE_NAME)-check-rdb$(PROG_SUFFIX)
 ENGINE_CHECK_AOF_NAME=$(ENGINE_NAME)-check-aof$(PROG_SUFFIX)
 ENGINE_LIB_NAME=lib$(ENGINE_NAME).a
-ENGINE_TEST_FILES:=$(wildcard unit/*.c)
-ENGINE_TEST_OBJ:=$(sort $(patsubst unit/%.c,unit/%.o,$(ENGINE_TEST_FILES)))
-ENGINE_UNIT_TESTS:=$(ENGINE_NAME)-unit-tests$(PROG_SUFFIX)
+ENGINE_UNIT_GTESTS:=$(ENGINE_NAME)-unit-gtests$(PROG_SUFFIX)
 ALL_SOURCES=$(sort $(patsubst %.o,%.c,$(ENGINE_SERVER_OBJ) $(ENGINE_CLI_OBJ) $(ENGINE_BENCHMARK_OBJ)))
-
-USE_FAST_FLOAT?=no
-ifeq ($(USE_FAST_FLOAT),yes)
-	# kv_strtod.h uses this flag to switch kv_strtod function to fast_float_strtod,
-	# therefore let's pass it to compiler for preprocessing.
-	FINAL_CFLAGS += -D USE_FAST_FLOAT
-	# next, let's build and add actual library containing fast_float_strtod function for linking.
-	DEPENDENCY_TARGETS += fast_float_c_interface
-	FAST_FLOAT_STRTOD_OBJECT := ../deps/fast_float_c_interface/fast_float_strtod.o
-	FINAL_LIBS += $(FAST_FLOAT_STRTOD_OBJECT)
-endif
 
 USE_LIBBACKTRACE?=no
 ifeq ($(USE_LIBBACKTRACE),yes)
@@ -620,7 +707,9 @@ ifeq ($(USE_LIBBACKTRACE),yes)
 	FINAL_LIBS += -lbacktrace
 endif
 
-ALL_BUILD_PREREQUISITES=$(SERVER_NAME) $(ENGINE_SENTINEL_NAME) $(ENGINE_CLI_NAME) $(ENGINE_BENCHMARK_NAME) $(ENGINE_CHECK_RDB_NAME) $(ENGINE_CHECK_AOF_NAME) $(TLS_MODULE) $(RDMA_MODULE) $(LUA_MODULE)
+DEPENDENCY_TARGETS+= gtest-parallel
+
+ALL_BUILD_PREREQUISITES=$(SERVER_NAME) $(ENGINE_SENTINEL_NAME) $(ENGINE_CLI_NAME) $(ENGINE_BENCHMARK_NAME) $(ENGINE_CHECK_RDB_NAME) $(ENGINE_CHECK_AOF_NAME) $(TLS_MODULE) $(RDMA_MODULE)
 
 all: $(ALL_BUILD_PREREQUISITES)
 	@echo ""
@@ -636,7 +725,7 @@ endif
 
 .PHONY: all
 
-all-with-unit-tests: all $(ENGINE_UNIT_TESTS)
+all-with-unit-tests: all $(ENGINE_UNIT_GTESTS)
 .PHONY: all
 
 persist-settings: distclean
@@ -646,17 +735,22 @@ persist-settings: distclean
 	echo PROG_SUFFIX=$(PROG_SUFFIX) >> .make-settings
 	echo MALLOC=$(MALLOC) >> .make-settings
 	echo BUILD_TLS=$(BUILD_TLS) >> .make-settings
+	echo OPENSSL_PREFIX=$(OPENSSL_PREFIX) >> .make-settings
 	echo BUILD_RDMA=$(BUILD_RDMA) >> .make-settings
+	echo BUILD_ZSTD=$(BUILD_ZSTD) >> .make-settings
+	echo ZSTD_PREFIX=$(ZSTD_PREFIX) >> .make-settings
 	echo USE_SYSTEMD=$(USE_SYSTEMD) >> .make-settings
 	echo BUILD_LUA=$(BUILD_LUA) >> .make-settings
-	echo USE_FAST_FLOAT=$(USE_FAST_FLOAT) >> .make-settings
 	echo USE_LIBBACKTRACE=$(USE_LIBBACKTRACE) >> .make-settings
+	echo LIBBACKTRACE_PREFIX=$(LIBBACKTRACE_PREFIX) >> .make-settings
 	echo CFLAGS=$(CFLAGS) >> .make-settings
 	echo LDFLAGS=$(LDFLAGS) >> .make-settings
+	echo CPPFLAGS=$(CPPFLAGS) >> .make-settings
 	echo SERVER_CFLAGS=$(SERVER_CFLAGS) >> .make-settings
 	echo SERVER_LDFLAGS=$(SERVER_LDFLAGS) >> .make-settings
 	echo PREV_FINAL_CFLAGS=$(FINAL_CFLAGS) >> .make-settings
 	echo PREV_FINAL_LDFLAGS=$(FINAL_LDFLAGS) >> .make-settings
+	echo ENGINE_SERVER_OBJ=$(ENGINE_SERVER_OBJ) >> .make-settings
 	-(cd ../deps && $(MAKE) $(DEPENDENCY_TARGETS))
 
 .PHONY: persist-settings
@@ -674,50 +768,50 @@ ifneq ($(strip $(PREV_FINAL_LDFLAGS)), $(strip $(FINAL_LDFLAGS)))
 .make-prerequisites: persist-settings
 endif
 
-# kv-server
-$(SERVER_NAME): $(ENGINE_SERVER_OBJ)
-	$(SERVER_LD) -o $@ $^ ../deps/libkv/lib/libkv.a ../deps/hdr_histogram/libhdrhistogram.a ../deps/fpconv/libfpconv.a $(FINAL_LIBS)
+# valkey-server
+$(SERVER_NAME): $(ENGINE_SERVER_OBJ) $(LUA_MODULE)
+	$(SERVER_LD) -o $@ $(ENGINE_SERVER_OBJ) ../deps/libvalkey/lib/libvalkey.a ../deps/hdr_histogram/libhdrhistogram.a ../deps/fpconv/libfpconv.a ../deps/lz4/liblz4.a $(FINAL_LIBS) $(LUA_LDFLAGS)
 
-# KV static library, used to compile against for unit testing
+# Valkey static library, used to compile against for unit testing
 $(ENGINE_LIB_NAME): $(ENGINE_SERVER_OBJ)
 	@rm -f $@
 	$(SERVER_AR) rcs $@ $^
 
-# kv-unit-tests
-$(ENGINE_UNIT_TESTS): $(ENGINE_TEST_OBJ) $(ENGINE_LIB_NAME)
-	$(SERVER_LD) -o $@ $^ ../deps/libkv/lib/libkv.a ../deps/hdr_histogram/libhdrhistogram.a ../deps/fpconv/libfpconv.a $(FINAL_LIBS)
-
-# kv-sentinel
+# valkey-sentinel
 $(ENGINE_SENTINEL_NAME): $(SERVER_NAME)
 	$(ENGINE_INSTALL) $(SERVER_NAME) $(ENGINE_SENTINEL_NAME)
 
-# kv-check-rdb
+# valkey-check-rdb
 $(ENGINE_CHECK_RDB_NAME): $(SERVER_NAME)
 	$(ENGINE_INSTALL) $(SERVER_NAME) $(ENGINE_CHECK_RDB_NAME)
 
-# kv-check-aof
+# valkey-check-aof
 $(ENGINE_CHECK_AOF_NAME): $(SERVER_NAME)
 	$(ENGINE_INSTALL) $(SERVER_NAME) $(ENGINE_CHECK_AOF_NAME)
 
-# kv-tls.so
+# valkey-tls.so
 $(TLS_MODULE_NAME): $(SERVER_NAME)
-	$(QUIET_CC)$(CC) -o $@ tls.c -shared -fPIC $(TLS_MODULE_CFLAGS) $(TLS_CLIENT_LIBS)
+	$(QUIET_CC)$(CC) $(LDFLAGS) -o $@ tls.c -shared -fPIC $(TLS_MODULE_CFLAGS) $(TLS_CLIENT_LIBS)
 
-# kv-rdma.so
+# valkey-rdma.so
 $(RDMA_MODULE_NAME): $(SERVER_NAME)
-	$(QUIET_CC)$(CC) -o $@ rdma.c -shared -fPIC $(RDMA_MODULE_CFLAGS)
+	$(QUIET_CC)$(CC) $(LDFLAGS) -o $@ rdma.c -shared -fPIC $(RDMA_MODULE_CFLAGS)
 
 # engine_lua.so
-$(LUA_MODULE_NAME): $(SERVER_NAME)
-	cd modules/lua && $(MAKE) OPTIMIZATION="$(OPTIMIZATION)"
+# FORCE runs the sub-make on every build so it can rebuild changed Lua sources.
+$(LUA_MODULE_NAME): .make-prerequisites FORCE
+	$(MAKE) -C modules/lua OPTIMIZATION="$(OPTIMIZATION)" BUILD_LUA="$(BUILD_LUA)"
 
-# kv-cli
+.PHONY: FORCE
+FORCE:
+
+# valkey-cli
 $(ENGINE_CLI_NAME): $(ENGINE_CLI_OBJ)
-	$(SERVER_LD) -o $@ $^ ../deps/libkv/lib/libkv.a ../deps/linenoise/linenoise.o ../deps/fpconv/libfpconv.a $(FINAL_LIBS) $(TLS_CLIENT_LIBS) $(RDMA_CLIENT_LIBS)
+	$(SERVER_LD) -o $@ $^ ../deps/libvalkey/lib/libvalkey.a ../deps/linenoise/linenoise.o ../deps/fpconv/libfpconv.a $(FINAL_LIBS) $(TLS_CLIENT_LIBS) $(RDMA_CLIENT_LIBS)
 
-# kv-benchmark
+# valkey-benchmark
 $(ENGINE_BENCHMARK_NAME): $(ENGINE_BENCHMARK_OBJ)
-	$(SERVER_LD) -o $@ $^ ../deps/libkv/lib/libkv.a ../deps/hdr_histogram/libhdrhistogram.a ../deps/fpconv/libfpconv.a $(FINAL_LIBS) $(TLS_CLIENT_LIBS) $(RDMA_CLIENT_LIBS)
+	$(SERVER_LD) -o $@ $^ ../deps/libvalkey/lib/libvalkey.a ../deps/hdr_histogram/libhdrhistogram.a ../deps/fpconv/libfpconv.a $(FINAL_LIBS) $(TLS_CLIENT_LIBS) $(RDMA_CLIENT_LIBS)
 
 DEP = $(ENGINE_SERVER_OBJ:%.o=%.d) $(ENGINE_CLI_OBJ:%.o=%.d) $(ENGINE_BENCHMARK_OBJ:%.o=%.d)
 -include $(DEP)
@@ -731,9 +825,6 @@ DEP = $(ENGINE_SERVER_OBJ:%.o=%.d) $(ENGINE_CLI_OBJ:%.o=%.d) $(ENGINE_BENCHMARK_
 trace/%.o: trace/%.c .make-prerequisites
 	$(SERVER_CC) -Itrace -MMD -o $@ -c $<
 
-unit/%.o: unit/%.c .make-prerequisites
-	$(SERVER_CC) -MMD -o $@ -c $<
-
 # The following files are checked in and don't normally need to be rebuilt. They
 # are built only if python is available and their prereqs are modified.
 ifneq (,$(PYTHON))
@@ -744,17 +835,12 @@ fmtargs.h: ../utils/generate-fmtargs.py
 	$(QUITE_GEN)sed '/Everything below this line/,$$d' $@ > $@.tmp
 	$(QUITE_GEN)$(PYTHON) ../utils/generate-fmtargs.py >> $@.tmp
 	$(QUITE_GEN)mv $@.tmp $@
-
-unit/test_files.h: unit/*.c ../utils/generate-unit-test-header.py
-	$(QUIET_GEN)$(PYTHON) ../utils/generate-unit-test-header.py
-
-unit/test_main.o: unit/test_files.h
 endif
 
 commands.c: $(COMMANDS_DEF_FILENAME).def
 
 clean:
-	rm -rf $(SERVER_NAME) $(ENGINE_SENTINEL_NAME) $(ENGINE_CLI_NAME) $(ENGINE_BENCHMARK_NAME) $(ENGINE_CHECK_RDB_NAME) $(ENGINE_CHECK_AOF_NAME) $(ENGINE_UNIT_TESTS) $(ENGINE_LIB_NAME) unit/*.o unit/*.d trace/*.o trace/*.d *.o *.gcda *.gcno *.gcov kv.info lcov-html Makefile.dep *.so
+	rm -rf $(SERVER_NAME) $(ENGINE_SENTINEL_NAME) $(ENGINE_CLI_NAME) $(ENGINE_BENCHMARK_NAME) $(ENGINE_CHECK_RDB_NAME) $(ENGINE_CHECK_AOF_NAME) $(ENGINE_UNIT_GTESTS) $(ENGINE_LIB_NAME) trace/*.o trace/*.d *.o *.gcda *.gcno *.gcov valkey.info lcov-html Makefile.dep *.so
 	rm -f $(DEP)
 	-(cd modules/lua && $(MAKE) clean)
 
@@ -764,33 +850,40 @@ distclean: clean
 	-(cd ../deps && $(MAKE) distclean)
 	-(cd modules && $(MAKE) clean)
 	-(cd ../tests/modules && $(MAKE) clean)
+	-(cd unit && $(MAKE) clean)
 	-(rm -f .make-*)
+	-(find unit -type d -name __pycache__ -exec rm -rf {} +)
 
 .PHONY: distclean
 
 test: $(ALL_BUILD_PREREQUISITES)
-	@(cd ..; KV_PROG_SUFFIX="$(PROG_SUFFIX)" ./runtest)
+	@(cd ..; VALKEY_PROG_SUFFIX="$(PROG_SUFFIX)" ./runtest $(TEST_OPTIONS))
 
-test-unit: $(ENGINE_UNIT_TESTS)
-	./$(ENGINE_UNIT_TESTS)
+test-unit:
+	@(cd unit && $(MAKE) test-unit)
+
+# valkey-unit-gtests
+$(ENGINE_UNIT_GTESTS): $(ENGINE_LIB_NAME)
+	@(cd unit && $(MAKE) $(ENGINE_UNIT_GTESTS))
 
 test-modules: $(SERVER_NAME)
-	@(cd ..; ./runtest-moduleapi)
+	@(cd ..; ./runtest-moduleapi $(TEST_OPTIONS))
 
 test-sentinel: $(ENGINE_SENTINEL_NAME) $(ENGINE_CLI_NAME)
-	@(cd ..; ./runtest-sentinel)
+	@(cd ..; ./runtest-sentinel $(TEST_OPTIONS))
 
 test-cluster: $(SERVER_NAME) $(ENGINE_CLI_NAME)
-	@(cd ..; ./runtest-cluster)
+	@(cd ..; ./runtest-cluster $(TEST_OPTIONS))
 
 check: test
 
 lcov:
 	@lcov --version
 	$(MAKE) gcov
-	@(set -e; cd ..; ./runtest)
-	@geninfo -o kv.info .
-	@genhtml --legend -o lcov-html kv.info
+	@(set -e; cd ..; ./runtest $(TEST_OPTIONS))
+	$(MAKE) test-unit COVERAGE=1 COVERAGE_CFLAGS="-fprofile-arcs -ftest-coverage"
+	@geninfo -o valkey.info .
+	@genhtml --legend -o lcov-html valkey.info
 
 .PHONY: lcov
 
@@ -823,6 +916,12 @@ install: all $(LUA_MODULE_INSTALL)
 	@ln -sf $(SERVER_NAME) $(INSTALL_BIN)/$(ENGINE_CHECK_RDB_NAME)
 	@ln -sf $(SERVER_NAME) $(INSTALL_BIN)/$(ENGINE_CHECK_AOF_NAME)
 	@ln -sf $(SERVER_NAME) $(INSTALL_BIN)/$(ENGINE_SENTINEL_NAME)
+	$(call MAYBE_INSTALL_REDIS_SYMLINK,$(SERVER_NAME),$(INSTALL_BIN))
+	$(call MAYBE_INSTALL_REDIS_SYMLINK,$(ENGINE_CLI_NAME),$(INSTALL_BIN))
+	$(call MAYBE_INSTALL_REDIS_SYMLINK,$(ENGINE_BENCHMARK_NAME),$(INSTALL_BIN))
+	$(call MAYBE_INSTALL_REDIS_SYMLINK,$(ENGINE_CHECK_RDB_NAME),$(INSTALL_BIN))
+	$(call MAYBE_INSTALL_REDIS_SYMLINK,$(ENGINE_CHECK_AOF_NAME),$(INSTALL_BIN))
+	$(call MAYBE_INSTALL_REDIS_SYMLINK,$(ENGINE_SENTINEL_NAME),$(INSTALL_BIN))
 
 install-lua-module: $(LUA_MODULE)
 	@mkdir -p $(INSTALL_LIB)
@@ -830,3 +929,9 @@ install-lua-module: $(LUA_MODULE)
 
 uninstall:
 	@rm -f $(INSTALL_BIN)/{$(SERVER_NAME),$(ENGINE_BENCHMARK_NAME),$(ENGINE_CLI_NAME),$(ENGINE_CHECK_RDB_NAME),$(ENGINE_CHECK_AOF_NAME),$(ENGINE_SENTINEL_NAME)}
+	$(call MAYBE_UNINSTALL_REDIS_SYMLINK,$(INSTALL_BIN),$(SERVER_NAME))
+	$(call MAYBE_UNINSTALL_REDIS_SYMLINK,$(INSTALL_BIN),$(ENGINE_CLI_NAME))
+	$(call MAYBE_UNINSTALL_REDIS_SYMLINK,$(INSTALL_BIN),$(ENGINE_BENCHMARK_NAME))
+	$(call MAYBE_UNINSTALL_REDIS_SYMLINK,$(INSTALL_BIN),$(ENGINE_CHECK_RDB_NAME))
+	$(call MAYBE_UNINSTALL_REDIS_SYMLINK,$(INSTALL_BIN),$(ENGINE_CHECK_AOF_NAME))
+	$(call MAYBE_UNINSTALL_REDIS_SYMLINK,$(INSTALL_BIN),$(ENGINE_SENTINEL_NAME))

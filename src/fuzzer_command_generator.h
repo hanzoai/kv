@@ -1,7 +1,7 @@
 #ifndef FUZZER_COMMAND_GENERATOR_H
 #define FUZZER_COMMAND_GENERATOR_H
 
-#include <kv/kv.h>
+#include <valkey/valkey.h>
 #include "sds.h"
 
 typedef struct FuzzerCommand {
@@ -16,7 +16,7 @@ typedef enum {
     FUZZ_MODE_CONFIG_COMMANDS = (1 << 1)
 } FuzzMode;
 
-int initFuzzer(kvContext *ctx, int num_keys, int cluster_mode, int fuzz_flags);
+int initFuzzer(valkeyContext *ctx, long long num_keys, int cluster_mode, int fuzz_flags);
 void cleanupFuzzer(void);
 void initThreadClientCtx(int fuzz_flags);
 void resetClientFuzzCtx(void);

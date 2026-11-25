@@ -1,5 +1,5 @@
 /* This module is used to test the propagation (replication + AOF) of
- * commands, via the KVModule_Replicate() interface, in asynchronous
+ * commands, via the ValkeyModule_Replicate() interface, in asynchronous
  * contexts, such as callbacks not implementing commands, and thread safe
  * contexts.
  *
@@ -37,390 +37,390 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "kvmodule.h"
+#include "valkeymodule.h"
 #include <pthread.h>
 #include <errno.h>
 
 #define UNUSED(V) ((void) V)
 
-KVModuleCtx *detached_ctx = NULL;
+ValkeyModuleCtx *detached_ctx = NULL;
 
-static int KeySpace_NotificationGeneric(KVModuleCtx *ctx, int type, const char *event, KVModuleString *key) {
-    KVMODULE_NOT_USED(type);
-    KVMODULE_NOT_USED(event);
-    KVMODULE_NOT_USED(key);
+static int KeySpace_NotificationGeneric(ValkeyModuleCtx *ctx, int type, const char *event, ValkeyModuleString *key) {
+    VALKEYMODULE_NOT_USED(type);
+    VALKEYMODULE_NOT_USED(event);
+    VALKEYMODULE_NOT_USED(key);
 
-    KVModuleCallReply* rep = KVModule_Call(ctx, "INCR", "c!", "notifications");
-    KVModule_FreeCallReply(rep);
+    ValkeyModuleCallReply* rep = ValkeyModule_Call(ctx, "INCR", "c!", "notifications");
+    ValkeyModule_FreeCallReply(rep);
 
-    return KVMODULE_OK;
+    return VALKEYMODULE_OK;
 }
 
 /* Timer callback. */
-void timerHandler(KVModuleCtx *ctx, void *data) {
-    KVMODULE_NOT_USED(ctx);
-    KVMODULE_NOT_USED(data);
+void timerHandler(ValkeyModuleCtx *ctx, void *data) {
+    VALKEYMODULE_NOT_USED(ctx);
+    VALKEYMODULE_NOT_USED(data);
 
     static int times = 0;
 
-    KVModule_Replicate(ctx,"INCR","c","timer");
+    ValkeyModule_Replicate(ctx,"INCR","c","timer");
     times++;
 
     if (times < 3)
-        KVModule_CreateTimer(ctx,100,timerHandler,NULL);
+        ValkeyModule_CreateTimer(ctx,100,timerHandler,NULL);
     else
         times = 0;
 }
 
-int propagateTestTimerCommand(KVModuleCtx *ctx, KVModuleString **argv, int argc)
+int propagateTestTimerCommand(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc)
 {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
 
-    KVModuleTimerID timer_id =
-        KVModule_CreateTimer(ctx,100,timerHandler,NULL);
-    KVMODULE_NOT_USED(timer_id);
+    ValkeyModuleTimerID timer_id =
+        ValkeyModule_CreateTimer(ctx,100,timerHandler,NULL);
+    VALKEYMODULE_NOT_USED(timer_id);
 
-    KVModule_ReplyWithSimpleString(ctx,"OK");
-    return KVMODULE_OK;
+    ValkeyModule_ReplyWithSimpleString(ctx,"OK");
+    return VALKEYMODULE_OK;
 }
 
 /* Timer callback. */
-void timerNestedHandler(KVModuleCtx *ctx, void *data) {
+void timerNestedHandler(ValkeyModuleCtx *ctx, void *data) {
     int repl = (long long)data;
 
     /* The goal is the trigger a module command that calls RM_Replicate
      * in order to test MULTI/EXEC structure */
-    KVModule_Replicate(ctx,"INCRBY","cc","timer-nested-start","1");
-    KVModuleCallReply *reply = KVModule_Call(ctx,"propagate-test.nested", repl? "!" : "");
-    KVModule_FreeCallReply(reply);
-    reply = KVModule_Call(ctx, "INCR", repl? "c!" : "c", "timer-nested-middle");
-    KVModule_FreeCallReply(reply);
-    KVModule_Replicate(ctx,"INCRBY","cc","timer-nested-end","1");
+    ValkeyModule_Replicate(ctx,"INCRBY","cc","timer-nested-start","1");
+    ValkeyModuleCallReply *reply = ValkeyModule_Call(ctx,"propagate-test.nested", repl? "!" : "");
+    ValkeyModule_FreeCallReply(reply);
+    reply = ValkeyModule_Call(ctx, "INCR", repl? "c!" : "c", "timer-nested-middle");
+    ValkeyModule_FreeCallReply(reply);
+    ValkeyModule_Replicate(ctx,"INCRBY","cc","timer-nested-end","1");
 }
 
-int propagateTestTimerNestedCommand(KVModuleCtx *ctx, KVModuleString **argv, int argc)
+int propagateTestTimerNestedCommand(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc)
 {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
 
-    KVModuleTimerID timer_id =
-        KVModule_CreateTimer(ctx,100,timerNestedHandler,(void*)0);
-    KVMODULE_NOT_USED(timer_id);
+    ValkeyModuleTimerID timer_id =
+        ValkeyModule_CreateTimer(ctx,100,timerNestedHandler,(void*)0);
+    VALKEYMODULE_NOT_USED(timer_id);
 
-    KVModule_ReplyWithSimpleString(ctx,"OK");
-    return KVMODULE_OK;
+    ValkeyModule_ReplyWithSimpleString(ctx,"OK");
+    return VALKEYMODULE_OK;
 }
 
-int propagateTestTimerNestedReplCommand(KVModuleCtx *ctx, KVModuleString **argv, int argc)
+int propagateTestTimerNestedReplCommand(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc)
 {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
 
-    KVModuleTimerID timer_id =
-        KVModule_CreateTimer(ctx,100,timerNestedHandler,(void*)1);
-    KVMODULE_NOT_USED(timer_id);
+    ValkeyModuleTimerID timer_id =
+        ValkeyModule_CreateTimer(ctx,100,timerNestedHandler,(void*)1);
+    VALKEYMODULE_NOT_USED(timer_id);
 
-    KVModule_ReplyWithSimpleString(ctx,"OK");
-    return KVMODULE_OK;
+    ValkeyModule_ReplyWithSimpleString(ctx,"OK");
+    return VALKEYMODULE_OK;
 }
 
-void timerHandlerMaxmemory(KVModuleCtx *ctx, void *data) {
-    KVMODULE_NOT_USED(ctx);
-    KVMODULE_NOT_USED(data);
+void timerHandlerMaxmemory(ValkeyModuleCtx *ctx, void *data) {
+    VALKEYMODULE_NOT_USED(ctx);
+    VALKEYMODULE_NOT_USED(data);
 
-    KVModuleCallReply *reply = KVModule_Call(ctx,"SETEX","ccc!","timer-maxmemory-volatile-start","100","1");
-    KVModule_FreeCallReply(reply);
-    reply = KVModule_Call(ctx, "CONFIG", "ccc!", "SET", "maxmemory", "1");
-    KVModule_FreeCallReply(reply);
+    ValkeyModuleCallReply *reply = ValkeyModule_Call(ctx,"SETEX","ccc!","timer-maxmemory-volatile-start","100","1");
+    ValkeyModule_FreeCallReply(reply);
+    reply = ValkeyModule_Call(ctx, "CONFIG", "ccc!", "SET", "maxmemory", "1");
+    ValkeyModule_FreeCallReply(reply);
 
-    KVModule_Replicate(ctx, "INCR", "c", "timer-maxmemory-middle");
+    ValkeyModule_Replicate(ctx, "INCR", "c", "timer-maxmemory-middle");
 
-    reply = KVModule_Call(ctx,"SETEX","ccc!","timer-maxmemory-volatile-end","100","1");
-    KVModule_FreeCallReply(reply);
+    reply = ValkeyModule_Call(ctx,"SETEX","ccc!","timer-maxmemory-volatile-end","100","1");
+    ValkeyModule_FreeCallReply(reply);
 }
 
-int propagateTestTimerMaxmemoryCommand(KVModuleCtx *ctx, KVModuleString **argv, int argc)
+int propagateTestTimerMaxmemoryCommand(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc)
 {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
 
-    KVModuleTimerID timer_id =
-        KVModule_CreateTimer(ctx,100,timerHandlerMaxmemory,(void*)1);
-    KVMODULE_NOT_USED(timer_id);
+    ValkeyModuleTimerID timer_id =
+        ValkeyModule_CreateTimer(ctx,100,timerHandlerMaxmemory,(void*)1);
+    VALKEYMODULE_NOT_USED(timer_id);
 
-    KVModule_ReplyWithSimpleString(ctx,"OK");
-    return KVMODULE_OK;
+    ValkeyModule_ReplyWithSimpleString(ctx,"OK");
+    return VALKEYMODULE_OK;
 }
 
-void timerHandlerEval(KVModuleCtx *ctx, void *data) {
-    KVMODULE_NOT_USED(ctx);
-    KVMODULE_NOT_USED(data);
+void timerHandlerEval(ValkeyModuleCtx *ctx, void *data) {
+    VALKEYMODULE_NOT_USED(ctx);
+    VALKEYMODULE_NOT_USED(data);
 
-    KVModuleCallReply *reply = KVModule_Call(ctx,"INCRBY","cc!","timer-eval-start","1");
-    KVModule_FreeCallReply(reply);
-    reply = KVModule_Call(ctx, "EVAL", "cccc!", "redis.call('set',KEYS[1],ARGV[1])", "1", "foo", "bar");
-    KVModule_FreeCallReply(reply);
+    ValkeyModuleCallReply *reply = ValkeyModule_Call(ctx,"INCRBY","cc!","timer-eval-start","1");
+    ValkeyModule_FreeCallReply(reply);
+    reply = ValkeyModule_Call(ctx, "EVAL", "cccc!", "redis.call('set',KEYS[1],ARGV[1])", "1", "foo", "bar");
+    ValkeyModule_FreeCallReply(reply);
 
-    KVModule_Replicate(ctx, "INCR", "c", "timer-eval-middle");
+    ValkeyModule_Replicate(ctx, "INCR", "c", "timer-eval-middle");
 
-    reply = KVModule_Call(ctx,"INCRBY","cc!","timer-eval-end","1");
-    KVModule_FreeCallReply(reply);
+    reply = ValkeyModule_Call(ctx,"INCRBY","cc!","timer-eval-end","1");
+    ValkeyModule_FreeCallReply(reply);
 }
 
-int propagateTestTimerEvalCommand(KVModuleCtx *ctx, KVModuleString **argv, int argc)
+int propagateTestTimerEvalCommand(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc)
 {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
 
-    KVModuleTimerID timer_id =
-        KVModule_CreateTimer(ctx,100,timerHandlerEval,(void*)1);
-    KVMODULE_NOT_USED(timer_id);
+    ValkeyModuleTimerID timer_id =
+        ValkeyModule_CreateTimer(ctx,100,timerHandlerEval,(void*)1);
+    VALKEYMODULE_NOT_USED(timer_id);
 
-    KVModule_ReplyWithSimpleString(ctx,"OK");
-    return KVMODULE_OK;
+    ValkeyModule_ReplyWithSimpleString(ctx,"OK");
+    return VALKEYMODULE_OK;
 }
 
 /* The thread entry point. */
 void *threadMain(void *arg) {
-    KVMODULE_NOT_USED(arg);
-    KVModuleCtx *ctx = KVModule_GetThreadSafeContext(NULL);
-    KVModule_SelectDb(ctx,9); /* Tests ran in database number 9. */
+    VALKEYMODULE_NOT_USED(arg);
+    ValkeyModuleCtx *ctx = ValkeyModule_GetThreadSafeContext(NULL);
+    ValkeyModule_SelectDb(ctx,9); /* Tests ran in database number 9. */
     for (int i = 0; i < 3; i++) {
-        KVModule_ThreadSafeContextLock(ctx);
-        KVModule_Replicate(ctx,"INCR","c","a-from-thread");
-        KVModuleCallReply *reply = KVModule_Call(ctx,"INCR","c!","thread-call");
-        KVModule_FreeCallReply(reply);
-        KVModule_Replicate(ctx,"INCR","c","b-from-thread");
-        KVModule_ThreadSafeContextUnlock(ctx);
+        ValkeyModule_ThreadSafeContextLock(ctx);
+        ValkeyModule_Replicate(ctx,"INCR","c","a-from-thread");
+        ValkeyModuleCallReply *reply = ValkeyModule_Call(ctx,"INCR","c!","thread-call");
+        ValkeyModule_FreeCallReply(reply);
+        ValkeyModule_Replicate(ctx,"INCR","c","b-from-thread");
+        ValkeyModule_ThreadSafeContextUnlock(ctx);
     }
-    KVModule_FreeThreadSafeContext(ctx);
+    ValkeyModule_FreeThreadSafeContext(ctx);
     return NULL;
 }
 
-int propagateTestThreadCommand(KVModuleCtx *ctx, KVModuleString **argv, int argc)
+int propagateTestThreadCommand(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc)
 {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
 
     pthread_t tid;
     if (pthread_create(&tid,NULL,threadMain,NULL) != 0)
-        return KVModule_ReplyWithError(ctx,"-ERR Can't start thread");
-    KVMODULE_NOT_USED(tid);
+        return ValkeyModule_ReplyWithError(ctx,"-ERR Can't start thread");
+    VALKEYMODULE_NOT_USED(tid);
 
-    KVModule_ReplyWithSimpleString(ctx,"OK");
-    return KVMODULE_OK;
+    ValkeyModule_ReplyWithSimpleString(ctx,"OK");
+    return VALKEYMODULE_OK;
 }
 
 /* The thread entry point. */
 void *threadDetachedMain(void *arg) {
-    KVMODULE_NOT_USED(arg);
-    KVModule_SelectDb(detached_ctx,9); /* Tests ran in database number 9. */
+    VALKEYMODULE_NOT_USED(arg);
+    ValkeyModule_SelectDb(detached_ctx,9); /* Tests ran in database number 9. */
 
-    KVModule_ThreadSafeContextLock(detached_ctx);
-    KVModule_Replicate(detached_ctx,"INCR","c","thread-detached-before");
-    KVModuleCallReply *reply = KVModule_Call(detached_ctx,"INCR","c!","thread-detached-1");
-    KVModule_FreeCallReply(reply);
-    reply = KVModule_Call(detached_ctx,"INCR","c!","thread-detached-2");
-    KVModule_FreeCallReply(reply);
-    KVModule_Replicate(detached_ctx,"INCR","c","thread-detached-after");
-    KVModule_ThreadSafeContextUnlock(detached_ctx);
+    ValkeyModule_ThreadSafeContextLock(detached_ctx);
+    ValkeyModule_Replicate(detached_ctx,"INCR","c","thread-detached-before");
+    ValkeyModuleCallReply *reply = ValkeyModule_Call(detached_ctx,"INCR","c!","thread-detached-1");
+    ValkeyModule_FreeCallReply(reply);
+    reply = ValkeyModule_Call(detached_ctx,"INCR","c!","thread-detached-2");
+    ValkeyModule_FreeCallReply(reply);
+    ValkeyModule_Replicate(detached_ctx,"INCR","c","thread-detached-after");
+    ValkeyModule_ThreadSafeContextUnlock(detached_ctx);
 
     return NULL;
 }
 
-int propagateTestDetachedThreadCommand(KVModuleCtx *ctx, KVModuleString **argv, int argc)
+int propagateTestDetachedThreadCommand(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc)
 {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
 
     pthread_t tid;
     if (pthread_create(&tid,NULL,threadDetachedMain,NULL) != 0)
-        return KVModule_ReplyWithError(ctx,"-ERR Can't start thread");
-    KVMODULE_NOT_USED(tid);
+        return ValkeyModule_ReplyWithError(ctx,"-ERR Can't start thread");
+    VALKEYMODULE_NOT_USED(tid);
 
-    KVModule_ReplyWithSimpleString(ctx,"OK");
-    return KVMODULE_OK;
+    ValkeyModule_ReplyWithSimpleString(ctx,"OK");
+    return VALKEYMODULE_OK;
 }
 
-int propagateTestSimpleCommand(KVModuleCtx *ctx, KVModuleString **argv, int argc)
+int propagateTestSimpleCommand(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc)
 {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
 
     /* Replicate two commands to test MULTI/EXEC wrapping. */
-    KVModule_Replicate(ctx, "INCR", "c", "counter-1");
-    KVModule_Replicate(ctx, "INCR", "c", "counter-2");
-    KVModule_ReplyWithSimpleString(ctx,"OK");
-    return KVMODULE_OK;
+    ValkeyModule_Replicate(ctx, "INCR", "c", "counter-1");
+    ValkeyModule_Replicate(ctx, "INCR", "c", "counter-2");
+    ValkeyModule_ReplyWithSimpleString(ctx,"OK");
+    return VALKEYMODULE_OK;
 }
 
-int propagateTestMixedCommand(KVModuleCtx *ctx, KVModuleString **argv, int argc)
+int propagateTestMixedCommand(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc)
 {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
-    KVModuleCallReply *reply;
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
+    ValkeyModuleCallReply *reply;
 
     /* This test mixes multiple propagation systems. */
-    reply = KVModule_Call(ctx, "INCR", "c!", "using-call");
-    KVModule_FreeCallReply(reply);
+    reply = ValkeyModule_Call(ctx, "INCR", "c!", "using-call");
+    ValkeyModule_FreeCallReply(reply);
 
-    KVModule_Replicate(ctx, "INCR", "c", "counter-1");
-    KVModule_Replicate(ctx, "INCR", "c", "counter-2");
+    ValkeyModule_Replicate(ctx, "INCR", "c", "counter-1");
+    ValkeyModule_Replicate(ctx, "INCR", "c", "counter-2");
 
-    reply = KVModule_Call(ctx, "INCR", "c!", "after-call");
-    KVModule_FreeCallReply(reply);
+    reply = ValkeyModule_Call(ctx, "INCR", "c!", "after-call");
+    ValkeyModule_FreeCallReply(reply);
 
-    KVModule_ReplyWithSimpleString(ctx,"OK");
-    return KVMODULE_OK;
+    ValkeyModule_ReplyWithSimpleString(ctx,"OK");
+    return VALKEYMODULE_OK;
 }
 
-int propagateTestNestedCommand(KVModuleCtx *ctx, KVModuleString **argv, int argc)
+int propagateTestNestedCommand(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc)
 {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
-    KVModuleCallReply *reply;
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
+    ValkeyModuleCallReply *reply;
 
     /* This test mixes multiple propagation systems. */
-    reply = KVModule_Call(ctx, "INCR", "c!", "using-call");
-    KVModule_FreeCallReply(reply);
+    reply = ValkeyModule_Call(ctx, "INCR", "c!", "using-call");
+    ValkeyModule_FreeCallReply(reply);
 
-    reply = KVModule_Call(ctx,"propagate-test.simple", "!");
-    KVModule_FreeCallReply(reply);
+    reply = ValkeyModule_Call(ctx,"propagate-test.simple", "!");
+    ValkeyModule_FreeCallReply(reply);
 
-    KVModule_Replicate(ctx,"INCR","c","counter-3");
-    KVModule_Replicate(ctx,"INCR","c","counter-4");
+    ValkeyModule_Replicate(ctx,"INCR","c","counter-3");
+    ValkeyModule_Replicate(ctx,"INCR","c","counter-4");
 
-    reply = KVModule_Call(ctx, "INCR", "c!", "after-call");
-    KVModule_FreeCallReply(reply);
+    reply = ValkeyModule_Call(ctx, "INCR", "c!", "after-call");
+    ValkeyModule_FreeCallReply(reply);
 
-    reply = KVModule_Call(ctx, "INCR", "c!", "before-call-2");
-    KVModule_FreeCallReply(reply);
+    reply = ValkeyModule_Call(ctx, "INCR", "c!", "before-call-2");
+    ValkeyModule_FreeCallReply(reply);
 
-    reply = KVModule_Call(ctx, "keyspace.incr_case1", "c!", "asdf"); /* Propagates INCR */
-    KVModule_FreeCallReply(reply);
+    reply = ValkeyModule_Call(ctx, "keyspace.incr_case1", "c!", "asdf"); /* Propagates INCR */
+    ValkeyModule_FreeCallReply(reply);
 
-    reply = KVModule_Call(ctx, "keyspace.del_key_copy", "c!", "asdf"); /* Propagates DEL */
-    KVModule_FreeCallReply(reply);
+    reply = ValkeyModule_Call(ctx, "keyspace.del_key_copy", "c!", "asdf"); /* Propagates DEL */
+    ValkeyModule_FreeCallReply(reply);
 
-    reply = KVModule_Call(ctx, "INCR", "c!", "after-call-2");
-    KVModule_FreeCallReply(reply);
+    reply = ValkeyModule_Call(ctx, "INCR", "c!", "after-call-2");
+    ValkeyModule_FreeCallReply(reply);
 
-    KVModule_ReplyWithSimpleString(ctx,"OK");
-    return KVMODULE_OK;
+    ValkeyModule_ReplyWithSimpleString(ctx,"OK");
+    return VALKEYMODULE_OK;
 }
 
 /* Counter to track "propagate-test.incr" commands which were obeyed (due to being replicated or processed from AOF). */
 static long long obeyed_cmds = 0;
 
 /* Handles the "propagate-test.obeyed" command to return the `obeyed_cmds` count. */
-int propagateTestObeyed(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
-    KVModule_ReplyWithLongLong(ctx, obeyed_cmds);
-    return KVMODULE_OK;
+int propagateTestObeyed(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
+    ValkeyModule_ReplyWithLongLong(ctx, obeyed_cmds);
+    return VALKEYMODULE_OK;
 }
 
-int propagateTestIncr(KVModuleCtx *ctx, KVModuleString **argv, int argc)
+int propagateTestIncr(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc)
 {
-    KVMODULE_NOT_USED(argc);
-    KVModuleCallReply *reply;
+    VALKEYMODULE_NOT_USED(argc);
+    ValkeyModuleCallReply *reply;
 
     /* Track the number of commands which are "obeyed". */
-    if (KVModule_MustObeyClient(ctx)) {
+    if (ValkeyModule_MustObeyClient(ctx)) {
         obeyed_cmds += 1;
     }
     /* This test propagates the module command, not the INCR it executes. */
-    reply = KVModule_Call(ctx, "INCR", "s", argv[1]);
-    KVModule_ReplyWithCallReply(ctx,reply);
-    KVModule_FreeCallReply(reply);
-    KVModule_ReplicateVerbatim(ctx);
-    return KVMODULE_OK;
+    reply = ValkeyModule_Call(ctx, "INCR", "s", argv[1]);
+    ValkeyModule_ReplyWithCallReply(ctx,reply);
+    ValkeyModule_FreeCallReply(reply);
+    ValkeyModule_ReplicateVerbatim(ctx);
+    return VALKEYMODULE_OK;
 }
 
-int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
+int ValkeyModule_OnLoad(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
 
-    if (KVModule_Init(ctx,"propagate-test",1,KVMODULE_APIVER_1)
-            == KVMODULE_ERR) return KVMODULE_ERR;
+    if (ValkeyModule_Init(ctx,"propagate-test",1,VALKEYMODULE_APIVER_1)
+            == VALKEYMODULE_ERR) return VALKEYMODULE_ERR;
 
-    detached_ctx = KVModule_GetDetachedThreadSafeContext(ctx);
+    detached_ctx = ValkeyModule_GetDetachedThreadSafeContext(ctx);
 
-    /* This option tests skip command validation for KVModule_Replicate */
-    KVModule_SetModuleOptions(ctx, KVMODULE_OPTIONS_SKIP_COMMAND_VALIDATION);
+    /* This option tests skip command validation for ValkeyModule_Replicate */
+    ValkeyModule_SetModuleOptions(ctx, VALKEYMODULE_OPTIONS_SKIP_COMMAND_VALIDATION);
 
-    if (KVModule_SubscribeToKeyspaceEvents(ctx, KVMODULE_NOTIFY_ALL, KeySpace_NotificationGeneric) == KVMODULE_ERR)
-        return KVMODULE_ERR;
+    if (ValkeyModule_SubscribeToKeyspaceEvents(ctx, VALKEYMODULE_NOTIFY_ALL, KeySpace_NotificationGeneric) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx,"propagate-test.timer",
+    if (ValkeyModule_CreateCommand(ctx,"propagate-test.timer",
                 propagateTestTimerCommand,
-                "",1,1,1) == KVMODULE_ERR)
-            return KVMODULE_ERR;
+                "",1,1,1) == VALKEYMODULE_ERR)
+            return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx,"propagate-test.timer-nested",
+    if (ValkeyModule_CreateCommand(ctx,"propagate-test.timer-nested",
                 propagateTestTimerNestedCommand,
-                "",1,1,1) == KVMODULE_ERR)
-            return KVMODULE_ERR;
+                "",1,1,1) == VALKEYMODULE_ERR)
+            return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx,"propagate-test.timer-nested-repl",
+    if (ValkeyModule_CreateCommand(ctx,"propagate-test.timer-nested-repl",
                 propagateTestTimerNestedReplCommand,
-                "",1,1,1) == KVMODULE_ERR)
-            return KVMODULE_ERR;
+                "",1,1,1) == VALKEYMODULE_ERR)
+            return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx,"propagate-test.timer-maxmemory",
+    if (ValkeyModule_CreateCommand(ctx,"propagate-test.timer-maxmemory",
                 propagateTestTimerMaxmemoryCommand,
-                "",1,1,1) == KVMODULE_ERR)
-            return KVMODULE_ERR;
+                "",1,1,1) == VALKEYMODULE_ERR)
+            return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx,"propagate-test.timer-eval",
+    if (ValkeyModule_CreateCommand(ctx,"propagate-test.timer-eval",
                 propagateTestTimerEvalCommand,
-                "",1,1,1) == KVMODULE_ERR)
-            return KVMODULE_ERR;
+                "",1,1,1) == VALKEYMODULE_ERR)
+            return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx,"propagate-test.thread",
+    if (ValkeyModule_CreateCommand(ctx,"propagate-test.thread",
                 propagateTestThreadCommand,
-                "",1,1,1) == KVMODULE_ERR)
-            return KVMODULE_ERR;
+                "",1,1,1) == VALKEYMODULE_ERR)
+            return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx,"propagate-test.detached-thread",
+    if (ValkeyModule_CreateCommand(ctx,"propagate-test.detached-thread",
                 propagateTestDetachedThreadCommand,
-                "",1,1,1) == KVMODULE_ERR)
-            return KVMODULE_ERR;
+                "",1,1,1) == VALKEYMODULE_ERR)
+            return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx,"propagate-test.simple",
+    if (ValkeyModule_CreateCommand(ctx,"propagate-test.simple",
                 propagateTestSimpleCommand,
-                "",1,1,1) == KVMODULE_ERR)
-            return KVMODULE_ERR;
+                "",1,1,1) == VALKEYMODULE_ERR)
+            return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx,"propagate-test.mixed",
+    if (ValkeyModule_CreateCommand(ctx,"propagate-test.mixed",
                 propagateTestMixedCommand,
-                "write",1,1,1) == KVMODULE_ERR)
-            return KVMODULE_ERR;
+                "write",1,1,1) == VALKEYMODULE_ERR)
+            return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx,"propagate-test.nested",
+    if (ValkeyModule_CreateCommand(ctx,"propagate-test.nested",
                 propagateTestNestedCommand,
-                "write",1,1,1) == KVMODULE_ERR)
-            return KVMODULE_ERR;
+                "write",1,1,1) == VALKEYMODULE_ERR)
+            return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx,"propagate-test.incr",
+    if (ValkeyModule_CreateCommand(ctx,"propagate-test.incr",
                 propagateTestIncr,
-                "write",1,1,1) == KVMODULE_ERR)
-            return KVMODULE_ERR;
+                "write",1,1,1) == VALKEYMODULE_ERR)
+            return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx,"propagate-test.obeyed",
+    if (ValkeyModule_CreateCommand(ctx,"propagate-test.obeyed",
                 propagateTestObeyed,
-                "",1,1,1) == KVMODULE_ERR)
-            return KVMODULE_ERR;
+                "",1,1,1) == VALKEYMODULE_ERR)
+            return VALKEYMODULE_ERR;
 
-    return KVMODULE_OK;
+    return VALKEYMODULE_OK;
 }
 
-int KVModule_OnUnload(KVModuleCtx *ctx) {
+int ValkeyModule_OnUnload(ValkeyModuleCtx *ctx) {
     UNUSED(ctx);
 
     if (detached_ctx)
-        KVModule_FreeThreadSafeContext(detached_ctx);
+        ValkeyModule_FreeThreadSafeContext(detached_ctx);
 
-    return KVMODULE_OK;
+    return VALKEYMODULE_OK;
 }

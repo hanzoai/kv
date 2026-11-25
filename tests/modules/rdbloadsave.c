@@ -1,4 +1,4 @@
-#include "kvmodule.h"
+#include "valkeymodule.h"
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -7,156 +7,156 @@
 #include <errno.h>
 
 /* Sanity tests to verify inputs and return values. */
-int sanity(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
+int sanity(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
 
-    KVModuleRdbStream *s = KVModule_RdbStreamCreateFromFile("dbnew.rdb");
+    ValkeyModuleRdbStream *s = ValkeyModule_RdbStreamCreateFromFile("dbnew.rdb");
 
     /* NULL stream should fail. */
-    if (KVModule_RdbLoad(ctx, NULL, 0) == KVMODULE_OK || errno != EINVAL) {
-        KVModule_ReplyWithError(ctx, strerror(errno));
+    if (ValkeyModule_RdbLoad(ctx, NULL, 0) == VALKEYMODULE_OK || errno != EINVAL) {
+        ValkeyModule_ReplyWithError(ctx, strerror(errno));
         goto out;
     }
 
     /* Invalid flags should fail. */
-    if (KVModule_RdbLoad(ctx, s, 188) == KVMODULE_OK || errno != EINVAL) {
-        KVModule_ReplyWithError(ctx, strerror(errno));
+    if (ValkeyModule_RdbLoad(ctx, s, 188) == VALKEYMODULE_OK || errno != EINVAL) {
+        ValkeyModule_ReplyWithError(ctx, strerror(errno));
         goto out;
     }
 
     /* Missing file should fail. */
-    if (KVModule_RdbLoad(ctx, s, 0) == KVMODULE_OK || errno != ENOENT) {
-        KVModule_ReplyWithError(ctx, strerror(errno));
+    if (ValkeyModule_RdbLoad(ctx, s, 0) == VALKEYMODULE_OK || errno != ENOENT) {
+        ValkeyModule_ReplyWithError(ctx, strerror(errno));
         goto out;
     }
 
     /* Save RDB file. */
-    if (KVModule_RdbSave(ctx, s, 0) != KVMODULE_OK || errno != 0) {
-        KVModule_ReplyWithError(ctx, strerror(errno));
+    if (ValkeyModule_RdbSave(ctx, s, 0) != VALKEYMODULE_OK || errno != 0) {
+        ValkeyModule_ReplyWithError(ctx, strerror(errno));
         goto out;
     }
 
     /* Load the saved RDB file. */
-    if (KVModule_RdbLoad(ctx, s, 0) != KVMODULE_OK || errno != 0) {
-        KVModule_ReplyWithError(ctx, strerror(errno));
+    if (ValkeyModule_RdbLoad(ctx, s, 0) != VALKEYMODULE_OK || errno != 0) {
+        ValkeyModule_ReplyWithError(ctx, strerror(errno));
         goto out;
     }
 
-    KVModule_ReplyWithSimpleString(ctx, "OK");
+    ValkeyModule_ReplyWithSimpleString(ctx, "OK");
 
  out:
-    KVModule_RdbStreamFree(s);
-    return KVMODULE_OK;
+    ValkeyModule_RdbStreamFree(s);
+    return VALKEYMODULE_OK;
 }
 
-int cmd_rdbsave(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+int cmd_rdbsave(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
     if (argc != 2) {
-        KVModule_WrongArity(ctx);
-        return KVMODULE_OK;
+        ValkeyModule_WrongArity(ctx);
+        return VALKEYMODULE_OK;
     }
 
     size_t len;
-    const char *filename = KVModule_StringPtrLen(argv[1], &len);
+    const char *filename = ValkeyModule_StringPtrLen(argv[1], &len);
 
     char tmp[len + 1];
     memcpy(tmp, filename, len);
     tmp[len] = '\0';
 
-    KVModuleRdbStream *stream = KVModule_RdbStreamCreateFromFile(tmp);
+    ValkeyModuleRdbStream *stream = ValkeyModule_RdbStreamCreateFromFile(tmp);
 
-    if (KVModule_RdbSave(ctx, stream, 0) != KVMODULE_OK || errno != 0) {
-        KVModule_ReplyWithError(ctx, strerror(errno));
+    if (ValkeyModule_RdbSave(ctx, stream, 0) != VALKEYMODULE_OK || errno != 0) {
+        ValkeyModule_ReplyWithError(ctx, strerror(errno));
         goto out;
     }
 
-    KVModule_ReplyWithSimpleString(ctx, "OK");
+    ValkeyModule_ReplyWithSimpleString(ctx, "OK");
 
 out:
-    KVModule_RdbStreamFree(stream);
-    return KVMODULE_OK;
+    ValkeyModule_RdbStreamFree(stream);
+    return VALKEYMODULE_OK;
 }
 
 /* Fork before calling RM_RdbSave(). */
-int cmd_rdbsave_fork(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+int cmd_rdbsave_fork(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
     if (argc != 2) {
-        KVModule_WrongArity(ctx);
-        return KVMODULE_OK;
+        ValkeyModule_WrongArity(ctx);
+        return VALKEYMODULE_OK;
     }
 
     size_t len;
-    const char *filename = KVModule_StringPtrLen(argv[1], &len);
+    const char *filename = ValkeyModule_StringPtrLen(argv[1], &len);
 
     char tmp[len + 1];
     memcpy(tmp, filename, len);
     tmp[len] = '\0';
 
-    int fork_child_pid = KVModule_Fork(NULL, NULL);
+    int fork_child_pid = ValkeyModule_Fork(NULL, NULL);
     if (fork_child_pid < 0) {
-        KVModule_ReplyWithError(ctx, strerror(errno));
-        return KVMODULE_OK;
+        ValkeyModule_ReplyWithError(ctx, strerror(errno));
+        return VALKEYMODULE_OK;
     } else if (fork_child_pid > 0) {
         /* parent */
-        KVModule_ReplyWithSimpleString(ctx, "OK");
-        return KVMODULE_OK;
+        ValkeyModule_ReplyWithSimpleString(ctx, "OK");
+        return VALKEYMODULE_OK;
     }
 
-    KVModuleRdbStream *stream = KVModule_RdbStreamCreateFromFile(tmp);
+    ValkeyModuleRdbStream *stream = ValkeyModule_RdbStreamCreateFromFile(tmp);
 
     int ret = 0;
-    if (KVModule_RdbSave(ctx, stream, 0) != KVMODULE_OK) {
+    if (ValkeyModule_RdbSave(ctx, stream, 0) != VALKEYMODULE_OK) {
         ret = errno;
     }
-    KVModule_RdbStreamFree(stream);
+    ValkeyModule_RdbStreamFree(stream);
 
-    KVModule_ExitFromChild(ret);
-    return KVMODULE_OK;
+    ValkeyModule_ExitFromChild(ret);
+    return VALKEYMODULE_OK;
 }
 
-int cmd_rdbload(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+int cmd_rdbload(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
     if (argc != 2) {
-        KVModule_WrongArity(ctx);
-        return KVMODULE_OK;
+        ValkeyModule_WrongArity(ctx);
+        return VALKEYMODULE_OK;
     }
 
     size_t len;
-    const char *filename = KVModule_StringPtrLen(argv[1], &len);
+    const char *filename = ValkeyModule_StringPtrLen(argv[1], &len);
 
     char tmp[len + 1];
     memcpy(tmp, filename, len);
     tmp[len] = '\0';
 
-    KVModuleRdbStream *stream = KVModule_RdbStreamCreateFromFile(tmp);
+    ValkeyModuleRdbStream *stream = ValkeyModule_RdbStreamCreateFromFile(tmp);
 
-    if (KVModule_RdbLoad(ctx, stream, 0) != KVMODULE_OK || errno != 0) {
-        KVModule_RdbStreamFree(stream);
-        KVModule_ReplyWithError(ctx, strerror(errno));
-        return KVMODULE_OK;
+    if (ValkeyModule_RdbLoad(ctx, stream, 0) != VALKEYMODULE_OK || errno != 0) {
+        ValkeyModule_RdbStreamFree(stream);
+        ValkeyModule_ReplyWithError(ctx, strerror(errno));
+        return VALKEYMODULE_OK;
     }
 
-    KVModule_RdbStreamFree(stream);
-    KVModule_ReplyWithSimpleString(ctx, "OK");
-    return KVMODULE_OK;
+    ValkeyModule_RdbStreamFree(stream);
+    ValkeyModule_ReplyWithSimpleString(ctx, "OK");
+    return VALKEYMODULE_OK;
 }
 
-int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
+int ValkeyModule_OnLoad(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
 
-    if (KVModule_Init(ctx, "rdbloadsave", 1, KVMODULE_APIVER_1) == KVMODULE_ERR)
-        return KVMODULE_ERR;
+    if (ValkeyModule_Init(ctx, "rdbloadsave", 1, VALKEYMODULE_APIVER_1) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx, "test.sanity", sanity, "", 0, 0, 0) == KVMODULE_ERR)
-        return KVMODULE_ERR;
+    if (ValkeyModule_CreateCommand(ctx, "test.sanity", sanity, "", 0, 0, 0) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx, "test.rdbsave", cmd_rdbsave, "", 0, 0, 0) == KVMODULE_ERR)
-        return KVMODULE_ERR;
+    if (ValkeyModule_CreateCommand(ctx, "test.rdbsave", cmd_rdbsave, "", 0, 0, 0) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx, "test.rdbsave_fork", cmd_rdbsave_fork, "", 0, 0, 0) == KVMODULE_ERR)
-        return KVMODULE_ERR;
+    if (ValkeyModule_CreateCommand(ctx, "test.rdbsave_fork", cmd_rdbsave_fork, "", 0, 0, 0) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
 
-    if (KVModule_CreateCommand(ctx, "test.rdbload", cmd_rdbload, "", 0, 0, 0) == KVMODULE_ERR)
-        return KVMODULE_ERR;
+    if (ValkeyModule_CreateCommand(ctx, "test.rdbload", cmd_rdbload, "", 0, 0, 0) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
 
-    return KVMODULE_OK;
+    return VALKEYMODULE_OK;
 }

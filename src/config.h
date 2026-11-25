@@ -46,13 +46,13 @@
 #define MAC_OS_10_6_DETECTED
 #endif
 
-/* Define kv_fstat to fstat or fstat64() */
+/* Define valkey_fstat to fstat or fstat64() */
 #if defined(__APPLE__) && !defined(MAC_OS_10_6_DETECTED)
-#define kv_fstat fstat64
-#define kv_stat stat64
+#define valkey_fstat fstat64
+#define valkey_stat stat64
 #else
-#define kv_fstat fstat
-#define kv_stat stat
+#define valkey_fstat fstat
+#define valkey_stat stat
 #endif
 
 /* Test for proc filesystem */
@@ -76,10 +76,18 @@
 #define HAVE_SYSCTL_KERN_SOMAXCONN 1
 #endif
 
-/* Test for backtrace() */
+/* Test for backtrace() via execinfo.h */
 #if defined(__APPLE__) || (defined(__linux__) && defined(__GLIBC__)) || defined(__FreeBSD__) ||    \
     ((defined(__OpenBSD__) || defined(__NetBSD__) || defined(__sun)) && defined(USE_BACKTRACE)) || \
     defined(__DragonFly__) || (defined(__UCLIBC__) && defined(__UCLIBC_HAS_BACKTRACE__))
+#define HAVE_BACKTRACE 1
+#define HAVE_EXECINFO 1
+#endif
+
+/* When libbacktrace is available (e.g. on musl/Alpine), enable backtrace
+ * support even without execinfo.h. libbacktrace provides its own frame
+ * collection via backtrace_simple(). */
+#if defined(USE_LIBBACKTRACE) && !defined(HAVE_BACKTRACE)
 #define HAVE_BACKTRACE 1
 #endif
 
@@ -125,13 +133,13 @@
 #endif
 #endif
 
-/* Define kv_fsync to fdatasync() in Linux and fsync() for all the rest */
+/* Define valkey_fsync to fdatasync() in Linux and fsync() for all the rest */
 #if defined(__linux__)
-#define kv_fsync(fd) fdatasync(fd)
+#define valkey_fsync(fd) fdatasync(fd)
 #elif defined(__APPLE__)
-#define kv_fsync(fd) fcntl(fd, F_FULLFSYNC)
+#define valkey_fsync(fd) fcntl(fd, F_FULLFSYNC)
 #else
-#define kv_fsync(fd) fsync(fd)
+#define valkey_fsync(fd) fsync(fd)
 #endif
 
 #if defined(__FreeBSD__)
@@ -149,10 +157,10 @@
 #endif
 
 #if __GNUC__ >= 5 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 5)
-#define kv_unreachable __builtin_unreachable
+#define valkey_unreachable __builtin_unreachable
 #else
 #include <stdlib.h>
-#define kv_unreachable abort
+#define valkey_unreachable abort
 #endif
 
 #if __GNUC__ >= 3
@@ -165,24 +173,34 @@
 
 #if defined(__has_attribute)
 #if __has_attribute(no_sanitize)
-#define KV_NO_SANITIZE(sanitizer) __attribute__((no_sanitize(sanitizer)))
+#define VALKEY_NO_SANITIZE(sanitizer) __attribute__((no_sanitize(sanitizer)))
 #endif
 #endif
-#if !defined(KV_NO_SANITIZE)
-#define KV_NO_SANITIZE(sanitizer)
+#if !defined(VALKEY_NO_SANITIZE)
+#define VALKEY_NO_SANITIZE(sanitizer)
 #endif
 
 #if defined(__SANITIZE_ADDRESS__)
 /* GCC */
-#define KV_ADDRESS_SANITIZER 1
+#define VALKEY_ADDRESS_SANITIZER 1
 #elif defined(__has_feature)
 #if __has_feature(address_sanitizer)
 /* Clang */
-#define KV_ADDRESS_SANITIZER 1
+#define VALKEY_ADDRESS_SANITIZER 1
 #endif
 #endif
 
-/* Define rdb_fsync_range to sync_file_range() on Linux, otherwise we use
+#if defined(__SANITIZE_THREAD__)
+/* GCC */
+#define VALKEY_THREAD_SANITIZER 1
+#elif defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+/* Clang */
+#define VALKEY_THREAD_SANITIZER 1
+#endif
+#endif
+
+/* Define rdb_fsync_range to sync_file_range() on Linux; otherwise, we use
  * the plain fsync() call. */
 #if (defined(__linux__) && defined(SYNC_FILE_RANGE_WAIT_BEFORE))
 #define HAVE_SYNC_FILE_RANGE 1
@@ -313,26 +331,26 @@ void setproctitle(const char *fmt, ...);
 #define USE_ALIGNED_ACCESS
 #endif
 
-/* Define for kv_set_thread_title */
+/* Define for valkey_set_thread_title */
 #ifdef __linux__
-#define kv_set_thread_title(name) pthread_setname_np(pthread_self(), name)
+#define valkey_set_thread_title(name) pthread_setname_np(pthread_self(), name)
 #else
 #if (defined __FreeBSD__ || defined __OpenBSD__)
 #include <pthread_np.h>
-#define kv_set_thread_title(name) pthread_set_name_np(pthread_self(), name)
+#define valkey_set_thread_title(name) pthread_set_name_np(pthread_self(), name)
 #elif defined __NetBSD__
 #include <pthread.h>
-#define kv_set_thread_title(name) pthread_setname_np(pthread_self(), "%s", name)
+#define valkey_set_thread_title(name) pthread_setname_np(pthread_self(), "%s", name)
 #elif defined __HAIKU__
 #include <kernel/OS.h>
-#define kv_set_thread_title(name) rename_thread(find_thread(0), name)
+#define valkey_set_thread_title(name) rename_thread(find_thread(0), name)
 #else
 #if (defined __APPLE__ && defined(MAC_OS_X_VERSION_MAX_ALLOWED) && MAC_OS_X_VERSION_MAX_ALLOWED >= 1070)
 int pthread_setname_np(const char *name);
 #include <pthread.h>
-#define kv_set_thread_title(name) pthread_setname_np(name)
+#define valkey_set_thread_title(name) pthread_setname_np(name)
 #else
-#define kv_set_thread_title(name)
+#define valkey_set_thread_title(name)
 #endif
 #endif
 #endif
@@ -346,6 +364,20 @@ void setcpuaffinity(const char *cpulist);
 /* Test for posix_fadvise() */
 #if defined(__linux__) || defined(__FreeBSD__)
 #define HAVE_FADVISE
+#endif
+
+/* Drawing secret material from a configured provider needs the OpenSSL 3
+ * provider APIs and config-driven provider selection. Older OpenSSL and
+ * LibreSSL have neither, so those builds keep the bundled generator.
+ *
+ * USE_OPENSSL == 1 means BUILD_TLS=yes. BUILD_TLS=module compiles the server
+ * with USE_OPENSSL == 2 but does not link libcrypto into it (src/Makefile),
+ * so a module build keeps the bundled generator as well. */
+#if defined(USE_OPENSSL) && USE_OPENSSL == 1 /* BUILD_YES */
+#include <openssl/opensslv.h>
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L && !defined(LIBRESSL_VERSION_NUMBER)
+#define HAVE_OPENSSL_PROVIDERS
+#endif
 #endif
 
 #define IO_THREADS_MAX_NUM 256
@@ -369,9 +401,9 @@ void setcpuaffinity(const char *cpulist);
 #endif
 
 #if HAS_BUILTIN_PREFETCH
-#define kv_prefetch(addr) __builtin_prefetch(addr)
+#define valkey_prefetch(addr) __builtin_prefetch(addr)
 #else
-#define kv_prefetch(addr) ((void)(addr))
+#define valkey_prefetch(addr) ((void)(addr))
 #endif
 
 /* Check if we can compile x86 SIMD code */

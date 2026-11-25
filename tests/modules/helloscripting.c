@@ -1,4 +1,4 @@
-#include "kvmodule.h"
+#include "valkeymodule.h"
 
 #include <errno.h>
 #include <stdint.h>
@@ -8,7 +8,7 @@
 
 /*
  * This module implements a very simple stack based scripting language.
- * It's purpose is only to test the kv module API to implement scripting
+ * It's purpose is only to test the valkey module API to implement scripting
  * engines.
  *
  * The language is called HELLO, and a program in this language is formed by
@@ -161,8 +161,8 @@ static Value parseValue(const char *str) {
 
     // Check for NULL or empty string
     if (!str || *str == '\0') {
-        KVModule_Log(NULL, "error", "Failed to parse argument: NULL or empty string");
-        KVModule_Assert(0);
+        ValkeyModule_Log(NULL, "error", "Failed to parse argument: NULL or empty string");
+        ValkeyModule_Assert(0);
         return result;
     }
 
@@ -212,8 +212,8 @@ static HelloInstKind helloLangParseInstruction(const char *token) {
  */
 static void helloLangParseFunction(HelloFunc *func, int read_only) {
     char *token = strtok(NULL, " \n");
-    KVModule_Assert(token != NULL);
-    func->name = KVModule_Alloc(sizeof(char) * strlen(token) + 1);
+    ValkeyModule_Assert(token != NULL);
+    func->name = ValkeyModule_Alloc(sizeof(char) * strlen(token) + 1);
     strcpy(func->name, token);
     func->read_only = read_only;
 }
@@ -227,8 +227,8 @@ static void helloLangParseIntegerParam(HelloFunc *func) {
     if (parsed.type == VALUE_INT) {
         func->instructions[func->num_instructions].param.integer = parsed.integer;
     } else {
-        KVModule_Log(NULL, "error", "Failed to parse integer parameter: '%s'", token);
-        KVModule_Assert(0); // Parse error
+        ValkeyModule_Log(NULL, "error", "Failed to parse integer parameter: '%s'", token);
+        ValkeyModule_Assert(0); // Parse error
     }
 }
 
@@ -244,8 +244,8 @@ static void helloLangParseConstI(HelloFunc *func) {
  */
 static void helloLangParseConstS(HelloFunc *func) {
     char *token = strtok(NULL, " \n");
-    KVModule_Assert(token != NULL);
-    func->instructions[func->num_instructions].param.string = KVModule_Alloc(sizeof(char) * strlen(token) + 1);
+    ValkeyModule_Assert(token != NULL);
+    func->instructions[func->num_instructions].param.string = ValkeyModule_Alloc(sizeof(char) * strlen(token) + 1);
     strcpy(func->instructions[func->num_instructions].param.string, token);
     func->num_instructions++;
 }
@@ -260,8 +260,8 @@ static void helloLangParseArgs(HelloFunc *func) {
 
 static void helloLangParseCall(HelloFunc *func) {
     char *token = strtok(NULL, " \n");
-    KVModule_Assert(token != NULL);
-    func->instructions[func->num_instructions].param.string = KVModule_Alloc(sizeof(char) * strlen(token) + 1);
+    ValkeyModule_Assert(token != NULL);
+    func->instructions[func->num_instructions].param.string = ValkeyModule_Alloc(sizeof(char) * strlen(token) + 1);
     strcpy(func->instructions[func->num_instructions].param.string, token);
     func->num_instructions++;
 }
@@ -271,8 +271,8 @@ static void helloLangParseCall(HelloFunc *func) {
  */
 static int helloLangParseCode(const char *code,
                               HelloProgram *program,
-                              KVModuleString **err) {
-    char *_code = KVModule_Alloc(sizeof(char) * strlen(code) + 1);
+                              ValkeyModuleString **err) {
+    char *_code = ValkeyModule_Alloc(sizeof(char) * strlen(code) + 1);
     strcpy(_code, code);
 
     HelloFunc *currentFunc = NULL;
@@ -288,58 +288,58 @@ static int helloLangParseCode(const char *code,
         switch (kind) {
         case FUNCTION:
         case RFUNCTION:
-            KVModule_Assert(currentFunc == NULL);
-            currentFunc = KVModule_Alloc(sizeof(HelloFunc));
+            ValkeyModule_Assert(currentFunc == NULL);
+            currentFunc = ValkeyModule_Alloc(sizeof(HelloFunc));
             memset(currentFunc, 0, sizeof(HelloFunc));
             currentFunc->index = program->num_functions;
             program->functions[program->num_functions++] = currentFunc;
             helloLangParseFunction(currentFunc, kind == RFUNCTION);
             break;
         case CONSTI:
-            KVModule_Assert(currentFunc != NULL);
+            ValkeyModule_Assert(currentFunc != NULL);
             helloLangParseConstI(currentFunc);
             break;
         case CONSTS:
-            KVModule_Assert(currentFunc != NULL);
+            ValkeyModule_Assert(currentFunc != NULL);
             helloLangParseConstS(currentFunc);
             break;
         case ARGS:
-            KVModule_Assert(currentFunc != NULL);
+            ValkeyModule_Assert(currentFunc != NULL);
             helloLangParseArgs(currentFunc);
             break;
         case SLEEP:
-            KVModule_Assert(currentFunc != NULL);
+            ValkeyModule_Assert(currentFunc != NULL);
             currentFunc->num_instructions++;
             break;
         case CALL:
-            KVModule_Assert(currentFunc != NULL);
+            ValkeyModule_Assert(currentFunc != NULL);
             helloLangParseCall(currentFunc);
             break;
         case RETURN:
-            KVModule_Assert(currentFunc != NULL);
+            ValkeyModule_Assert(currentFunc != NULL);
             currentFunc->num_instructions++;
             currentFunc = NULL;
             break;
         default:
-            *err = KVModule_CreateStringPrintf(NULL, "Failed to parse instruction: '%s'", token);
-            KVModule_Free(_code);
+            *err = ValkeyModule_CreateStringPrintf(NULL, "Failed to parse instruction: '%s'", token);
+            ValkeyModule_Free(_code);
             return -1;
         }
 
         token = strtok(NULL, " \n");
     }
 
-    KVModule_Free(_code);
+    ValkeyModule_Free(_code);
 
     return 0;
 }
 
-static KVModuleScriptingEngineExecutionState executeSleepInst(KVModuleScriptingEngineServerRuntimeCtx *server_ctx,
+static ValkeyModuleScriptingEngineExecutionState executeSleepInst(ValkeyModuleScriptingEngineServerRuntimeCtx *server_ctx,
                                                                   uint32_t seconds) {
     uint32_t elapsed_milliseconds = 0;
-    KVModuleScriptingEngineExecutionState state = VMSE_STATE_EXECUTING;
+    ValkeyModuleScriptingEngineExecutionState state = VMSE_STATE_EXECUTING;
     while(1) {
-        state = KVModule_GetFunctionExecutionState(server_ctx);
+        state = ValkeyModule_GetFunctionExecutionState(server_ctx);
         if (state != VMSE_STATE_EXECUTING) {
             break;
         }
@@ -355,50 +355,50 @@ static KVModuleScriptingEngineExecutionState executeSleepInst(KVModuleScriptingE
     return state;
 }
 
-static void executeCallInst(KVModuleCtx *module_ctx,
+static void executeCallInst(ValkeyModuleCtx *module_ctx,
                             const char *cmd_name,
                             Value *stack,
                             int *sp) {
-    KVModule_Assert(stack != NULL);
-    KVModule_Assert(sp != NULL);
-    KVModuleCallReply *rep = NULL;
+    ValkeyModule_Assert(stack != NULL);
+    ValkeyModule_Assert(sp != NULL);
+    ValkeyModuleCallReply *rep = NULL;
     errno = 0;
-    KVModule_Assert(*sp > 0);
+    ValkeyModule_Assert(*sp > 0);
     Value numargs = stack[--(*sp)];
-    KVModule_Assert(numargs.type == VALUE_INT);
-    KVModule_Assert(numargs.integer <= (uint32_t)(*sp));
+    ValkeyModule_Assert(numargs.type == VALUE_INT);
+    ValkeyModule_Assert(numargs.integer <= (uint32_t)(*sp));
     if (numargs.integer > 0) {
-        KVModuleString **cmd_args = KVModule_Alloc(sizeof(KVModuleString *) * numargs.integer);
+        ValkeyModuleString **cmd_args = ValkeyModule_Alloc(sizeof(ValkeyModuleString *) * numargs.integer);
         int bp = *sp - numargs.integer;
         for (uint32_t i = 0; i < numargs.integer; i++) {
             if (stack[bp + i].type == VALUE_INT) {
-                cmd_args[i] = KVModule_CreateStringPrintf(NULL, "%u", stack[bp + i].integer);
+                cmd_args[i] = ValkeyModule_CreateStringPrintf(NULL, "%u", stack[bp + i].integer);
             } else {
-                cmd_args[i] = KVModule_CreateStringPrintf(NULL, "%s", stack[bp + i].string);
+                cmd_args[i] = ValkeyModule_CreateStringPrintf(NULL, "%s", stack[bp + i].string);
             }
             (*sp)--;
         }
-        rep = KVModule_Call(module_ctx, cmd_name, "ESCXv", cmd_args, numargs.integer);
+        rep = ValkeyModule_Call(module_ctx, cmd_name, "ESCXv", cmd_args, numargs.integer);
         for (uint32_t i = 0; i < numargs.integer; i++) {
-            KVModule_FreeString(NULL, cmd_args[i]);
+            ValkeyModule_FreeString(NULL, cmd_args[i]);
         }
-        KVModule_Free(cmd_args);
+        ValkeyModule_Free(cmd_args);
     } else {
-        rep = KVModule_Call(module_ctx, cmd_name, "ESCX");
+        rep = ValkeyModule_Call(module_ctx, cmd_name, "ESCX");
     }
-    KVModule_Assert(rep != NULL);
-    int type = KVModule_CallReplyType(rep);
+    ValkeyModule_Assert(rep != NULL);
+    int type = ValkeyModule_CallReplyType(rep);
 
-    KVModuleString *response_str = KVModule_CreateStringFromCallReply(rep);
-    const char *resp_cstr = KVModule_StringPtrLen(response_str, NULL);
+    ValkeyModuleString *response_str = ValkeyModule_CreateStringFromCallReply(rep);
+    const char *resp_cstr = ValkeyModule_StringPtrLen(response_str, NULL);
 
-    if (type == KVMODULE_REPLY_ERROR) {
+    if (type == VALKEYMODULE_REPLY_ERROR) {
         stack[*sp].type = VALUE_ERROR;
         stack[(*sp)++].string = resp_cstr;
-    } else if (type == KVMODULE_REPLY_ARRAY_NULL) {
+    } else if (type == VALKEYMODULE_REPLY_ARRAY_NULL) {
         stack[(*sp)].type = VALUE_STRING;
         stack[(*sp)++].string = "(null array)";
-    } else if (type == KVMODULE_REPLY_NULL) {
+    } else if (type == VALKEYMODULE_REPLY_NULL) {
         stack[(*sp)].type = VALUE_STRING;
         stack[(*sp)++].string = "(null string)";
     } else {
@@ -410,54 +410,54 @@ static void executeCallInst(KVModuleCtx *module_ctx,
         }
     }
 
-    KVModule_FreeCallReply(rep);
+    ValkeyModule_FreeCallReply(rep);
 }
 
 static void helloDebuggerLogCurrentInstr(uint32_t pc, HelloInst *instr) {
-    KVModuleString *msg = NULL;
+    ValkeyModuleString *msg = NULL;
     switch (instr->kind) {
     case CONSTI:
     case ARGS:
-        msg = KVModule_CreateStringPrintf(NULL, ">>> %3u: %s %u", pc, HelloInstKindStr[instr->kind], instr->param.integer);
+        msg = ValkeyModule_CreateStringPrintf(NULL, ">>> %3u: %s %u", pc, HelloInstKindStr[instr->kind], instr->param.integer);
         break;
     case CONSTS:
     case CALL:
-        msg = KVModule_CreateStringPrintf(NULL, ">>> %3u: %s %s", pc, HelloInstKindStr[instr->kind], instr->param.string);
+        msg = ValkeyModule_CreateStringPrintf(NULL, ">>> %3u: %s %s", pc, HelloInstKindStr[instr->kind], instr->param.string);
         break;
     case SLEEP:
     case RETURN:
-        msg = KVModule_CreateStringPrintf(NULL, ">>> %3u: %s", pc, HelloInstKindStr[instr->kind]);
+        msg = ValkeyModule_CreateStringPrintf(NULL, ">>> %3u: %s", pc, HelloInstKindStr[instr->kind]);
         break;
     case FUNCTION:
     case RFUNCTION:
     case _NUM_INSTRUCTIONS:
-        KVModule_Assert(0);
+        ValkeyModule_Assert(0);
     }
 
-    KVModule_ScriptingEngineDebuggerLog(msg, 0);
+    ValkeyModule_ScriptingEngineDebuggerLog(msg, 0);
 }
 
 static int helloDebuggerInstrHook(uint32_t pc, HelloInst *instr) {
     helloDebuggerLogCurrentInstr(pc, instr);
-    KVModule_ScriptingEngineDebuggerFlushLogs();
+    ValkeyModule_ScriptingEngineDebuggerFlushLogs();
 
     int client_disconnected = 0;
-    KVModuleString *err;
-    KVModule_ScriptingEngineDebuggerProcessCommands(&client_disconnected, &err);
+    ValkeyModuleString *err;
+    ValkeyModule_ScriptingEngineDebuggerProcessCommands(&client_disconnected, &err);
 
     if (err) {
-        KVModule_ScriptingEngineDebuggerLog(err, 0);
+        ValkeyModule_ScriptingEngineDebuggerLog(err, 0);
         goto error;
     } else if (client_disconnected) {
-        KVModuleString *msg = KVModule_CreateStringPrintf(NULL, "ERROR: Client socket disconnected");
-        KVModule_ScriptingEngineDebuggerLog(msg, 0);
+        ValkeyModuleString *msg = ValkeyModule_CreateStringPrintf(NULL, "ERROR: Client socket disconnected");
+        ValkeyModule_ScriptingEngineDebuggerLog(msg, 0);
         goto error;
     }
 
     return 1;
 
 error:
-    KVModule_ScriptingEngineDebuggerFlushLogs();
+    ValkeyModule_ScriptingEngineDebuggerFlushLogs();
     return 0;
 }
 
@@ -470,14 +470,14 @@ typedef enum {
 /*
  * Executes an HELLO function.
  */
-static HelloExecutionState executeHelloLangFunction(KVModuleCtx *module_ctx,
-                                                    KVModuleScriptingEngineServerRuntimeCtx *server_ctx,
+static HelloExecutionState executeHelloLangFunction(ValkeyModuleCtx *module_ctx,
+                                                    ValkeyModuleScriptingEngineServerRuntimeCtx *server_ctx,
                                                     HelloDebugCtx *debug_ctx,
                                                     HelloFunc *func,
-                                                    KVModuleString **args,
+                                                    ValkeyModuleString **args,
                                                     int nargs,
                                                     Value *result) {
-    KVModule_Assert(result != NULL);
+    ValkeyModule_Assert(result != NULL);
     Value stack[64];
     int sp = 0;
 
@@ -506,16 +506,16 @@ static HelloExecutionState executeHelloLangFunction(KVModuleCtx *module_ctx,
         }
         case ARGS: {
             uint32_t idx = instr.param.integer;
-            KVModule_Assert(idx < (uint32_t)nargs);
+            ValkeyModule_Assert(idx < (uint32_t)nargs);
             size_t len;
-            const char *argStr = KVModule_StringPtrLen(args[idx], &len);
+            const char *argStr = ValkeyModule_StringPtrLen(args[idx], &len);
             stack[sp++] = parseValue(argStr);
             break;
 	    }
         case SLEEP: {
-            KVModule_Assert(sp > 0);
+            ValkeyModule_Assert(sp > 0);
             Value sleepVal = stack[--sp];
-            KVModule_Assert(sleepVal.type == VALUE_INT);
+            ValkeyModule_Assert(sleepVal.type == VALUE_INT);
             if (executeSleepInst(server_ctx, sleepVal.integer) == VMSE_STATE_KILLED) {
                 return KILLED;
             }
@@ -527,102 +527,102 @@ static HelloExecutionState executeHelloLangFunction(KVModuleCtx *module_ctx,
             break;
         }
         case RETURN: {
-            KVModule_Assert(sp > 0);
+            ValkeyModule_Assert(sp > 0);
             Value returnVal = stack[--sp];
-            KVModule_Assert(sp == 0);
+            ValkeyModule_Assert(sp == 0);
             *result = returnVal;
             return FINISHED;
 	    }
         case FUNCTION:
         case RFUNCTION:
         case _NUM_INSTRUCTIONS:
-            KVModule_Assert(0);
+            ValkeyModule_Assert(0);
         }
     }
 
-    KVModule_Assert(0);
+    ValkeyModule_Assert(0);
     return ABORTED;
 }
 
-static KVModuleScriptingEngineMemoryInfo engineGetMemoryInfo(KVModuleCtx *module_ctx,
-                                                                 KVModuleScriptingEngineCtx *engine_ctx,
-                                                                 KVModuleScriptingEngineSubsystemType type) {
-    KVMODULE_NOT_USED(module_ctx);
-    KVMODULE_NOT_USED(type);
+static ValkeyModuleScriptingEngineMemoryInfo engineGetMemoryInfo(ValkeyModuleCtx *module_ctx,
+                                                                 ValkeyModuleScriptingEngineCtx *engine_ctx,
+                                                                 ValkeyModuleScriptingEngineSubsystemType type) {
+    VALKEYMODULE_NOT_USED(module_ctx);
+    VALKEYMODULE_NOT_USED(type);
     HelloLangCtx *ctx = (HelloLangCtx *)engine_ctx;
-    KVModuleScriptingEngineMemoryInfo mem_info = {
-        .version = KVMODULE_SCRIPTING_ENGINE_ABI_MEMORY_INFO_VERSION
+    ValkeyModuleScriptingEngineMemoryInfo mem_info = {
+        .version = VALKEYMODULE_SCRIPTING_ENGINE_ABI_MEMORY_INFO_VERSION
     };
 
     if (ctx->program != NULL) {
-        mem_info.used_memory += KVModule_MallocSize(ctx->program);
+        mem_info.used_memory += ValkeyModule_MallocSize(ctx->program);
 
         for (uint32_t i = 0; i < ctx->program->num_functions; i++) {
             HelloFunc *func = ctx->program->functions[i];
             if (func != NULL) {
-                mem_info.used_memory += KVModule_MallocSize(func);
-                mem_info.used_memory += KVModule_MallocSize(func->name);
+                mem_info.used_memory += ValkeyModule_MallocSize(func);
+                mem_info.used_memory += ValkeyModule_MallocSize(func->name);
             }
         }
     }
 
-    mem_info.engine_memory_overhead = KVModule_MallocSize(ctx);
+    mem_info.engine_memory_overhead = ValkeyModule_MallocSize(ctx);
     if (ctx->program != NULL) {
-        mem_info.engine_memory_overhead += KVModule_MallocSize(ctx->program);
+        mem_info.engine_memory_overhead += ValkeyModule_MallocSize(ctx->program);
     }
 
     return mem_info;
 }
 
-static size_t engineFunctionMemoryOverhead(KVModuleCtx *module_ctx,
-                                           KVModuleScriptingEngineCompiledFunction *compiled_function) {
-    KVMODULE_NOT_USED(module_ctx);
+static size_t engineFunctionMemoryOverhead(ValkeyModuleCtx *module_ctx,
+                                           ValkeyModuleScriptingEngineCompiledFunction *compiled_function) {
+    VALKEYMODULE_NOT_USED(module_ctx);
     HelloFunc *func = (HelloFunc *)compiled_function->function;
-    return KVModule_MallocSize(func->name);
+    return ValkeyModule_MallocSize(func->name);
 }
 
-static void engineFreeFunction(KVModuleCtx *module_ctx,
-			                   KVModuleScriptingEngineCtx *engine_ctx,
-                               KVModuleScriptingEngineSubsystemType type,
-                               KVModuleScriptingEngineCompiledFunction *compiled_function) {
-    KVMODULE_NOT_USED(module_ctx);
-    KVMODULE_NOT_USED(type);
+static void engineFreeFunction(ValkeyModuleCtx *module_ctx,
+			                   ValkeyModuleScriptingEngineCtx *engine_ctx,
+                               ValkeyModuleScriptingEngineSubsystemType type,
+                               ValkeyModuleScriptingEngineCompiledFunction *compiled_function) {
+    VALKEYMODULE_NOT_USED(module_ctx);
+    VALKEYMODULE_NOT_USED(type);
     HelloLangCtx *ctx = (HelloLangCtx *)engine_ctx;
     HelloFunc *func = (HelloFunc *)compiled_function->function;
 
     for (uint32_t i = 0; i < func->num_instructions; i++) {
         HelloInst instr = func->instructions[i];
         if (instr.kind == CONSTS || instr.kind == CALL) {
-            KVModule_Free(instr.param.string);
+            ValkeyModule_Free(instr.param.string);
         }
     }
 
     ctx->program->functions[func->index] = NULL;
-    KVModule_Free(func->name);
+    ValkeyModule_Free(func->name);
     func->name = NULL;
-    KVModule_Free(func);
-    KVModule_Free(compiled_function->name);
-    KVModule_Free(compiled_function);
+    ValkeyModule_Free(func);
+    ValkeyModule_Free(compiled_function->name);
+    ValkeyModule_Free(compiled_function);
 }
 
-static KVModuleScriptingEngineCompiledFunction **createHelloLangEngine(KVModuleCtx *module_ctx,
-                                                                           KVModuleScriptingEngineCtx *engine_ctx,
-                                                                           KVModuleScriptingEngineSubsystemType type,
+static ValkeyModuleScriptingEngineCompiledFunction **createHelloLangEngine(ValkeyModuleCtx *module_ctx,
+                                                                           ValkeyModuleScriptingEngineCtx *engine_ctx,
+                                                                           ValkeyModuleScriptingEngineSubsystemType type,
                                                                            const char *code,
                                                                            size_t code_len,
                                                                            size_t timeout,
                                                                            size_t *out_num_compiled_functions,
-                                                                           KVModuleString **err) {
-    KVMODULE_NOT_USED(module_ctx);
-    KVMODULE_NOT_USED(code_len);
-    KVMODULE_NOT_USED(type);
-    KVMODULE_NOT_USED(timeout);
-    KVMODULE_NOT_USED(err);
+                                                                           ValkeyModuleString **err) {
+    VALKEYMODULE_NOT_USED(module_ctx);
+    VALKEYMODULE_NOT_USED(code_len);
+    VALKEYMODULE_NOT_USED(type);
+    VALKEYMODULE_NOT_USED(timeout);
+    VALKEYMODULE_NOT_USED(err);
 
     HelloLangCtx *ctx = (HelloLangCtx *)engine_ctx;
 
     if (ctx->program == NULL) {
-        ctx->program = KVModule_Alloc(sizeof(HelloProgram));
+        ctx->program = ValkeyModule_Alloc(sizeof(HelloProgram));
         memset(ctx->program, 0, sizeof(HelloProgram));
     } else {
         ctx->program->num_functions = 0;
@@ -632,25 +632,25 @@ static KVModuleScriptingEngineCompiledFunction **createHelloLangEngine(KVModuleC
     if (ret < 0) {
         for (uint32_t i = 0; i < ctx->program->num_functions; i++) {
             HelloFunc *func = ctx->program->functions[i];
-            KVModule_Free(func->name);
-            KVModule_Free(func);
+            ValkeyModule_Free(func->name);
+            ValkeyModule_Free(func);
             ctx->program->functions[i] = NULL;
         }
         ctx->program->num_functions = 0;
         return NULL;
     }
 
-    KVModuleScriptingEngineCompiledFunction **compiled_functions =
-        KVModule_Alloc(sizeof(KVModuleScriptingEngineCompiledFunction *) * ctx->program->num_functions);
+    ValkeyModuleScriptingEngineCompiledFunction **compiled_functions =
+        ValkeyModule_Alloc(sizeof(ValkeyModuleScriptingEngineCompiledFunction *) * ctx->program->num_functions);
 
     for (uint32_t i = 0; i < ctx->program->num_functions; i++) {
         HelloFunc *func = ctx->program->functions[i];
 
-        KVModuleScriptingEngineCompiledFunction *cfunc =
-            KVModule_Alloc(sizeof(KVModuleScriptingEngineCompiledFunction));
-        *cfunc = (KVModuleScriptingEngineCompiledFunction) {
-            .version = KVMODULE_SCRIPTING_ENGINE_ABI_COMPILED_FUNCTION_VERSION,
-            .name = KVModule_CreateString(NULL, func->name, strlen(func->name)),
+        ValkeyModuleScriptingEngineCompiledFunction *cfunc =
+            ValkeyModule_Alloc(sizeof(ValkeyModuleScriptingEngineCompiledFunction));
+        *cfunc = (ValkeyModuleScriptingEngineCompiledFunction) {
+            .version = VALKEYMODULE_SCRIPTING_ENGINE_ABI_COMPILED_FUNCTION_VERSION,
+            .name = ValkeyModule_CreateString(NULL, func->name, strlen(func->name)),
             .function = func,
             .desc = NULL,
             .f_flags = func->read_only ? VMSE_SCRIPT_FLAG_NO_WRITES : 0,
@@ -665,19 +665,19 @@ static KVModuleScriptingEngineCompiledFunction **createHelloLangEngine(KVModuleC
 }
 
 static void
-callHelloLangFunction(KVModuleCtx *module_ctx,
-                      KVModuleScriptingEngineCtx *engine_ctx,
-                      KVModuleScriptingEngineServerRuntimeCtx *server_ctx,
-                      KVModuleScriptingEngineCompiledFunction *compiled_function,
-                      KVModuleScriptingEngineSubsystemType type,
-                      KVModuleString **keys, size_t nkeys,
-                      KVModuleString **args, size_t nargs) {
-    KVMODULE_NOT_USED(keys);
-    KVMODULE_NOT_USED(nkeys);
+callHelloLangFunction(ValkeyModuleCtx *module_ctx,
+                      ValkeyModuleScriptingEngineCtx *engine_ctx,
+                      ValkeyModuleScriptingEngineServerRuntimeCtx *server_ctx,
+                      ValkeyModuleScriptingEngineCompiledFunction *compiled_function,
+                      ValkeyModuleScriptingEngineSubsystemType type,
+                      ValkeyModuleString **keys, size_t nkeys,
+                      ValkeyModuleString **args, size_t nargs) {
+    VALKEYMODULE_NOT_USED(keys);
+    VALKEYMODULE_NOT_USED(nkeys);
 
-    KVModule_Assert(type == VMSE_EVAL || type == VMSE_FUNCTION);
+    ValkeyModule_Assert(type == VMSE_EVAL || type == VMSE_FUNCTION);
 
-    KVModule_AutoMemory(module_ctx);
+    ValkeyModule_AutoMemory(module_ctx);
 
     HelloLangCtx *ctx = (HelloLangCtx *)engine_ctx;
     HelloFunc *func = (HelloFunc *)compiled_function->function;
@@ -690,130 +690,130 @@ callHelloLangFunction(KVModuleCtx *module_ctx,
         args,
         nargs,
         &result);
-    KVModule_Assert(state == KILLED || state == FINISHED || state == ABORTED);
+    ValkeyModule_Assert(state == KILLED || state == FINISHED || state == ABORTED);
 
     if (state == KILLED) {
         if (type == VMSE_EVAL) {
-            KVModule_ReplyWithCustomErrorFormat(module_ctx, 1, "ERR Script killed by user with SCRIPT KILL.");
+            ValkeyModule_ReplyWithCustomErrorFormat(module_ctx, 1, "ERR Script killed by user with SCRIPT KILL.");
             return;
         }
         if (type == VMSE_FUNCTION) {
-            KVModule_ReplyWithCustomErrorFormat(module_ctx, 1, "ERR Script killed by user with FUNCTION KILL");
+            ValkeyModule_ReplyWithCustomErrorFormat(module_ctx, 1, "ERR Script killed by user with FUNCTION KILL");
             return;
         }
     }
     else if (state == ABORTED) {
-        KVModule_ReplyWithCustomErrorFormat(module_ctx, 1, "ERR execution aborted during debugging session");
+        ValkeyModule_ReplyWithCustomErrorFormat(module_ctx, 1, "ERR execution aborted during debugging session");
     }
     else {
         if (result.type == VALUE_INT) {
-            KVModule_Log(module_ctx, "info", "Function '%s' executed, returning %u", func->name, result.integer);
-            KVModule_ReplyWithLongLong(module_ctx, result.integer);
+            ValkeyModule_Log(module_ctx, "info", "Function '%s' executed, returning %u", func->name, result.integer);
+            ValkeyModule_ReplyWithLongLong(module_ctx, result.integer);
         } else if (result.type == VALUE_STRING) {
-            KVModule_Log(module_ctx, "info", "Function '%s' executed, returning string '%s'", func->name, result.string);
-            KVModule_ReplyWithCString(module_ctx, result.string);
+            ValkeyModule_Log(module_ctx, "info", "Function '%s' executed, returning string '%s'", func->name, result.string);
+            ValkeyModule_ReplyWithCString(module_ctx, result.string);
         } else {
-            KVModule_Assert(result.type == VALUE_ERROR);
-            KVModule_Log(module_ctx, "info", "Function '%s' executed, returning error '%s'", func->name, result.string);
-            KVModule_ReplyWithCustomErrorFormat(module_ctx, 0, "%s",result.string);
+            ValkeyModule_Assert(result.type == VALUE_ERROR);
+            ValkeyModule_Log(module_ctx, "info", "Function '%s' executed, returning error '%s'", func->name, result.string);
+            ValkeyModule_ReplyWithCustomErrorFormat(module_ctx, 0, "%s",result.string);
         }
     }
 }
 
-static KVModuleScriptingEngineCallableLazyEnvReset *helloResetEvalEnv(KVModuleCtx *module_ctx,
-                                                                          KVModuleScriptingEngineCtx *engine_ctx,
+static ValkeyModuleScriptingEngineCallableLazyEnvReset *helloResetEvalEnv(ValkeyModuleCtx *module_ctx,
+                                                                          ValkeyModuleScriptingEngineCtx *engine_ctx,
                                                                           int async) {
-    KVMODULE_NOT_USED(module_ctx);
-    KVMODULE_NOT_USED(engine_ctx);
-    KVMODULE_NOT_USED(async);
+    VALKEYMODULE_NOT_USED(module_ctx);
+    VALKEYMODULE_NOT_USED(engine_ctx);
+    VALKEYMODULE_NOT_USED(async);
     return NULL;
 }
 
-static KVModuleScriptingEngineCallableLazyEnvReset *helloResetEnv(KVModuleCtx *module_ctx,
-                                                                      KVModuleScriptingEngineCtx *engine_ctx,
-                                                                      KVModuleScriptingEngineSubsystemType type,
+static ValkeyModuleScriptingEngineCallableLazyEnvReset *helloResetEnv(ValkeyModuleCtx *module_ctx,
+                                                                      ValkeyModuleScriptingEngineCtx *engine_ctx,
+                                                                      ValkeyModuleScriptingEngineSubsystemType type,
                                                                       int async) {
-    KVMODULE_NOT_USED(module_ctx);
-    KVMODULE_NOT_USED(engine_ctx);
-    KVMODULE_NOT_USED(type);
-    KVMODULE_NOT_USED(async);
+    VALKEYMODULE_NOT_USED(module_ctx);
+    VALKEYMODULE_NOT_USED(engine_ctx);
+    VALKEYMODULE_NOT_USED(type);
+    VALKEYMODULE_NOT_USED(async);
     return NULL;
 }
 
-static int helloDebuggerStepCommand(KVModuleString **argv, size_t argc, void *context) {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
+static int helloDebuggerStepCommand(ValkeyModuleString **argv, size_t argc, void *context) {
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
     HelloDebugCtx *ctx = context;
     ctx->stop_on_next_instr = 1;
     return 0;
 }
 
-static int helloDebuggerContinueCommand(KVModuleString **argv, size_t argc, void *context) {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
+static int helloDebuggerContinueCommand(ValkeyModuleString **argv, size_t argc, void *context) {
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
     HelloDebugCtx *ctx = context;
     ctx->stop_on_next_instr = 0;
     return 0;
 }
 
-static int helloDebuggerStackCommand(KVModuleString **argv, size_t argc, void *context) {
+static int helloDebuggerStackCommand(ValkeyModuleString **argv, size_t argc, void *context) {
     HelloDebugCtx *ctx = context;
-    KVModuleString *msg = NULL;
+    ValkeyModuleString *msg = NULL;
 
     if (argc > 1) {
         long long n;
-        KVModule_StringToLongLong(argv[1], &n);
+        ValkeyModule_StringToLongLong(argv[1], &n);
         uint32_t index = (uint32_t)n;
 
         if (index >= ctx->sp) {
-            KVModuleString *msg = KVModule_CreateStringPrintf(NULL, "Index out of range. Current stack size: %u", ctx->sp);
-            KVModule_ScriptingEngineDebuggerLog(msg, 0);
+            ValkeyModuleString *msg = ValkeyModule_CreateStringPrintf(NULL, "Index out of range. Current stack size: %u", ctx->sp);
+            ValkeyModule_ScriptingEngineDebuggerLog(msg, 0);
         }
         else {
             Value stackVal = ctx->stack[ctx->sp - index - 1];
             if (stackVal.type == VALUE_INT) {
-                msg = KVModule_CreateStringPrintf(NULL, "[%u] %d", index, stackVal.integer);
+                msg = ValkeyModule_CreateStringPrintf(NULL, "[%u] %d", index, stackVal.integer);
             } else {
-                msg = KVModule_CreateStringPrintf(NULL, "[%u] \"%s\"", index, stackVal.string);
+                msg = ValkeyModule_CreateStringPrintf(NULL, "[%u] \"%s\"", index, stackVal.string);
             }
-            KVModule_ScriptingEngineDebuggerLog(msg, 0);
+            ValkeyModule_ScriptingEngineDebuggerLog(msg, 0);
         }
     }
     else {
-        msg = KVModule_CreateStringPrintf(NULL, "Stack contents:");
+        msg = ValkeyModule_CreateStringPrintf(NULL, "Stack contents:");
         if (ctx->sp == 0) {
-            msg = KVModule_CreateStringPrintf(NULL, "[empty]");
-            KVModule_ScriptingEngineDebuggerLog(msg, 0);
+            msg = ValkeyModule_CreateStringPrintf(NULL, "[empty]");
+            ValkeyModule_ScriptingEngineDebuggerLog(msg, 0);
         }
         else {
-            KVModule_ScriptingEngineDebuggerLog(msg, 0);
+            ValkeyModule_ScriptingEngineDebuggerLog(msg, 0);
             for (uint32_t i=0; i < ctx->sp; i++) {
                 Value stackVal = ctx->stack[ctx->sp - i - 1];
                 if (stackVal.type == VALUE_INT) {
                     if (i == 0) {
-                        msg = KVModule_CreateStringPrintf(NULL, "top -> [%u] %d", i, stackVal.integer);
+                        msg = ValkeyModule_CreateStringPrintf(NULL, "top -> [%u] %d", i, stackVal.integer);
                     } else {
-                        msg = KVModule_CreateStringPrintf(NULL, "       [%u] %d", i, stackVal.integer);
+                        msg = ValkeyModule_CreateStringPrintf(NULL, "       [%u] %d", i, stackVal.integer);
                     }
                 } else {
                     if (i == 0) {
-                        msg = KVModule_CreateStringPrintf(NULL, "top -> [%u] \"%s\"", i, stackVal.string);
+                        msg = ValkeyModule_CreateStringPrintf(NULL, "top -> [%u] \"%s\"", i, stackVal.string);
                     } else {
-                        msg = KVModule_CreateStringPrintf(NULL, "       [%u] \"%s\"", i, stackVal.string);
+                        msg = ValkeyModule_CreateStringPrintf(NULL, "       [%u] \"%s\"", i, stackVal.string);
                     }
                 }
-                KVModule_ScriptingEngineDebuggerLog(msg, 0);
+                ValkeyModule_ScriptingEngineDebuggerLog(msg, 0);
             }
         }
     }
 
-    KVModule_ScriptingEngineDebuggerFlushLogs();
+    ValkeyModule_ScriptingEngineDebuggerFlushLogs();
     return 1;
 }
 
-static int helloDebuggerAbortCommand(KVModuleString **argv, size_t argc, void *context) {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
+static int helloDebuggerAbortCommand(ValkeyModuleString **argv, size_t argc, void *context) {
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
     HelloDebugCtx *ctx = context;
     ctx->abort = 1;
     return 0;
@@ -821,27 +821,27 @@ static int helloDebuggerAbortCommand(KVModuleString **argv, size_t argc, void *c
 
 #define COMMAND_COUNT (4)
 
-static KVModuleScriptingEngineDebuggerCommandParam stack_params[1] = {
+static ValkeyModuleScriptingEngineDebuggerCommandParam stack_params[1] = {
     {
         .name = "index",
         .optional = 1
     }
 };
 
-static KVModuleScriptingEngineDebuggerCommand helloDebuggerCommands[COMMAND_COUNT] = {
-    KVMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("step", 1, NULL, 0, "Execute current instruction.", 0 ,helloDebuggerStepCommand),
-    KVMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("continue", 1, NULL, 0, "Continue normal execution.", 0, helloDebuggerContinueCommand),
-    KVMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("stack", 2, stack_params, 1, "Print stack contents. If index is specified, print only the value at index. Indexes start at 0 (top = 0).", 0, helloDebuggerStackCommand),
-    KVMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("abort", 1, NULL, 0, "Abort execution.", 0, helloDebuggerAbortCommand),
+static ValkeyModuleScriptingEngineDebuggerCommand helloDebuggerCommands[COMMAND_COUNT] = {
+    VALKEYMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("step", 1, NULL, 0, "Execute current instruction.", 0 ,helloDebuggerStepCommand),
+    VALKEYMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("continue", 1, NULL, 0, "Continue normal execution.", 0, helloDebuggerContinueCommand),
+    VALKEYMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("stack", 2, stack_params, 1, "Print stack contents. If index is specified, print only the value at index. Indexes start at 0 (top = 0).", 0, helloDebuggerStackCommand),
+    VALKEYMODULE_SCRIPTING_ENGINE_DEBUGGER_COMMAND("abort", 1, NULL, 0, "Abort execution.", 0, helloDebuggerAbortCommand),
 };
 
-static KVModuleScriptingEngineDebuggerEnableRet helloDebuggerEnable(KVModuleCtx *module_ctx,
-                                                                        KVModuleScriptingEngineCtx *engine_ctx,
-                                                                        KVModuleScriptingEngineSubsystemType type,
-                                                                        const KVModuleScriptingEngineDebuggerCommand **commands,
+static ValkeyModuleScriptingEngineDebuggerEnableRet helloDebuggerEnable(ValkeyModuleCtx *module_ctx,
+                                                                        ValkeyModuleScriptingEngineCtx *engine_ctx,
+                                                                        ValkeyModuleScriptingEngineSubsystemType type,
+                                                                        const ValkeyModuleScriptingEngineDebuggerCommand **commands,
                                                                         size_t *commands_len) {
-    KVMODULE_NOT_USED(module_ctx);
-    KVMODULE_NOT_USED(type);
+    VALKEYMODULE_NOT_USED(module_ctx);
+    VALKEYMODULE_NOT_USED(type);
 
     HelloLangCtx *ctx = (HelloLangCtx *)engine_ctx;
     ctx->debug = (HelloDebugCtx) {.enabled = 1};
@@ -854,34 +854,34 @@ static KVModuleScriptingEngineDebuggerEnableRet helloDebuggerEnable(KVModuleCtx 
     return VMSE_DEBUG_ENABLED;
 }
 
-static void helloDebuggerDisable(KVModuleCtx *module_ctx,
-                                 KVModuleScriptingEngineCtx *engine_ctx,
-                                 KVModuleScriptingEngineSubsystemType type) {
-    KVMODULE_NOT_USED(module_ctx);
-    KVMODULE_NOT_USED(type);
+static void helloDebuggerDisable(ValkeyModuleCtx *module_ctx,
+                                 ValkeyModuleScriptingEngineCtx *engine_ctx,
+                                 ValkeyModuleScriptingEngineSubsystemType type) {
+    VALKEYMODULE_NOT_USED(module_ctx);
+    VALKEYMODULE_NOT_USED(type);
 
     HelloLangCtx *ctx = (HelloLangCtx *)engine_ctx;
     ctx->debug = (HelloDebugCtx){0};
 
 }
 
-static void helloDebuggerStart(KVModuleCtx *module_ctx,
-                               KVModuleScriptingEngineCtx *engine_ctx,
-                               KVModuleScriptingEngineSubsystemType type,
-                               KVModuleString *code) {
-    KVMODULE_NOT_USED(module_ctx);
-    KVMODULE_NOT_USED(type);
-    KVMODULE_NOT_USED(code);
+static void helloDebuggerStart(ValkeyModuleCtx *module_ctx,
+                               ValkeyModuleScriptingEngineCtx *engine_ctx,
+                               ValkeyModuleScriptingEngineSubsystemType type,
+                               ValkeyModuleString *code) {
+    VALKEYMODULE_NOT_USED(module_ctx);
+    VALKEYMODULE_NOT_USED(type);
+    VALKEYMODULE_NOT_USED(code);
 
     HelloLangCtx *ctx = (HelloLangCtx *)engine_ctx;
     ctx->debug.stop_on_next_instr = 1;
 }
 
-static void helloDebuggerEnd(KVModuleCtx *module_ctx,
-                               KVModuleScriptingEngineCtx *engine_ctx,
-                               KVModuleScriptingEngineSubsystemType type) {
-    KVMODULE_NOT_USED(module_ctx);
-    KVMODULE_NOT_USED(type);
+static void helloDebuggerEnd(ValkeyModuleCtx *module_ctx,
+                               ValkeyModuleScriptingEngineCtx *engine_ctx,
+                               ValkeyModuleScriptingEngineSubsystemType type) {
+    VALKEYMODULE_NOT_USED(module_ctx);
+    VALKEYMODULE_NOT_USED(type);
 
     HelloLangCtx *ctx = (HelloLangCtx *)engine_ctx;
     ctx->debug.stop_on_next_instr = 0;
@@ -890,39 +890,39 @@ static void helloDebuggerEnd(KVModuleCtx *module_ctx,
     ctx->debug.sp = 0;
 }
 
-int KVModule_OnLoad(KVModuleCtx *ctx,
-                        KVModuleString **argv,
+int ValkeyModule_OnLoad(ValkeyModuleCtx *ctx,
+                        ValkeyModuleString **argv,
                         int argc) {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
 
-    if (KVModule_Init(ctx, "helloengine", 1, KVMODULE_APIVER_1) == KVMODULE_ERR) {
-        return KVMODULE_ERR;
+    if (ValkeyModule_Init(ctx, "helloengine", 1, VALKEYMODULE_APIVER_1) == VALKEYMODULE_ERR) {
+        return VALKEYMODULE_ERR;
     }
 
-    unsigned long long abi_version = KVMODULE_SCRIPTING_ENGINE_ABI_VERSION;
+    unsigned long long abi_version = VALKEYMODULE_SCRIPTING_ENGINE_ABI_VERSION;
     if (argc > 0) {
-        if (KVModule_StringToULongLong(argv[0], &abi_version) == KVMODULE_ERR) {
-            const char *arg_str = KVModule_StringPtrLen(argv[0], NULL);
-            KVModule_Log(ctx, "error", "Invalid ABI version: %s", arg_str);
-            return KVMODULE_ERR;
+        if (ValkeyModule_StringToULongLong(argv[0], &abi_version) == VALKEYMODULE_ERR) {
+            const char *arg_str = ValkeyModule_StringPtrLen(argv[0], NULL);
+            ValkeyModule_Log(ctx, "error", "Invalid ABI version: %s", arg_str);
+            return VALKEYMODULE_ERR;
         }
         else {
-            const char *arg_str = KVModule_StringPtrLen(argv[0], NULL);
-            KVModule_Log(ctx, "info", "initializing Hello scripting engine with ABI version: %s", arg_str);
+            const char *arg_str = ValkeyModule_StringPtrLen(argv[0], NULL);
+            ValkeyModule_Log(ctx, "info", "initializing Hello scripting engine with ABI version: %s", arg_str);
         }
     }
 
-    hello_ctx = KVModule_Alloc(sizeof(HelloLangCtx));
+    hello_ctx = ValkeyModule_Alloc(sizeof(HelloLangCtx));
     hello_ctx->program = NULL;
     hello_ctx->debug.enabled = 0;
 
 
-    KVModuleScriptingEngineMethodsV3 methodsV3;
-    KVModuleScriptingEngineMethodsV4 methodsV4;
+    ValkeyModuleScriptingEngineMethodsV3 methodsV3;
+    ValkeyModuleScriptingEngineMethodsV4 methodsV4;
 
     if (abi_version <= 2) {
-        methodsV3 = (KVModuleScriptingEngineMethodsV3) {
+        methodsV3 = (ValkeyModuleScriptingEngineMethodsV3) {
             .version = abi_version,
             .compile_code = createHelloLangEngine,
             .free_function = engineFreeFunction,
@@ -932,7 +932,7 @@ int KVModule_OnLoad(KVModuleCtx *ctx,
             .get_memory_info = engineGetMemoryInfo,
         };
     } else if (abi_version <= 3) {
-        methodsV3 = (KVModuleScriptingEngineMethodsV3) {
+        methodsV3 = (ValkeyModuleScriptingEngineMethodsV3) {
             .version = abi_version,
             .compile_code = createHelloLangEngine,
             .free_function = engineFreeFunction,
@@ -942,7 +942,7 @@ int KVModule_OnLoad(KVModuleCtx *ctx,
             .get_memory_info = engineGetMemoryInfo,
         };
     } else {
-        methodsV4 = (KVModuleScriptingEngineMethodsV4) {
+        methodsV4 = (ValkeyModuleScriptingEngineMethodsV4) {
             .version = abi_version,
             .compile_code = createHelloLangEngine,
             .free_function = engineFreeFunction,
@@ -957,28 +957,28 @@ int KVModule_OnLoad(KVModuleCtx *ctx,
         };
     }
 
-    KVModuleScriptingEngineMethods *methods = abi_version <= 3 ?
-        (KVModuleScriptingEngineMethods *)&methodsV3 :
-        (KVModuleScriptingEngineMethods *)&methodsV4;
+    ValkeyModuleScriptingEngineMethods *methods = abi_version <= 3 ?
+        (ValkeyModuleScriptingEngineMethods *)&methodsV3 :
+        (ValkeyModuleScriptingEngineMethods *)&methodsV4;
 
-    KVModule_RegisterScriptingEngine(ctx,
+    ValkeyModule_RegisterScriptingEngine(ctx,
                                          "HELLO",
                                          hello_ctx,
                                          methods);
 
-    return KVMODULE_OK;
+    return VALKEYMODULE_OK;
 }
 
-int KVModule_OnUnload(KVModuleCtx *ctx) {
-    if (KVModule_UnregisterScriptingEngine(ctx, "HELLO") != KVMODULE_OK) {
-        KVModule_Log(ctx, "error", "Failed to unregister engine");
-        return KVMODULE_ERR;
+int ValkeyModule_OnUnload(ValkeyModuleCtx *ctx) {
+    if (ValkeyModule_UnregisterScriptingEngine(ctx, "HELLO") != VALKEYMODULE_OK) {
+        ValkeyModule_Log(ctx, "error", "Failed to unregister engine");
+        return VALKEYMODULE_ERR;
     }
 
-    KVModule_Free(hello_ctx->program);
+    ValkeyModule_Free(hello_ctx->program);
     hello_ctx->program = NULL;
-    KVModule_Free(hello_ctx);
+    ValkeyModule_Free(hello_ctx);
     hello_ctx = NULL;
 
-    return KVMODULE_OK;
+    return VALKEYMODULE_OK;
 }

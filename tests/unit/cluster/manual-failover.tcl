@@ -25,7 +25,7 @@ set current_epoch [CI 1 cluster_current_epoch]
 
 set numkeys 50000
 set numops 10000
-set cluster [kv_cluster 127.0.0.1:[srv 0 port]]
+set cluster [valkey_cluster 127.0.0.1:[srv 0 port]]
 catch {unset content}
 array set content {}
 
@@ -257,7 +257,7 @@ start_cluster 3 1 {tags {external:skip cluster} overrides {cluster-ping-interval
             [s 0 role] eq {slave} &&
             [s -3 role] eq {master}
         } else {
-            fail "The third falover does not happen"
+            fail "The third failover does not happen"
         }
         wait_for_cluster_propagation
     }

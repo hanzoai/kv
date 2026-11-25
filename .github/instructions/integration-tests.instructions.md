@@ -3,7 +3,7 @@ applyTo:
   - "tests/**/*.tcl"
 ---
 
-# KV Integration Test Review Standards
+# Valkey Integration Test Review Standards
 
 Apply these standards to Tcl-based integration tests (from DEVELOPMENT_GUIDE.md).
 

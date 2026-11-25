@@ -51,7 +51,7 @@
 #include "server.h"
 #include "scripting_engine.h"
 #include "script.h"
-#include "kvmodule.h"
+#include "valkeymodule.h"
 
 typedef struct functionLibInfo functionLibInfo;
 
@@ -59,8 +59,8 @@ typedef struct functionLibInfo functionLibInfo;
  * Used on rdb.c so it must be declared here. */
 typedef struct engineInfo {
     sds name;                    /* Name of the engine */
-    KVModule *engineModule;  /* the module that implements the scripting engine */
-    KVModuleCtx *module_ctx; /* Scripting engine module context */
+    ValkeyModule *engineModule;  /* the module that implements the scripting engine */
+    ValkeyModuleCtx *module_ctx; /* Scripting engine module context */
     scriptingEngine *engine;     /* engine callbacks that allows to interact with the engine */
     client *c;                   /* Client that is used to run commands */
 } engineInfo;
@@ -90,10 +90,10 @@ dict *functionsLibGet(void);
 size_t functionsLibCtxFunctionsLen(functionsLibCtx *functions_ctx);
 functionsLibCtx *functionsLibCtxGetCurrent(void);
 functionsLibCtx *functionsLibCtxCreate(void);
-void functionsLibCtxFree(functionsLibCtx *functions_lib_ctx, void(callback)(dict *), list *engine_callbacks);
-void functionsLibCtxClear(functionsLibCtx *lib_ctx, void(callback)(dict *));
+void functionsLibCtxFree(functionsLibCtx *functions_lib_ctx, list *engine_callbacks);
+void functionsLibCtxClear(functionsLibCtx *lib_ctx);
 void functionsLibCtxSwapWithCurrent(functionsLibCtx *new_lib_ctx, int async);
-void functionReset(int async, void(callback)(dict *));
+void functionReset(int async);
 
 void functionsRemoveLibFromEngine(scriptingEngine *engine);
 

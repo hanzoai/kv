@@ -1,240 +1,301 @@
-#include "kvmodule.h"
+#include "valkeymodule.h"
 #include <pthread.h>
 #include <assert.h>
 
 #define UNUSED(V) ((void) V)
 
-KVModuleUser *user = NULL;
+/* Forward declarations of module API functions not publicly exposed */
+extern int VM_ReplyRaw(ValkeyModuleCtx *ctx, const char *proto, size_t proto_len);
+#define ValkeyModule_ReplyRaw VM_ReplyRaw
 
-int call_without_user(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+ValkeyModuleUser *user = NULL;
+
+int call_without_user(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
     if (argc < 2) {
-        return KVModule_WrongArity(ctx);
+        return ValkeyModule_WrongArity(ctx);
     }
 
-    const char *cmd = KVModule_StringPtrLen(argv[1], NULL);
+    const char *cmd = ValkeyModule_StringPtrLen(argv[1], NULL);
 
-    KVModuleCallReply *rep = KVModule_Call(ctx, cmd, "Ev", argv + 2, (size_t)argc - 2);
+    ValkeyModuleCallReply *rep = ValkeyModule_Call(ctx, cmd, "Ev", argv + 2, (size_t)argc - 2);
     if (!rep) {
-        KVModule_ReplyWithError(ctx, "NULL reply returned");
+        ValkeyModule_ReplyWithError(ctx, "NULL reply returned");
     } else {
-        KVModule_ReplyWithCallReply(ctx, rep);
-        KVModule_FreeCallReply(rep);
+        ValkeyModule_ReplyWithCallReply(ctx, rep);
+        ValkeyModule_FreeCallReply(rep);
     }
-    return KVMODULE_OK;
+    return VALKEYMODULE_OK;
 }
 
-int call_with_user_flag(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+int call_with_user_flag(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
     if (argc < 3) {
-        return KVModule_WrongArity(ctx);
+        return ValkeyModule_WrongArity(ctx);
     }
 
-    KVModule_SetContextUser(ctx, user);
+    ValkeyModule_SetContextUser(ctx, user);
 
     /* Append Ev to the provided flags. */
-    KVModuleString *flags = KVModule_CreateStringFromString(ctx, argv[1]);
-    KVModule_StringAppendBuffer(ctx, flags, "Ev", 2);
+    ValkeyModuleString *flags = ValkeyModule_CreateStringFromString(ctx, argv[1]);
+    ValkeyModule_StringAppendBuffer(ctx, flags, "Ev", 2);
 
-    const char* flg = KVModule_StringPtrLen(flags, NULL);
-    const char* cmd = KVModule_StringPtrLen(argv[2], NULL);
+    const char* flg = ValkeyModule_StringPtrLen(flags, NULL);
+    const char* cmd = ValkeyModule_StringPtrLen(argv[2], NULL);
 
-    KVModuleCallReply* rep = KVModule_Call(ctx, cmd, flg, argv + 3, (size_t)argc - 3);
+    ValkeyModuleCallReply* rep = ValkeyModule_Call(ctx, cmd, flg, argv + 3, (size_t)argc - 3);
     if (!rep) {
-        KVModule_ReplyWithError(ctx, "NULL reply returned");
+        ValkeyModule_ReplyWithError(ctx, "NULL reply returned");
     } else {
-        KVModule_ReplyWithCallReply(ctx, rep);
-        KVModule_FreeCallReply(rep);
+        ValkeyModule_ReplyWithCallReply(ctx, rep);
+        ValkeyModule_FreeCallReply(rep);
     }
-    KVModule_FreeString(ctx, flags);
+    ValkeyModule_FreeString(ctx, flags);
 
-    return KVMODULE_OK;
+    return VALKEYMODULE_OK;
 }
 
-int add_to_acl(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
+int add_to_acl(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
     if (argc != 2) {
-        return KVModule_WrongArity(ctx);
+        return ValkeyModule_WrongArity(ctx);
     }
 
     size_t acl_len;
-    const char *acl = KVModule_StringPtrLen(argv[1], &acl_len);
+    const char *acl = ValkeyModule_StringPtrLen(argv[1], &acl_len);
 
-    KVModuleString *error;
-    int ret = KVModule_SetModuleUserACLString(ctx, user, acl, &error);
+    ValkeyModuleString *error;
+    int ret = ValkeyModule_SetModuleUserACLString(ctx, user, acl, &error);
     if (ret) {
         size_t len;
-        const char * e = KVModule_StringPtrLen(error, &len);
-        KVModule_ReplyWithError(ctx, e);
-        return KVMODULE_OK;
+        const char * e = ValkeyModule_StringPtrLen(error, &len);
+        ValkeyModule_ReplyWithError(ctx, e);
+        return VALKEYMODULE_OK;
     }
 
-    KVModule_ReplyWithSimpleString(ctx, "OK");
+    ValkeyModule_ReplyWithSimpleString(ctx, "OK");
 
-    return KVMODULE_OK;
+    return VALKEYMODULE_OK;
 }
 
-int get_acl(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
-    KVMODULE_NOT_USED(argv);
+int get_acl(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
+    VALKEYMODULE_NOT_USED(argv);
 
     if (argc != 1) {
-        return KVModule_WrongArity(ctx);
+        return ValkeyModule_WrongArity(ctx);
     }
 
-    KVModule_Assert(user != NULL);
+    ValkeyModule_Assert(user != NULL);
 
-    KVModuleString *acl = KVModule_GetModuleUserACLString(user);
+    ValkeyModuleString *acl = ValkeyModule_GetModuleUserACLString(user);
 
-    KVModule_ReplyWithString(ctx, acl);
+    ValkeyModule_ReplyWithString(ctx, acl);
 
-    KVModule_FreeString(NULL, acl);
+    ValkeyModule_FreeString(NULL, acl);
 
-    return KVMODULE_OK;
+    return VALKEYMODULE_OK;
 }
 
-int reset_user(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
-    KVMODULE_NOT_USED(argv);
+int reset_user(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
+    VALKEYMODULE_NOT_USED(argv);
 
     if (argc != 1) {
-        return KVModule_WrongArity(ctx);
+        return ValkeyModule_WrongArity(ctx);
     }
 
     if (user != NULL) {
-        KVModule_FreeModuleUser(user);
+        ValkeyModule_FreeModuleUser(user);
     }
 
-    user = KVModule_CreateModuleUser("module_user");
+    user = ValkeyModule_CreateModuleUser("module_user");
 
-    KVModule_ReplyWithSimpleString(ctx, "OK");
+    ValkeyModule_ReplyWithSimpleString(ctx, "OK");
 
-    return KVMODULE_OK;
+    return VALKEYMODULE_OK;
 }
 
 typedef struct {
-    KVModuleString **argv;
+    ValkeyModuleString **argv;
     int argc;
-    KVModuleBlockedClient *bc;
+    ValkeyModuleBlockedClient *bc;
 } bg_call_data;
 
 void *bg_call_worker(void *arg) {
     bg_call_data *bg = arg;
-    KVModuleBlockedClient *bc = bg->bc;
+    ValkeyModuleBlockedClient *bc = bg->bc;
 
     // Get module context
-    KVModuleCtx *ctx = KVModule_GetThreadSafeContext(bg->bc);
+    ValkeyModuleCtx *ctx = ValkeyModule_GetThreadSafeContext(bg->bc);
 
     // Acquire GIL
-    KVModule_ThreadSafeContextLock(ctx);
+    ValkeyModule_ThreadSafeContextLock(ctx);
 
     // Set user
-    KVModule_SetContextUser(ctx, user);
+    ValkeyModule_SetContextUser(ctx, user);
 
     // Call the command
     size_t format_len;
-    KVModuleString *format_kv_str = KVModule_CreateString(NULL, "v", 1);
-    const char *format = KVModule_StringPtrLen(bg->argv[1], &format_len);
-    KVModule_StringAppendBuffer(NULL, format_kv_str, format, format_len);
-    KVModule_StringAppendBuffer(NULL, format_kv_str, "E", 1);
-    format = KVModule_StringPtrLen(format_kv_str, NULL);
-    const char *cmd = KVModule_StringPtrLen(bg->argv[2], NULL);
-    KVModuleCallReply *rep = KVModule_Call(ctx, cmd, format, bg->argv + 3, (size_t)bg->argc - 3);
-    KVModule_FreeString(NULL, format_kv_str);
+    ValkeyModuleString *format_valkey_str = ValkeyModule_CreateString(NULL, "v", 1);
+    const char *format = ValkeyModule_StringPtrLen(bg->argv[1], &format_len);
+    ValkeyModule_StringAppendBuffer(NULL, format_valkey_str, format, format_len);
+    ValkeyModule_StringAppendBuffer(NULL, format_valkey_str, "E", 1);
+    format = ValkeyModule_StringPtrLen(format_valkey_str, NULL);
+    const char *cmd = ValkeyModule_StringPtrLen(bg->argv[2], NULL);
+    ValkeyModuleCallReply *rep = ValkeyModule_Call(ctx, cmd, format, bg->argv + 3, (size_t)bg->argc - 3);
+    ValkeyModule_FreeString(NULL, format_valkey_str);
 
     /* Free the arguments within GIL to prevent simultaneous freeing in main thread. */
     for (int i=0; i<bg->argc; i++)
-        KVModule_FreeString(ctx, bg->argv[i]);
-    KVModule_Free(bg->argv);
-    KVModule_Free(bg);
+        ValkeyModule_FreeString(ctx, bg->argv[i]);
+    ValkeyModule_Free(bg->argv);
+    ValkeyModule_Free(bg);
 
     // Release GIL
-    KVModule_ThreadSafeContextUnlock(ctx);
+    ValkeyModule_ThreadSafeContextUnlock(ctx);
 
     // Reply to client
     if (!rep) {
-        KVModule_ReplyWithError(ctx, "NULL reply returned");
+        ValkeyModule_ReplyWithError(ctx, "NULL reply returned");
     } else {
-        KVModule_ReplyWithCallReply(ctx, rep);
-        KVModule_FreeCallReply(rep);
+        ValkeyModule_ReplyWithCallReply(ctx, rep);
+        ValkeyModule_FreeCallReply(rep);
     }
 
     // Unblock client
-    KVModule_UnblockClient(bc, NULL);
+    ValkeyModule_UnblockClient(bc, NULL);
 
     // Free the module context
-    KVModule_FreeThreadSafeContext(ctx);
+    ValkeyModule_FreeThreadSafeContext(ctx);
 
     return NULL;
 }
 
-int call_with_user_bg(KVModuleCtx *ctx, KVModuleString **argv, int argc)
+int call_with_user_bg(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc)
 {
     UNUSED(argv);
     UNUSED(argc);
 
     /* Make sure we're not trying to block a client when we shouldn't */
-    int flags = KVModule_GetContextFlags(ctx);
-    int allFlags = KVModule_GetContextFlagsAll();
-    if ((allFlags & KVMODULE_CTX_FLAGS_MULTI) &&
-        (flags & KVMODULE_CTX_FLAGS_MULTI)) {
-        KVModule_ReplyWithSimpleString(ctx, "Blocked client is not supported inside multi");
-        return KVMODULE_OK;
+    int flags = ValkeyModule_GetContextFlags(ctx);
+    int allFlags = ValkeyModule_GetContextFlagsAll();
+    if ((allFlags & VALKEYMODULE_CTX_FLAGS_MULTI) &&
+        (flags & VALKEYMODULE_CTX_FLAGS_MULTI)) {
+        ValkeyModule_ReplyWithSimpleString(ctx, "Blocked client is not supported inside multi");
+        return VALKEYMODULE_OK;
     }
-    if ((allFlags & KVMODULE_CTX_FLAGS_DENY_BLOCKING) &&
-        (flags & KVMODULE_CTX_FLAGS_DENY_BLOCKING)) {
-        KVModule_ReplyWithSimpleString(ctx, "Blocked client is not allowed");
-        return KVMODULE_OK;
+    if ((allFlags & VALKEYMODULE_CTX_FLAGS_DENY_BLOCKING) &&
+        (flags & VALKEYMODULE_CTX_FLAGS_DENY_BLOCKING)) {
+        ValkeyModule_ReplyWithSimpleString(ctx, "Blocked client is not allowed");
+        return VALKEYMODULE_OK;
     }
 
     /* Make a copy of the arguments and pass them to the thread. */
-    bg_call_data *bg = KVModule_Alloc(sizeof(bg_call_data));
-    bg->argv = KVModule_Alloc(sizeof(KVModuleString*)*argc);
+    bg_call_data *bg = ValkeyModule_Alloc(sizeof(bg_call_data));
+    bg->argv = ValkeyModule_Alloc(sizeof(ValkeyModuleString*)*argc);
     bg->argc = argc;
     for (int i=0; i<argc; i++)
-        bg->argv[i] = KVModule_HoldString(ctx, argv[i]);
+        bg->argv[i] = ValkeyModule_HoldString(ctx, argv[i]);
 
     /* Block the client */
-    bg->bc = KVModule_BlockClient(ctx, NULL, NULL, NULL, 0);
+    bg->bc = ValkeyModule_BlockClient(ctx, NULL, NULL, NULL, 0);
 
     /* Start a thread to handle the request */
     pthread_t tid;
     int res = pthread_create(&tid, NULL, bg_call_worker, bg);
     assert(res == 0);
 
-    return KVMODULE_OK;
+    return VALKEYMODULE_OK;
 }
 
-int KVModule_OnLoad(KVModuleCtx *ctx, KVModuleString **argv, int argc) {
-    KVMODULE_NOT_USED(argv);
-    KVMODULE_NOT_USED(argc);
-
-    if (KVModule_Init(ctx,"usercall",1,KVMODULE_APIVER_1)== KVMODULE_ERR)
-        return KVMODULE_ERR;
-
-    if (KVModule_CreateCommand(ctx,"usercall.call_without_user", call_without_user,"write",0,0,0) == KVMODULE_ERR)
-        return KVMODULE_ERR;
-
-    if (KVModule_CreateCommand(ctx,"usercall.call_with_user_flag", call_with_user_flag,"write",0,0,0) == KVMODULE_ERR)
-        return KVMODULE_ERR;
-
-    if (KVModule_CreateCommand(ctx, "usercall.call_with_user_bg", call_with_user_bg, "write", 0, 0, 0) == KVMODULE_ERR)
-        return KVMODULE_ERR;
-
-    if (KVModule_CreateCommand(ctx, "usercall.add_to_acl", add_to_acl, "write",0,0,0) == KVMODULE_ERR)
-        return KVMODULE_ERR;
-
-    if (KVModule_CreateCommand(ctx,"usercall.reset_user", reset_user,"write",0,0,0) == KVMODULE_ERR)
-        return KVMODULE_ERR;
-
-    if (KVModule_CreateCommand(ctx,"usercall.get_acl", get_acl,"write",0,0,0) == KVMODULE_ERR)
-        return KVMODULE_ERR;
-
-    return KVMODULE_OK;
+/* Reply handler for VM_CallArgv wrappers */
+static int usercall_argv_reply_handler(void *ctx, ValkeyModuleCtx *mctx, const char *proto, size_t proto_len) {
+    UNUSED(ctx);
+    ValkeyModule_ReplyRaw(mctx, proto, proto_len);
+    return 0;
 }
 
-int KVModule_OnUnload(KVModuleCtx *ctx) {
-    KVMODULE_NOT_USED(ctx);
+/* VM_CallArgv variant of call_without_user */
+int call_argv_without_user(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
+    if (argc < 2) return ValkeyModule_WrongArity(ctx);
+
+    ValkeyModuleReplyHandlers handlers = {
+        .version = VALKEYMODULE_REPLY_HANDLERS_VERSION,
+        .onRespAvailable = usercall_argv_reply_handler,
+    };
+
+    if (ValkeyModule_CallArgv(ctx, argv + 1, (size_t)argc - 1, 0, &handlers, NULL) == VALKEYMODULE_ERR) {
+        ValkeyModule_ReplyWithError(ctx, "NULL reply returned");
+    }
+    return VALKEYMODULE_OK;
+}
+
+/* VM_CallArgv variant of call_with_user_flag */
+int call_argv_with_user_flag(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
+    if (argc < 3) return ValkeyModule_WrongArity(ctx);
+
+    ValkeyModule_SetContextUser(ctx, user);
+
+    size_t flags_len;
+    const char *flags_str = ValkeyModule_StringPtrLen(argv[1], &flags_len);
+
+    int flags = VALKEYMODULE_CALL_ARGV_ERRORS_AS_REPLIES;
+    for (size_t i = 0; i < flags_len; i++) {
+        switch (flags_str[i]) {
+        case 'C': flags |= VALKEYMODULE_CALL_ARGV_RUN_AS_USER; break;
+        case '!': flags |= VALKEYMODULE_CALL_ARGV_REPLICATE; break;
+        }
+    }
+
+    ValkeyModuleReplyHandlers handlers = {
+        .version = VALKEYMODULE_REPLY_HANDLERS_VERSION,
+        .onRespAvailable = usercall_argv_reply_handler,
+    };
+
+    /* argv[2] is the command; pass argv+2 so it becomes argv[0] of the call */
+    if (ValkeyModule_CallArgv(ctx, argv + 2, (size_t)argc - 2, flags, &handlers, NULL) == VALKEYMODULE_ERR) {
+        ValkeyModule_ReplyWithError(ctx, "NULL reply returned");
+    }
+    return VALKEYMODULE_OK;
+}
+
+int ValkeyModule_OnLoad(ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc) {
+    VALKEYMODULE_NOT_USED(argv);
+    VALKEYMODULE_NOT_USED(argc);
+
+    if (ValkeyModule_Init(ctx,"usercall",1,VALKEYMODULE_APIVER_1)== VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
+
+    if (ValkeyModule_CreateCommand(ctx,"usercall.call_without_user", call_without_user,"write",0,0,0) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
+
+    if (ValkeyModule_CreateCommand(ctx,"usercall.call_argv_without_user", call_argv_without_user,"write",0,0,0) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
+
+    if (ValkeyModule_CreateCommand(ctx,"usercall.call_with_user_flag", call_with_user_flag,"write",0,0,0) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
+
+    if (ValkeyModule_CreateCommand(ctx,"usercall.call_argv_with_user_flag", call_argv_with_user_flag,"write",0,0,0) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
+
+    if (ValkeyModule_CreateCommand(ctx, "usercall.call_with_user_bg", call_with_user_bg, "write", 0, 0, 0) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
+
+    if (ValkeyModule_CreateCommand(ctx, "usercall.add_to_acl", add_to_acl, "write",0,0,0) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
+
+    if (ValkeyModule_CreateCommand(ctx,"usercall.reset_user", reset_user,"write",0,0,0) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
+
+    if (ValkeyModule_CreateCommand(ctx,"usercall.get_acl", get_acl,"write",0,0,0) == VALKEYMODULE_ERR)
+        return VALKEYMODULE_ERR;
+
+    return VALKEYMODULE_OK;
+}
+
+int ValkeyModule_OnUnload(ValkeyModuleCtx *ctx) {
+    VALKEYMODULE_NOT_USED(ctx);
 
     if (user != NULL) {
-        KVModule_FreeModuleUser(user);
+        ValkeyModule_FreeModuleUser(user);
         user = NULL;
     }
 
-    return KVMODULE_OK;
+    return VALKEYMODULE_OK;
 }

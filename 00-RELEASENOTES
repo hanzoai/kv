@@ -1,5 +1,5 @@
-Hello! This file is just a placeholder, since this is the "unstable" branch
-of KV, the place where all the development happens.
+Valkey 9.2 release notes
+========================
 
 Upgrade urgency levels:
 
@@ -11,366 +11,506 @@ Upgrade urgency levels:
 | CRITICAL | There is a critical bug affecting MOST USERS. Upgrade ASAP.         |
 | SECURITY | There are security fixes in the release.                            |
 
-    https://kv.io/download/
+Valkey 9.2.0 GA  -  Released Wed 18 November 2026
+-------------------------------------------------
 
-More information is available at https://kv.io
+Upgrade urgency LOW: This is the first stable release of Valkey 9.2.
 
-### Security fixes
+### Behavior Changes
+* `ZRANGEBYSCORE`, `ZREVRANGEBYSCORE`, `ZCOUNT`, and `ZRANGESTORE` now reject a bare `(` or an empty string as a score bound instead of silently treating it as 0 by @AlisinaDevelo (#4054)
+* Path Hash deletion commands now remove the key when the last path is deleted, following the Hash key lifecycle and emitting a generic del event by @yangbodong22011 (#5068)
+* Active expiration of keys and hash fields now increments the dirty counter, so save points (and thus BGSAVE) may trigger more often by @enjoy-binbin (#3118)
 
-* (CVE-2026-23479) Use-After-Free in unblock client flow
-* (CVE-2026-25243) Invalid Memory Access in RESTORE command
-* (CVE-2026-23631) Use-after-free when full sync occurs during a yielding Lua/function execution
+### New Features and Enhanced Behavior
+* Add new `DELEX` command to conditionally delete a string key when its value matches (`IFEQ`) or differs from (`IFNE`) a given value by @lightsigma96 (#4607)
+* Add Zstd as a streaming compression codec for RDB persistence and replication, offering better compression ratios than LZ4 by @sarthakaggarwal97 (#3798)
+* Support streaming-compressed RDB preambles in AOF bases, so compressed full-sync RDB files can be reused directly as AOF bases by @sarthakaggarwal97 (#4754)
+* `ACL GENPASS` and the hash function seed draw randomness from the configured OpenSSL 3 provider when built with TLS, supporting deployments that require a validated crypto module by @MarkAtwood (#4339)
+* Support forkless full synchronization to replicas, serving disk and diskless full syncs from a background-thread snapshot without forking by @nitaicaro (#4797)
+* Add ACL DIGEST command that returns a fingerprint of the ACL rules currently in effect, useful to verify what ACL LOAD applied by @melancholictheory (#4446)
+* Add forkless RDB snapshots, opt-in via the new `forkless-infrastructure-enabled` and `bgsave-default-method` configs, with new INFO persistence fields reporting the save method and progress by @JimB123 (#4460)
+* Add the `XACKDEL` and `XDELEX` stream commands with `KEEPREF`, `DELREF` and `ACKED` modes to acknowledge and delete messages once consumer groups no longer need them by @nickiaq (#4629)
+* Support a secondary server certificate via `tls-alt-cert-file`, `tls-alt-key-file` and `tls-alt-key-file-pass`, e.g. a post-quantum certificate alongside RSA, with matching INFO TLS fields by @pkhartsk (#3717)
+* Add ACL roles: named, reusable sets of ACL selectors managed with `ACL SETROLE`/`DELROLE`/`GETROLE`/`ROLES` and assigned to users with `role:<name>`, in commands, the ACL file and valkey.conf by @yang-z-o (#3967)
+* Add a `maxmemory-scripts` config to limit memory used by cached `EVAL` scripts, and mark `SCRIPT LOAD` as DENYOOM so it respects the global maxmemory limit by @enjoy-binbin (#866)
+* Add Path Hash, a new radix-tree-backed data type with `PH*` commands for exact lookup, longest-prefix matching, and prefix traversal over binary-safe paths by @yangbodong22011 (#4506)
+* Support whole-stream LZ4 compression of RDB files via the new `rdbcompression lz4` option; the default per-string LZF behavior is unchanged by @sarthakaggarwal97 (#3531)
+* Add server-side hot key detection with new `HOTKEYS GET`/`RESET` commands, enabled by setting `hotkeys-top-k` by @alon-arenberg (#3708)
+* Add optional replication throttling (`repl-throttling-enabled`) that slows client writes when a replica falls behind, avoiding disconnects and full syncs by @harrylin98 (#4356)
+* Prioritize system-critical events (cluster heartbeats, replication, slot migration) over heavy client traffic, tunable via the new `priority-preemptive-poll-interval-us` config by @satheeshaGowda (#4076)
+* Reserve connection slots for administrative clients: connections from the CIDR ranges listed in the new `priority-subnets` config are tagged as prioritized, `maxclients-reserved` caps normal clients at `maxclients` minus that many slots, and `INFO clients` reports `connected_priority_clients` by @satheeshaGowda (#4005)
+* Add `INCREX` command to atomically increment a key by an integer or float while setting its expiration, with `NX`/`XX` conditions by @GavinDmello (#3253)
 
-Valkey 9.0.3 - February 23, 2026
-------------------
-
-Upgrade urgency SECURITY: This release includes security fixes we recommend you
-apply as soon as possible.
-
-### Security fixes
-
-* (CVE-2025-67733) RESP Protocol Injection via Lua error_reply
-* (CVE-2026-21863) Remote DoS with malformed Valkey Cluster bus message
-* (CVE-2026-27623) Reset request type after handling empty requests
-
-### Bug fixes
-
-* Avoids crash during MODULE UNLOAD when ACL rules reference a module command and subcommand (#3160)
-* Fix server assert on ACL LOAD when current user loses permission to channels (#3182)
-* Fix bug causing no response flush sometimes when IO threads are busy (#3205)
-
-Valkey 9.0.2 - February 3, 2026
--------------------------------
-
-Upgrade urgency HIGH: There are critical bugs that may affect a subset of users.
-
-### Bug fixes
-
-* Avoid memory leak of new argv when HEXPIRE commands target only non-exiting fields (#2973)
-* Fix HINCRBY and HINCRBYFLOAT to update volatile key tracking (#2974)
-* Avoid empty hash object when HSETEX added no fields (#2998)
-* Fix case-sensitive check for the FNX and FXX arguments in HSETEX (#3000)
-* Prevent assertion in active expiration job after a hash with volatile fields is overwritten (#3003, #3007)
-* Fix HRANDFIELD to return null response when no field could be found (#3022)
-* Fix HEXPIRE to not delete items when validation rules fail and expiration is in the past (#3023, #3048)
-* Fix how hash is handling overriding of expired fields overwrite (#3060)
-* HSETEX - Always issue keyspace notifications after validation (#3001)
-* Make zero a valid TTL for hash fields during import mode and data loading (#3006)
-* Trigger prepareCommand on argc change in module command filters (#2945)
-* Restrict TTL from being negative and avoid crash in import-mode (#2944)
-* Fix chained replica crash when doing dual channel replication (#2983)
-* Skip slot cache optimization for AOF client to prevent key duplication and data corruption (#3004)
-* Fix used_memory_dataset underflow due to miscalculated used_memory_overhead (#3005)
-* Avoid duplicate calculations of network-bytes-out in slot stats with copy-avoidance (#3046)
-* Fix XREAD returning error on empty stream with + ID (#2742)
-
-### Performance/Efficiency Improvements
-
-* Track reply bytes in I/O threads if commandlog-reply-larger-than is -1 (#3086, #3126).
-  This makes it possible to mitigate a performance regression in 9.0.1 caused by the bug fix #2652.
-
-Valkey 9.0.1 - December 9, 2025
--------------------------------
-
-Upgrade urgency MODERATE: Program an upgrade of the server, but it's not urgent.
-
-### Bug fixes
-* Authenticate slot migration client on source node to internal user (#2785)
-* Bug fix: reset io_last_written on c->buf resize to prevent stale pointers (#2786)
-* Sentinel: fix regression requiring "+failover" ACL in failover path (#2780)
-* Cluster: Avoid usage of light weight messages to nodes with not ready bidirectional links (#2817)
-* Send duplicate multi meet packet only for node which supports it in mixed clusters (#2840)
-* Fix: LTRIM should not call signalModifiedKey when no elements are removed (#2787)
-* Fix build on some 32-bit ARM by only using NEON on AArch64 (#2873)
-* Fix deadlock in IO-thread shutdown during panic (#2898)
-* Fix COMMANDLOG large-reply when using reply copy avoidance (#2652)
-* Fix CLUSTER SLOTS crash when called from module timer callback (#2915)
-
-Valkey 9.0.0 GA - October 21, 2025
--------------------------------------
-
-Upgrade urgency LOW: This is the first release of Valkey 9.0 which 
-includes stability, bug fixes, and incremental improvements over the third release candidate.
-
-### Bug fixes
-* HSETEX with FXX should not create an object if it does not exist (#2716)
-* Fix crash when aborting a slot migration while child snapshot is active (#2721)
-* Fix double MOVED reply on unblock at failover (#2734)
-* Fix memory leak with CLIENT LIST/KILL duplicate filters (#2362)
-* Fix incorrect accounting after completed atomic slot migration (#2749)
-* Fix Lua VM crash after FUNCTION FLUSH ASYNC + FUNCTION LOAD (#1826,#2750)
-* Fix invalid memory address caused by hashtable shrinking during safe iteration (#2753)
-
-Valkey 9.0.0-rc3 - October 7, 2025
--------------------------------------
-
-Upgrade urgency LOW: This is the third release candidate of Valkey 9.0.0,
-focused on stability, bug fixes, and incremental improvements.
-
-### Security fixes
-* (CVE-2025-49844) A Lua script may lead to remote code execution
-* (CVE-2025-46817) A Lua script may lead to integer overflow and potential RCE
-* (CVE-2025-46818) A Lua script can be executed in the context of another user
-* (CVE-2025-46819) LUA out-of-bound read
-
-### Performance/Efficiency
-* Optimize skiplist random level generation logic (#2631)
-
-### Cluster and Replication
-* Redirect blocked clients after failover (#2329)
-* Prevent exposure of importing keys on replicas during atomic slot migration (#2635)
-* Add slot migration client flags and module context flags (#2639)
-* Introduce SYNCSLOTS CAPA for forwards compatibility (#2688)
+### Performance and Efficiency Improvements
+* Fix long stalls in `SRANDMEMBER`, `ZRANDMEMBER`, `HRANDFIELD` and `SPOP` on a small key whose hashtable is still shrinking from a much larger size by @madolson (#5170)
+* Stop treating `LINDEX`, `LRANGE` and `LPOS` as format-changing commands during forkless background iteration, so list reads no longer get write-style handling by @JimB123 (#5283)
+* Keep the forkless save queue growing under write load by not counting keys expedited by writes as leftover work by @taham0 (#5298)
+* Make BCAST client tracking cost scale with the prefixes a key matches instead of all registered prefixes, so many unmatched prefixes no longer slow writes and the event loop by @madolson (#5183)
+* Reclaim memory from sorted sets that shrink or have frequent score updates by compacting sparse B+tree leaves on delete by @rainsupreme (#4526)
+* Speed up sorted set score updates in listpack encoding by replacing the score in place when the member keeps its position by @charsyam (#3491)
+* Fix quadratic slowdown in `HRANDFIELD` and `SRANDMEMBER` with counts on collections whose elements differ only in letter case by @madolson (#5167)
+* Bound the time spent per cycle evicting keys from the client tracking table, avoiding long stalls after lowering `tracking-table-max-keys` by @tanmayBeginsJourney (#4775)
+* Speed up the `INFO` command by around 5% by pre-allocating the output buffer by @charsyam (#3413)
+* Reclaim client-side caching tracking table entries left by disconnected clients, fixing a memory leak under read-heavy workloads, and include the tracking table in active defrag by @rayjinghaolei (#4190)
+* Speed up `ZPOPMIN` and `ZPOPMAX` on B+tree encoded sorted sets by detaching edge items without a key search or copy by @charsyam (#4852)
+* Counting a hash's fields with expirations is now O(1) for hashtable-encoded hashes by tracking the volatile set size on each mutation by @frostzt (#4829)
+* Speed up AOF command propagation by serializing commands directly into the AOF buffer, removing an allocation and copy per command by @charsyam (#3496)
+* Cache the earliest event-loop timer to avoid an O(N) scan per iteration, reducing overhead with many timers such as RDMA connections by @royenheart (#4354)
+* Speed up HGETALL, HKEYS and HVALS with exact-length reply headers, fused bulk replies, and entry prefetching by @jjuleslasarte (#4417)
+* Eliminate false sharing in per-thread memory usage counters, improving throughput with I/O threads on SMT x86 systems by @omerrubi-amzn (#4107)
+* Read-only list iteration (e.g. LRANGE, LPOS) no longer decompresses and recompresses quicklist nodes in place, cutting CPU cost on compressed lists by @murphyjacob4 (#4782)
+* Speed up ZSCAN on btree-encoded sorted sets by avoiding temporary member and score copies and prefetching items by @charsyam (#4856)
+* Reduce cache-line false sharing on IO thread activity and job counters for better multi-threaded IO performance by @omerrubi-amzn (#4976)
+* PHDELPREFIX now bounds its temporary path copies to 64KiB per batch, avoiding large untracked memory spikes on long shared prefixes by @madolson (#5179)
+* Speed up radix tree lookups and inserts by using SIMD-optimized memchr() for child-edge search by @charsyam (#3472)
+* Improve replica processing speed by parsing multiple commands from the replication stream at once by @enjoy-binbin (#3597)
+* Reduce memory usage by sharing pubsub pattern and WATCH key objects across clients subscribing to or watching the same name by @enjoy-binbin (#4072)
+* Large sorted sets are now backed by a B+ tree instead of a skiplist; OBJECT ENCODING reports `btree` instead of `skiplist` by @ranshid (#4359)
+* Save the cluster config file from a background thread when `cluster-config-save-behavior` is best-effort, avoiding main-thread latency spikes from slow disk I/O by @enjoy-binbin (#2555)
+* Speed up `HMGET`, `SMISMEMBER` and `ZMSCORE` on large hashtable-encoded keys with batched lookups that overlap memory accesses by @chzhoo (#4017)
+* Extend memory prefetching to hash, set and sorted set member lookups when io-threads are enabled, improving performance for 30 field/member commands on large keys by @roshkhatri (#3940)
+* `MEMORY PURGE` now also releases free pages from the glibc main arena back to the OS, reclaiming memory held by libc-internal allocations by @webbsssss (#3640)
+* Speed up command propagation to replicas by batching each command's RESP frame into a single replication buffer write by @hpatro (#4044)
+* Reduce lseek system calls during disk-based replication by seeking only when a write blocks or is partial by @enjoy-binbin (#4053)
+* Reduce event-loop overhead by refreshing cached daylight-saving info once per second instead of on every wakeup by @hpatro (#4086)
+* Speed up keyspace event notifications by skipping work when there are no subscribers and avoiding unnecessary allocations by @enjoy-binbin (#4285)
+* Speed up exact `XTRIM MAXLEN = 0` by about 2.5x by clearing the whole stream in one step instead of removing entries individually by @sarthakaggarwal97 (#4161)
+* Cluster bus reads, writes, and inbound TLS accepts can now run on the shared I/O thread pool, with new `CLUSTER INFO` offload statistics by @hpatro (#3438)
+* Small hashes with field expiration now use the memory-efficient listpack encoding instead of always converting to a hashtable by @frostzt (#3212)
+* Reduce per-command overhead by skipping post-command bookkeeping when no propagation, module, or invalidation work is pending by @ahmetalicc (#4257)
 
 ### Bug Fixes
-* Fix atomic slot migration snapshot never proceeding with hz 1 (#2636)
-* Defrag if slab 1/8 full to fix defrag didn't stop issue (#2656)
-* Fix module key memory usage accounting (#2661)
-* Fix dual rdb channel connection error log (#2658)
+* Fix `PFMERGE` with no source keys bypassing ACL key permissions and failing in `COMMAND GETKEYS`, and a crash in module commands whose keynum key spec starts past the last argument by @madolson (#5087)
+* Fix `SCRIPT KILL` and `FUNCTION KILL` not stopping Lua scripts that loop inside nested coroutines, and script timeouts not being detected when work is spread across coroutines by @madolson (#5108)
+* Fix a server crash in `SORT` and `SORT_RO` with `BY` or `GET` patterns when an element is 2 GiB or larger by @madolson (#5146)
+* Fix `ValkeyModule_Calloc` and `ValkeyModule_TryCalloc` returning an undersized buffer when `nmemb * size` overflows by @madolson (#5155)
+* Fix `EXEC` succeeding after a key that was already expired at `WATCH` time is overwritten, which can happen on replicas by @madolson (#5169)
+* Fix a crash on the first `FUNCTION LOAD` after startup when the shebang engine name contains a NUL byte by @madolson (#5115)
+* Fix a crash in a cluster replica whose primary was removed from the nodes table when another primary claims an unassigned slot by @madolson (#5184)
+* Fix an active defrag crash when a large set, sorted set or list is replaced by a hashtable-encoded hash while it is being defragmented by @madolson (#5164)
+* Fix an out-of-bounds write in `PFADD` and `PFMERGE` on a corrupted sparse HyperLogLog ending in a truncated XZERO opcode by rejecting it as invalid by @madolson (#5124)
+* Fix a server abort in `PFADD` and `PFMERGE` on short sparse HyperLogLogs when `hll-sparse-max-bytes` is set to 31 or less by @madolson (#5138)
+* Fix forkless saves writing corrupted set members to the RDB when `ZUNION`, `ZINTER`, `ZINTERCARD` or `ZDIFF` reads the same set concurrently by @madolson (#5110)
+* Fix a crash when the Lua debugger is started on an empty or newline-only script by @madolson (#5117)
+* Fix a cluster node failing to restart with an assertion after a gossip entry carrying the MYSELF flag adds a second myself node to nodes.conf by @madolson (#5134)
+* Fix `ACL LOAD` not disconnecting default user clients subscribed to channels the reloaded rules no longer allow by @madolson (#5085)
+* Fix a Sentinel crash when a monitored replica's `INFO` reply contains no `master_host` by @smkher (#4929)
+* Fix throttled write commands being executed twice when using RDMA with IO threads by @madolson (#5160)
+* Fail `CONFIG REWRITE` when the old config file reads short instead of writing uninitialized memory into the new config file by @madolson (#5158)
+* Fix Lua `server.error_reply()` returning stale heap memory as the error message when given a string of 2 GiB or more by @madolson (#5122)
+* Fix a use-after-free in streams when `XADD` creates a new node, which could leave a dangling pointer hit by later reads such as `XRANGE` by @Baraa-Hasheesh (#4711)
+* Fix `XINFO GROUPS` and `XINFO STREAM ... FULL` reporting too-high consumer group lag after `XTRIM` or a trimming `XADD` removes unread entries by @Sasidharan3094 (#4983)
+* Fix forkless background iteration being left inside an open `MULTI` after a script or `MULTI`/`EXEC` when there are no replicas and AOF is off by @harrylin98 (#5316)
+* Fix use of uninitialized variables in `valkey-cli` cluster key migration when `SELECT` fails on the source node by @PoisonGodv (#5311)
+* Fix an assertion failure when `FLUSHALL` or `SHUTDOWN` cancels a failed forkless save that still has a `FLUSHDB` or `SWAPDB` queued by @dgershko (#5326)
+* Fix AOF load failure after a crash leaves a torn annotation at the end of the file; it is now treated as a short read and can be truncated by `aof-load-truncated` or `valkey-check-aof --fix` by @sumitk163 (#5349)
+* Fix Lua `server.log()` blocking the server for seconds when called with thousands of arguments, with no `-BUSY` reply or `SCRIPT KILL` by @madolson (#5104)
+* Bound the number of memory regions the crash report's fast memory test records on Linux to avoid overflowing its region list by @JimB123 (#5379)
+* Fix a replica assertion when a timed-out script ends while the replication throttler holds the primary client, possible right after a failover with `repl-throttling-enabled yes` by @asagege (#5389)
+* Fix a primary assertion when `FLUSHDB` runs right at the end of a forkless full sync by @sarthakaggarwal97 (#5365)
+* Fix a primary assertion when a module thread holding the GIL performs a replicated write during a forkless save or full sync; affects modules that set `VALKEYMODULE_OPTIONS_HANDLE_FORKLESS` by @Baraa-Hasheesh (#5432)
+* Fix `CONFIG SET priority-subnets` demoting replica and slot migration connections from high priority, and fix drift in the active priority client counter by @satheeshaGowda (#4681)
+* Fix a source primary assertion on the next `CLUSTER MIGRATESLOTS` and a pipe descriptor leak after a slot migration snapshot fails to fork, such as during a forkless BGSAVE by @Baraa-Hasheesh (#5359)
+* Fix excessive copy-on-write memory during fork-based saves and a data race in forkless saves under an LFU `maxmemory-policy` by @madolson (#5445)
+* Fix a use-after-free crash when a blocked client's re-executed command evicts the client still executing a command under `maxmemory-clients` by @nadav-levanoni (#5435)
+* Fix access to a freed database when `FLUSHDB` and `SWAPDB` in the same transaction terminate a background iteration by @JimB123 (#5462)
+* Reject module write commands while the server is paused for writes, preventing a crash from module timer callbacks during `CLIENT PAUSE WRITE` or `CLUSTER FAILOVER` by @smkher (#3645)
+* Fix event loop busy-spinning on virtual machines by not using raw TSC for the monotonic clock when the kernel clocksource is not tsc by @quanyeyang (#4707)
+* Fix a crash in `ValkeyModule_HashHasStringRef` on a missing or expired field and correct wrong return values in the hash stringRef module APIs by @ShubhamTaple (#4504)
+* Fix a server abort on a RESTORE payload declaring a string length that overflows the allocation size; such payloads are now rejected as bad data by @enjoy-binbin (#4733)
+* Fix ZINTER/ZINTERSTORE returning input-order-dependent scores when a weighted term is 0*inf; a NaN weighted score now counts as 0, matching ZUNION by @leomurillo (#4997)
+* Fix crashes, lookup hangs, and duplicate set members when keys or elements reach 2 GiB, caused by storing string lengths in a 32-bit integer by @madolson (#5133)
+* Fix module global defrag resuming on the wrong module or with a stale cursor when `MODULE UNLOAD` runs between defrag cycles by @madolson (#5154)
+* Propagate `PFADD` elements applied before a corrupted-HLL INVALIDOBJ error so replicas and the AOF stay consistent with the primary by @madolson (#5128)
+* Fix a server crash in `SCRIPT DEBUG SYNC` mode when a debugger command arrives split across more than one read by @madolson (#5127)
+* Fix a server panic when a Lua script returns or raises an error table whose metatable has an `__index` metamethod that raises an error by @madolson (#5118)
+* Fix forkless BGSAVE producing a corrupt snapshot when `SWAPDB` runs without being replicated, such as from a script with replication disabled by @madolson (#5116)
+* Let `FLUSHALL` and `SHUTDOWN` cancel a forkless save that is finalizing its file, so a stale snapshot can no longer overwrite the newer dump.rdb by @madolson (#5121)
+* Fix a server crash when a module never sets a postponed reply length; the leftover placeholder is now filled with an empty array by @madolson (#5159)
+* Fix a memory leak when `server.register_function` named arguments are repeated in a different letter case by @madolson (#5120)
+* Preserve expired but not yet reaped hash fields across listpack-to-hashtable conversion so their deletion is properly reaped and propagated by @frostzt (#4704)
+* Fix a double-decremented item count when background iteration is terminated with a SWAPDB or FLUSHDB event queued by @JimB123 (#4750)
+* Fix `GEOSEARCH` returning empty results for exact zero-distance matches on builds where floating-point contraction breaks the latitude distance calculation by @Baraa-Hasheesh (#4777)
+* Reject inline commands containing a raw NUL byte with a protocol error instead of leaving the connection stalled by @cjx-zar (#4759)
+* Fix a memory leak on normal shutdown caused by I/O worker threads not being terminated and cleaned up by @roshkhatri (#4710)
+* `XACKDEL` with `KEEPREF` now replies 1 instead of -1 when acknowledging an entry whose stream message was already deleted, matching the ACKED and DELREF modes by @adityamukesh (#4843)
+* Fix listpack encoding incompatibility that caused RDB load and replication failures for entries of certain lengths between 9.0 and 9.1.x by @jjuleslasarte (#4819)
+* Reject relative expire times in `SET`/`GETEX`, `RESTORE`, and `ValkeyModule_SetExpire` that overflow when added to the current time, preventing server aborts from negative expires by @madolson (#4880)
+* `ACL DIGEST` now includes role definitions, so editing a role's rules changes the reported fingerprint by @melancholictheory (#4694)
+* Fix a server crash when loading an ACL file containing a selector with an unmatched parenthesis by @magic-peach (#4214)
+* Fix a segfault on Alpine/musl when Lua is built as a module, caused by a symbol clash on an internal clock function by @mohammedgqudah (#4270)
+* Fix lex range seeks, NaN score bound handling, and a memory leak in B+tree sorted sets, and resolve `ZRANGEBYLEX` LIMIT offsets in logarithmic time by @xiaocj (#4644)
+* Fix expired hash fields left untracked after listpack-to-hashtable conversion, which could crash the server on a later write and leave fields that are never reaped by @beyondwin (#4894)
+* Restore acceptance of hexadecimal float sorted set scores (such as `0x10`), keeping replication and AOF replay compatible with Valkey 9.0 by @quanyeyang (#4875)
+* Sorted set range commands with a negative `LIMIT` offset now return an empty result instead of a spurious element on btree-encoded keys by @xiaocj (#4637)
+* Fix `HSETEX` and `HGETEX` failing to parse their arguments when the key is named `fields` by @sebxt (#4945)
+* Fix a crash when active defrag's deferred keys outlive a keyspace replacement such as FLUSHDB/FLUSHALL ASYNC, SWAPDB, or a replica's pre-sync flush by @taham0 (#4968)
+* Fix `LSET` on 64-bit builds silently modifying the wrong element for out-of-range indexes instead of returning an index out of range error by @charsyam (#4823)
+* Fix a heap buffer overflow in cluster Pub/Sub message construction; oversized PUBLISH and SPUBLISH payloads are now rejected with an error in cluster mode by @roshkhatri (#5030)
+* Lex range commands on btree-encoded sorted sets with mixed scores now match listpack results, preventing primary/replica divergence via ZREMRANGEBYLEX and ZRANGESTORE by @pirate329 (#4954)
+* Fix a memory leak when `GEOSEARCH` or `GEOSEARCHSTORE` is given repeated `BYPOLYGON` options by @charsyam (#4995)
+* `DEBUG RELOAD` and `DEBUG LOADAOF` now return a LOADING error while the dataset is loading, avoiding a possible panic by @enjoy-binbin (#4877)
+* Fix a memory leak in `ValkeyModule_GetCommandKeysWithFlags` when introspecting commands with large key lists by @christopherlim98 (#5046)
+* `MEMORY USAGE` now counts hash fields that have expired but not yet been reaped, fixing under-reported sizes by @sushilpaneru1 (#5092)
+* Fix a crash in `ValkeyModule_Call` when script-mode validation fails and error replies were not requested by @dvkashapov (#5091)
+* High-priority socket events are no longer drained when the event loop caller did not request file event processing by @enjoy-binbin (#5098)
+* Fix a crash when a replication role change command such as `REPLICAOF` or `CLUSTER REPLICATE` arrives over a replication link by @madolson (#5187)
+* `FUNCTION RESTORE` now applies the same library load timeout as `FUNCTION LOAD`, so a never-returning library can no longer block the server forever by @madolson (#5181)
+* Fix a buffer overflow in valkey-benchmark when `--num-functions` is large enough to overflow the generated script buffer by @madolson (#5175)
+* Fix a valkey-check-rdb crash with `--stats` on RDB files whose highest selected database contains no keys by @madolson (#5177)
+* Fix a crash on the importing primary when an atomic slot migration fails while its writes are paused by @madolson (#5182)
+* Fix `GEOSEARCH BYPOLYGON` missing matching members when the polygon's vertex centroid falls outside the valid latitude range by @madolson (#5174)
+* Fix a primary abort when `CLUSTER SETSLOT` runs inside MULTI or a script on a primary with online replicas by @madolson (#5141)
+* Fix a memory leak when deleting or replacing Lua functions with long names or descriptions by @madolson (#5109)
+* A refused oversized `XADD` no longer creates an empty stream key that replicas and the AOF never receive by @madolson (#5178)
+* Prevent a replica crash when the primary wrongly replies +CONTINUE to a full resync request; the replica now drops the link and retries by @madolson (#5126)
+* FUNCTION LOAD no longer aborts the server when a library calls `server.log()` at its top level, including when loading from RDB or AOF by @madolson (#5114)
+* RESET on a slot migration connection now returns an error instead of crashing the server with an assertion failure by @madolson (#5140)
+* DEBUG SLOTMIGRATION with missing arguments now returns an error instead of crashing the server by @madolson (#5147)
+* KEYS on a flushed database no longer leaks a rehashing pause that permanently stops rehashing and can eventually crash the server by @madolson (#5166)
+* Automatic RDB snapshots and AOF rewrites are no longer postponed while a forked SCRIPT DEBUG session is open by @madolson (#5153)
+* Fix an integer overflow in quicklist node merging that could crash the server on lists loaded with nodes over 4GiB via RESTORE or replication by @madolson (#5163)
+* Fix a stack buffer overflow when replying with hundreds of empty strings (e.g. MGET) while reply copy avoidance is active by @madolson (#5151)
+* CLUSTER SLOT-STATS ORDERBY no longer replies with uninitialized slot entries when a node's primary is itself a replica that claims slots by @madolson (#5131)
+* Fix a race with TLS and io-threads where an IO thread still writing to a client could modify the main thread's event loop by @madolson (#5156)
+* Fix a replica crash when a script exceeding busy-reply-threshold ends during CLIENT PAUSE WRITE with a pending replicated write by @madolson (#5150)
+* In cluster mode, one cross-slot command in a script no longer makes every later script and function call fail until restart by @madolson (#5191)
+* Fix a use-after-free crash when a forkless save is running while a swapdb-mode full sync swaps in the primary's keyspace on a replica by @nitaicaro (#5082)
+* Fix a replica assertion crash when the primary writes a key still in use by a forkless (consistent) save by @harrylin98 (#5206)
+* Fix a dangling pointer when a key is deleted during a forkless save, which could crash or silently corrupt the iteration by @JimB123 (#4996)
+* Clear the script debugger input buffer after a "max client buffer reached" error so later debugger commands in the same session do not keep failing by @madolson (#5129)
+* MODULE LOAD is now rejected during async replication loading and atomic slot migration to avoid unexpected module behavior by @KIvanow (#3039)
+* Reject CLUSTER ADDSLOTS/DELSLOTS/ADDSLOTSRANGE/DELSLOTSRANGE/FLUSHSLOTS on replicas, preventing an assertion failure on a later CLUSTER REPLICATE by @enjoy-binbin (#4020)
+* Fix a crash when processing a heartbeat from a cluster node whose role is locally unknown, such as after loading an incomplete nodes.conf by @enjoy-binbin (#4091)
+* Fix wrong results or debug-build assertions in cluster mode when the server inspects keys outside the executing command's slot, such as WATCHed keys checked during EXEC by @nitaicaro (#4380)
+* Fix stream commands that mutate consumer-group or PEL state (`XGROUP`, `XSETID`, `XREADGROUP`, `XACK`, `XCLAIM`, `XAUTOCLAIM`) not triggering `WATCH` and client-side tracking invalidation by @Tarte12 (#3459)
+* Fix a server crash on FUNCTION DELETE or FUNCTION LOAD REPLACE after loading a library with function names differing only in case by @madolson (#3925)
+* Client-side tracking no longer records routing-only tokens such as the CLUSTERSCAN cursor as tracked keys by @nmvk (#3699)
+* Reject malformed slot entries in the cluster config file as a corrupt config instead of asserting or invoking undefined behavior by @enjoy-binbin (#4100)
+* Fix a TLS busy loop that consumed 100% CPU when a connection's read or write handler was removed while OpenSSL was waiting for the opposite event by @yairgott (#3510)
+* Client eviction no longer disconnects extra clients when a large client's close is deferred but its memory is already scheduled to be freed by @dhruv2x (#4152)
+* Fix a crash caused by a NULL pointer dereference when all timer events in an event loop are pending deletion by @royenheart (#4351)
+* Rework iteration over clients blocked on ready keys to simplify and harden an earlier use-after-free fix by @enjoy-binbin (#4472)
+* Fix a race in RDB string compression that could produce corrupt, unloadable RDB files when compression runs concurrently, without increasing copy-on-write by @dubey02 (#4539)
+* Fix dropped field TTLs and a possible crash when loading a hash with field expiration converts it to a hashtable mid-load (e.g. via RESTORE) by @madolson (#4669)
+* Reject a repeated `CLUSTER SYNCSLOTS ESTABLISH` on the same connection, which could lead to a use-after-free crash on disconnect by @Pyolar (#4670)
+* Fix wrong `ZCOUNT` results and incorrect `ZREMRANGEBYSCORE` deletions when members sharing a boundary score span multiple btree leaves by @rainsupreme (#4554)
+* Fix `SORT` key extraction so a `STORE` destination named like an option can no longer bypass ACL checks and write to an unauthorized key by @madolson (#4665)
 
-### Commands
-* Implement a lolwut for version 9 (#2646)
-
-Valkey 9.0.0-rc2 - September 23, 2025
--------------------------------------
-
-Upgrade urgency LOW: This is the second release candidate of Valkey 9.0.0,
-focused on stability, bug fixes, and incremental improvements.
-
-**Attention Valkey Module maintainers**: There is a new module option to
-indicate support for the Atomic Slot Migration (ASM) feature. Modules must
-explicitly opt in to ASM; otherwise, this feature will be disabled in clusters
-that load modules without ASM support.
-
-### Bug Fixes
-* Fix module context object re-use in scripting engines (#2358)
-* Fix pre-size hashtables per slot when reading RDB files (#2466)
-* Do not migrate script functions in atomic slot migration (#2547)
-* Don't use AVX2 instructions if the CPU don't support it (#2571)
-
-### Performance/Efficiency
-* Optimized pipelining by parsing and prefetching multiple commands (#2092)
+### Command and API Updates
+* Correct the `since` version of the `SISMEMBER` `XX` option to 9.2.0 in the command metadata by @PoisonGodv (#5310)
+* Allow null in the reply schemas of `GEOHASH`, `OBJECT FREQ`, `OBJECT IDLETIME` and `OBJECT REFCOUNT` for missing members and keys by @sarthakaggarwal97 (#5209)
+* Correct the `SENTINEL GET-MASTER-ADDR-BY-NAME` reply schema to allow the null reply returned for an unknown primary name by @rainsupreme (#5246)
+* Correct command metadata to describe the `ZINCRBY` increment and `ZINTER`/`ZINTERSTORE`/`ZUNION`/`ZUNIONSTORE` weights as doubles instead of integers by @sarthakaggarwal97 (#5210)
+* Correct command metadata so the `numfields` count argument of hash field commands is no longer associated with a key specification by @sarthakaggarwal97 (#5211)
+* Correct expiry command metadata to show that `XX` can be combined with `GT` or `LT`, rather than all four conditions being mutually exclusive by @sarthakaggarwal97 (#5213)
+* Mark the `RESTORE` and `RESTORE-ASKING` `IDLETIME` and `FREQ` options as mutually exclusive in command metadata by @sarthakaggarwal97 (#5212)
+* Correct the `HEXPIRE`, `HPEXPIRE`, `HEXPIREAT`, and `HPEXPIREAT` command summaries to say they set expiration on hash fields, not the hash object by @poiuj (#4783)
+* Add `LBOUND`, `UBOUND`, `SATURATE`, `ENX`, and `PERSIST` options to `INCREX` for bounded increments and conditional expiration control by @murphyjacob4 (#4679)
+* Correct `SENTINEL SIMULATE-FAILURE` metadata so `COMMAND DOCS` shows the required mode argument and its tokens by @sarthakaggarwal97 (#5208)
+* Rename the Path Hash command `PHEXISTS` to `PHPATHEXISTS` to clarify that it checks a path rather than a hash field by @yangbodong22011 (#5069)
+* Add `PHPATHSCAN` for ordered incremental path iteration and change `PHSCAN` to iterate fields and values at an exact path by @yangbodong22011 (#5066)
+* Remove `PHLONGEST` in favor of `PHPREFIXES`, which now returns matches longest-first with paging and an `EXCLUDESELF` option by @yangbodong22011 (#5070)
+* Replace `PHCARD` with `PHPATHCOUNT`, which can also count only the paths under a given prefix by @yangbodong22011 (#5071)
+* Replace `PHDELPREFIX` with `PHPATHDEL key path [WITHSUBPATHS]`, which deletes an exact path or its whole subtree and returns the number of deleted paths by @yangbodong22011 (#5067)
+* Mark the absolute timestamp arguments of `HEXPIREAT` and `HPEXPIREAT` as `unix-time` in `COMMAND DOCS`, matching `EXPIREAT` and `PEXPIREAT` by @rainsupreme (#5245)
+* Correct `ZADD` and `LCS` metadata so `COMMAND DOCS` and valkey-cli hints no longer present `NX` with `GT`/`LT` or `LEN` with `IDX` as valid combinations by @rainsupreme (#5244)
+* `MOVE` accepts a new optional `REPLACE` argument to overwrite an existing key in the destination database by @bandalgomsu (#2993)
+* WAIT and WAITAOF now reject numreplicas values that are negative or exceed INT_MAX, fixing an integer overflow that broke blocking by @enjoy-binbin (#3407)
+* Add CONFIG INFO subcommand returning config metadata such as type, flags, valid enum values and numeric ranges by @nitaicaro (#3050)
+* Add the `IFNE` option to `SET` to set a key only when its current value differs from the given comparison value by @arshidkv12 (#3105)
+* Add `IFEQ`, `IFNE`, `NX` and `XX` conditions to `EXEC`, enabling optimistic locking for multi-key transactions without `WATCH` by @bandalgomsu (#4019)
+* Add an optional `XX` flag to `SISMEMBER` that returns -1 when the key does not exist, distinguishing a missing key from a missing member by @li-benson (#2972)
+* Handle NOT_KEY key-specs more defensively so COMMAND GETKEYS and ACL key checks consistently treat routing-only tokens as non-keys by @enjoy-binbin (#3675)
+* Fix DEBUG HELP to show the correct DELAY-RDB-CLIENT-FREE-SECONDS name and document the SET-DISABLE-DENY-SCRIPTS subcommand by @xiejing-dev (#4099)
+* Add XX option to the ZRANGE family of commands to distinguish a non-existent key (nil) from an empty result by @youngmore1024 (#2978)
+* Fix the reply schemas of the ZRANGE family of commands to allow the null reply returned with the XX option by @murphyjacob4 (#4275)
+* Fix the `XPENDING` reply schema to describe the summary reply returned when a consumer group has no pending messages by @sarthakaggarwal97 (#4653)
 
 ### Cluster and Replication
-* Make cluster failover delay relative to node timeout (#2449)
-* Separate RDB snapshotting from atomic slot migration (#2533)
-
-### Module API
-* Added new module API event for tracking authentication attempts (#2237)
-* Added READONLY flag to ClientInfo.flags output structure (#2522)
-* Make modules opt-in to atomic slot migration and add server events (#2593)
+* Fix `HSETEX` and `MSETEX` with a repeated EX, PX or EXAT option being rejected by replicas and lost on AOF reload by @madolson (#5088)
+* Reject inbound cluster bus packets larger than 16MB, except Pub/Sub and module messages, so a peer cannot make a node buffer up to 4GB from a single header by @madolson (#5065)
+* Fix replicas retrying full sync in a loop when the primary rejects `PSYNC` and the replica falls back to `SYNC` by @murphyjacob4 (#5280)
+* Strip every repeated `LIMIT` when propagating `XADD` and `XTRIM`, so tools replaying the replication stream no longer get a syntax error by @madolson (#4893)
+* Fix shutdown-triggered failover promoting a replica that has `cluster-replica-no-failover yes` by @simonasr (#5033)
+* Fix replication throttling starting earlier than intended when the replica output buffer limit is set below `repl-backlog-size` by @enjoy-binbin (#5338)
+* Fix Sentinel counting stale primary-down reports from peers toward quorum, which could trigger an unwanted failover of a healthy primary by @akasakariko (#4913)
+* Sentinel refuses to start when its config directory is not writable, instead of silently failing to save state by @sgissi (#5376)
+* Fix replicas reporting duplicate import-aborted module events for one slot import when `FLUSHALL` on the primary fails an atomic slot migration by @sarthakaggarwal97 (#5367)
+* Fix `MSETEX` in cluster mode skipping `MOVED` and `CROSSSLOT` checks and its writes not being forwarded during atomic slot migration by @bhuvanprakash (#4951)
+* Fix replication of `HDEL` commands generated by active hash field expiration during a forkless full sync by @JimB123 (#5460)
+* Decouple `rdbcompression` (on-disk RDB format) from `repl-compression` (replication wire format) so setting one no longer affects the other during a full sync by @zuiderkwast (#4749)
+* Avoid rapid failover election restarts by fast-failing only on NACK reasons that a new election epoch can actually fix by @enjoy-binbin (#4700)
+* Prevent a failover auth NACK for an old election from being counted against the current election by echoing the rejected request epoch by @xdk-amz (#4654)
+* Keep a replica's connection to its primary on the main thread so replication flow control works when I/O threads are enabled by @chky1386 (#4765)
+* `HDEL`, `HGETDEL`, `HPERSIST`, and `HEXPIRE` no longer propagate fields they treat as expired, preventing replica and AOF-reload divergence by @xdk-amz (#4772)
+* `COPY` of a hash now includes expired-but-unreaped fields so their deletion is propagated and replicas stay in sync by @pirate329 (#4939)
+* Fix atomic slot migration not replicating evictions on the import target, which let replicas grow far past `maxmemory` by @shanezx-sc (#4920)
+* Fix cluster config saving to avoid publishing truncated `nodes.conf` files, losing the startup lock after the first save, and failing every save on SMB filesystems such as Azure Files; the lock now lives on a separate `nodes.conf.lock` file by @KewangZhili (#4489)
+* Fix failover election fast-fail double-counting a voter that rejected the request and was later marked FAIL, which could abandon a winnable election by @xdk-amz (#4655)
+* Fix atomic slot migration with `cluster-databases` > 1 applying writes made during the snapshot to the wrong database on the target by @pirate329 (#4952)
+* Ignore new nodes gossiped by a sender still in handshake so a forged MEET packet cannot fill the cluster node table by @madolson (#5145)
+* Ignore invalid ping extension values from cluster peers that would corrupt nodes.conf and prevent the node from restarting by @madolson (#5137)
+* Bound the bytes the cluster bus reads per event so a peer with a constant read backlog cannot starve clients, cron and heartbeats by @madolson (#5161)
+* Fix incorrect missing-key handling of replicated MULTI/EXEC transactions during a forkless full sync by @JimB123 (#5205)
+* Cluster replicas now redirect keyless commands like SCAN and FLUSHDB to the primary for clients with CAPA REDIRECT that have not sent READONLY by @yanamolo (#3505)
+* Changing cluster-require-full-coverage via CONFIG SET now updates the cluster state immediately instead of waiting for the next cron cycle by @enjoy-binbin (#3676)
+* Fix CLUSTER BUMPEPOCH getting stuck when a dead node holds an equal or abnormally high config epoch; a single bump now overtakes it by @enjoy-binbin (#4092)
+* Replicas now retry PSYNC when the primary replies -BUSY instead of downgrading to legacy SYNC, which broke WAIT, PSYNC and FAILOVER by @enjoy-binbin (#4140)
+* SYNC/PSYNC from a replica with a down primary link now consistently returns -NOMASTERLINK, avoiding an unnecessary full sync fallback by @enjoy-binbin (#4148)
+* Add cluster-replica-priority config so operators can rank which replicas are preferred during automatic cluster failover by @enjoy-binbin (#2204)
+* Speed up recovery from split-vote failover elections with a new FAILOVER_AUTH_NACK message that lets a replica detect an unwinnable election and immediately retry with a higher epoch by @enjoy-binbin (#3833)
+* Add optional per-target `AUTH username password` to `CLUSTER MIGRATESLOTS`, with credentials redacted from the slow log and MONITOR by @nemtsv (#3538)
+* Compress the full-sync RDB payload with LZ4 when `rdbcompression lz4` is set and every attaching replica advertises support, reducing sync bandwidth with safe fallback to plaintext by @roshkhatri (#4075)
+* Add an `if-empty` value to `cluster-replica-no-failover` so a replica that has never received data from its primary refuses automatic failover, preventing silent data loss by @enjoy-binbin (#4425)
+* Add optional LZ4 streaming compression for steady-state replication via the new `repl-compression` config, negotiated per replica so older or opted-out replicas keep receiving plaintext by @roshkhatri (#3853)
+* Fix `CLUSTERSCAN` fingerprints to derive from the hash-seed config so cursors survive failover between nodes sharing a seed by @enjoy-binbin (#3679)
+* Replicas trigger a failover check immediately when cluster-replica-no-failover is disabled at runtime, instead of waiting for the next cron tick by @enjoy-binbin (#3827)
+* Validate node IDs and shard IDs received in cluster messages before applying them, dropping the link on invalid data to protect cluster state by @enjoy-binbin (#4065)
+* Drop the cluster link when a gossip section contains invalid node IDs, instead of keeping the connection to a corrupted sender alive by @enjoy-binbin (#4077)
+* Persist nodes.conf promptly when a node's address is updated through the gossip section by @enjoy-binbin (#4089)
+* Reject malformed node IDs in the open-slots RDB aux field instead of creating an illegal cluster node by @enjoy-binbin (#4098)
+* Strip the redundant LIMIT option when rewriting XADD/XTRIM for propagation, so the rewritten command is valid for tools that replay it by @cjx-zar (#4063)
+* Persist non-default cluster-replica-priority to nodes.conf so it survives restarts instead of waiting for the next gossip round by @enjoy-binbin (#4454)
+* Clear a stale primary-failure gossip flag on replicas so later failovers don't incorrectly skip the election delay by @charsyam (#4533)
+* Fix a node staying stuck in PFAIL when its PING is lost while the peer's own traffic keeps the cluster link alive by @enjoy-binbin (#4171)
+* `CLUSTER SYNCSLOTS FINISH` now rejects clients outside the slot migration stream, preventing misuse of the import state machine by @enjoy-binbin (#4330)
 
 ### Configuration
-* Added new cluster-announce-client-(port|tls-port) configs (#2429)
-* CONFIG RESETSTATS now also resets cluster related stats (#2458)
-* Make CONFIG GET command return sorted output (#2493)
+* Fix `notify-keyspace-events` dropping the `n` (new key) flag from `CONFIG GET` and `CONFIG REWRITE` when `A` is also set by @pirate329 (#5199)
+* CONFIG REWRITE now quotes the replicaof host, so hosts with spaces or newlines no longer corrupt the config file by @madolson (#5176)
+* Rename the `bgsave-default-method` config to `forkless-policy` with values `require-fork` and `prefer-forkless` by @madolson (#5261)
+* `commandlog-request-larger-than` and `commandlog-reply-larger-than` now accept memory units such as 10mb by @enjoy-binbin (#2648)
+* `cluster-announce-ip` now must be a valid IP address or hostname, rejecting values like `ip:port` that broke cluster bus addressing by @AlisinaDevelo (#4055)
+* Reject an empty `tls-ca-cert-dir` at startup and `CONFIG SET` time instead of silently accepting it and failing every client handshake later by @yang-z-o (#3522)
+* Document the database-level ACL rules (`db=`, `alldbs`, `resetdbs`) in valkey.conf and clarify the `reset` rule description by @enjoy-binbin (#3808)
+* CONFIG REWRITE now preserves module load order, so modules with dependencies load correctly after a restart by @Taeknology (#3769)
+* Document in valkey.conf that unixsocketgroup requires the chown syscall to be allowed under syscall-filtering sandboxes by @moko-poi (#3730)
 
-### Commands
-* Update reply schema for LMOVE and BLMOVE (#2541)
-* Most deprecated commands are now un-deprecated (#2546)
+### Module API Changes
+* Fix `ValkeyModule_CallReplyAttributeElement` always returning an error on RESP3 attribute replies by @madolson (#5157)
+* `ValkeyModule_ScanKey` and `ValkeyModule_ScanKeyRawBorrowed` no longer expose expired-but-unreaped fields of listpack-encoded hashes to modules by @madolson (#4885)
+* Fix module zset range iteration returning duplicate or phantom elements when changing direction on B+tree encoded sorted sets by @xiaocj (#4645)
+* Allow modules to block RESP3 clients that are subscribed to Pub/Sub channels instead of failing `ValkeyModule_BlockClient` with ENOTSUP by @quanyeyang (#4863)
+* Make `ValkeyModule_CallArgv` public, letting modules invoke commands with lower overhead through reply callbacks by @dvkashapov (#3911)
+* Add `ValkeyModule_ScanKeyRawBorrowed` to scan hash, set and sorted set keys without allocating a string per element by @KarthikSubbarao (#4403)
+* Fix loading of legacy Redis modules that export `RedisModule_OnLoad` via a linker version script by @roshkhatri (#3374)
+* Module global defrag callbacks now receive a time limit and a resumable cursor, making `ValkeyModule_RegisterDefragFunc` usable for large module data by @Aksha1812 (#4487)
+* Add `ValkeyModule_IncrExternalMemory`/`DecrExternalMemory` so modules can report memory allocated outside the server allocator toward `used_memory` and `maxmemory` by @bandalgomsu (#4128)
+* Correct `ValkeyModule_FreeModuleUser`, `ValkeyModule_ACLAddLogEntry` and `ValkeyModule_ACLAddLogEntryByUserName` declarations to return int as implemented, fixing undefined behavior on targets with strict call signature checks by @rainsupreme (#4676)
 
-### Upgrade
-* Relaxed RDB check for foreign RDB formats (#2543)
+### Observability and Logging
+* Fix a memory leak when a script or module command is refused by ACL while the ACL log is disabled with `acllog-max-len 0` by @madolson (#5162)
+* Fix `FCALL` errors or a crash when `FUNCTION FLUSH SYNC` runs before the lazy free triggered by `FUNCTION RESTORE` of more than 64 functions has completed by @madolson (#5105)
+* Improve `MEMORY USAGE` accuracy for btree-encoded sorted sets by counting leaf nodes exactly instead of extrapolating from a sample by @rainsupreme (#5045)
+* Remove the `# Hotkeys` INFO section and its `hotkeys_last_window_samples` and `hotkeys_last_window_duration_ms` fields, which only shipped in the 9.2 release candidates by @ranshid (#5340)
+* Report `forkless_estimated_seconds_remaining` and the other forkless progress INFO fields during a diskless forkless full sync instead of `-1`/`0` by @nitaicaro (#5436)
+* Move the `forkless_fallbacks_*` counters from the `INFO` stats section to `INFO debug` by @nitaicaro (#5442)
+* Remove the `forkless_fallbacks_old_rdb_version` counter from `INFO debug` along with the redundant old RDB version fork fallback for full sync by @nitaicaro (#5461)
+* Attribute LZ4 replication compression context memory to client memory usage so it appears under client memory accounting by @sarthakaggarwal97 (#4702)
+* Redact error text in server logs when `hide-user-data-from-log` is enabled, so command arguments no longer leak into logs by @zackcam (#4815)
+* Redact credentials of rejected `HELLO`, `AUTH` and `MIGRATE` commands so passwords no longer leak to MONITOR and the commandlog by @madolson (#5180)
+* Replace line breaks in Lua `server.log()` messages with spaces so scripts cannot forge standalone server log records by @madolson (#5185)
+* Client memory usage now includes watched key and pubsub channel/pattern names, making it visible in CLIENT INFO tot-mem and counted for maxmemory-clients by @enjoy-binbin (#3362)
+* CONFIG RESETSTAT now also resets the IO-thread prefetch and ACL access-denied statistics by @enjoy-binbin (#2891)
+* Latency report now recommends 'madvise' for disabling Transparent Huge Pages, consistent with the startup check by @enjoy-binbin (#3947)
+* Log when a cluster primary ignores an MFSTART manual failover message from an unknown node or a non-replica, helping diagnose failover timeouts by @enjoy-binbin (#4058)
+* Log a warning when a TLS certificate has an invalid notBefore or notAfter field on OpenSSL 4.0 builds by @pkhartsk (#4064)
+* Gossip corruption warnings now log the actual entry with the invalid node ID instead of the first gossip entry by @enjoy-binbin (#4101)
+* Produce crash stack traces on musl-based systems like Alpine Linux via a libbacktrace fallback by @hanxizh9910 (#3581)
+* Always log the "possibly failing" notice when a node enters PFAIL, including on voting primaries by @enjoy-binbin (#4186)
+* `EXEC` transactions are now recorded in the slowlog and commandlog when their total execution time crosses the threshold by @michellee-10 (#4267)
+* Add `last_successful_sync_duration_ms` to `INFO replication`, reporting how long the replica's last full sync took by @satheeshaGowda (#4197)
+* Fix signal mask parsing on 32-bit systems so the crash handler can collect thread stack traces by @sarthakaggarwal97 (#4415)
+* Add `total_cluster_links_established_inbound`/`outbound` counters to `CLUSTER INFO` to help detect cluster link flapping by @enjoy-binbin (#4169)
+* RDMA connection and resource setup failures are now logged with detailed system error information by @quanyeyang (#4586)
+* Include the LRU list's duplicated script SHA copies in EVAL script memory reporting (`used_memory_scripts_eval`) by @enjoy-binbin (#4587)
+* Log the module version alongside the module name when a module is loaded, so the loaded version is visible in the log by @enjoy-binbin (#4566)
+* Detect changes to the alternate TLS key file (`tls-alt-key-file`) so certificate auto-reload picks them up by @pkhartsk (#4663)
+* Report `tls_server_cert_serial` and expiry INFO fields for the certificate actually loaded from `tls-cert-file` instead of whichever one OpenSSL slots first by @madolson (#4664)
 
-### CLI
-* Added word-jump navigation (Alt/Option/Ctrl + ←/→) to valkey-cli (#2583)
-
-Valkey 9.0.0-rc1 - August 14, 2025
-----------------------------------
-
-Upgrade urgency LOW: This is the first release candidate of Valkey 9.0.0, with
-performance improvements, atomic slot migrations, hash field expiration, and numbered databases in cluster mode,
-as well as a whole host of new items as listed below.
-
-### New Features
-* Client Commands Extended Filtering by @sarthakaggarwal97 (#1466)
-* Add multi-database support to cluster mode by @xbasel (#1671)
-* Support BYPOLYGON option for GEOSEARCH by @KarthikSubbarao (#1809)
-* Introduce MPTCP by @pizhenwei (#1811)
-* Add sentinel_total_tilt to sentinel INFO sentinel by @carlosfu (#1904)
-* Add support for automatic client authentication via TLS certificate fields by @omanges (#1920)
-* Add --hotkeys-count option for valkey-cli by @hwware (#1933)
-* Introduce atomic slot migration by @murphyjacob4 (#1949)
-* Introduce MPTCP for replica by @pizhenwei (#1961)
-* Add DELIFEQ command by @LinusU (#1975)
-* Allow dynamic modification of io-threads num by @ayush933 (#2033)
-* Introduce HASH items expiration by @ranshid (#2089)
-* Add SAFE option to SHUTDOWN to reject shutdown in unsafe situations by @enjoy-binbin (#2195)
-* Support negative filtering for client command filters by @soloestoy (#2378)
-
-### New Configs
-* Auto-failover on shutdown unified config by @zuiderkwast (#2292)
-
-### Logging and Tooling Improvements
-* Add node pfail and fail count to cluster info metrics by @hpatro (#1910)
-* Introduce support for lttng based tracing by @artikell (#2070)
-
-### Performance/Efficiency Improvements
-* Optimize bitcount command by SIMD by @chzhoo (#1741)
-* Save RDB file to disk using a background thread on replica(s) (#1784)
-* Improve replication stability by prioritizing replication traffic in the replica by @xbasel (#1838)
-* Optimize hyperloglog commands with ARM NEON SIMD instructions by @xbasel (#1859)
-* Optimize BITCOUNT using ARM NEON SIMD by @xbasel (#1867)
-* Optimize string-to-integer performance using AVX512 by @zhulipeng (#1944)
-* Improve system responsiveness by limiting number of new cluster link connections per cycle by @hpatro (#2009)
-* Optimize hash table performance using SIMD by @zhulipeng (#2030)
-* Improve performance of network operations by directly writing responses to clients by @xbasel (#2078)
-* Allow shrinking hashtables in low memory situations by @Fusl (#2095)
-* Optimize string2ll with load-time CPU feature check using IFUNC resolver by @zhulipeng (#2099)
-* Optimize WATCH by equalStringObjects early length check by @vitahlin (#2107)
-* Optimize GEORADIUS command performance with pre-allocated buffer by @chzhoo (#2116)
-* Improve zcount performance by combing range element ranks calculation with range elements search to @SoftlyRaining (#2129)
-* Optimize scan/sscan/hscan/zscan commands by replacing list with vector by @chzhoo (#2160)
-
-### Cluster
-* Trigger manual failover on SIGTERM / shutdown to cluster primary by @enjoy-binbin (#1091)
-* Add CLUSTER FLUSHSLOT command by @wuranxx (#1384)
-* Allow replicas to become primaries without data by using CLUSTER REPLICATE NO ONE by @skolosov-snap (#1674)
-* Add cluster bus port out of range error message for CLUSTER MEET command by @hwware (#1686)
-* Add cluster-manual-failover-timeout to configure the timeout for manual failover by @enjoy-binbin (#1690)
-
-### Module
-* Add new module API flag to bypass command validation by @sungming2 (#1357)
-
-### Bug Fixes
-* Avoid shard id update of replica if it doesn't match with primary shard id by @hpatro (#573)
-* Change "Redis ver." to "Valkey ver." in LOLWUT output by @sarthakaggarwal97 (#1559)
-* Fix temp file leak during replication error handling by @enjoy-binbin (#1721)
-* Fix raxRemove crash at memcpy() due to key size exceeds max Rax size by @VoletiRam (#1722)
-* Respect process umask when creating data files by @kronwerk (#1725)
-* Fix error "SSL routines::bad length" when connTLSWrite is called second time with smaller buffer by @zori-janea (#1737)
-* cmd's out bytes need count deferred reply by @soloestoy (#1760)
-* Enable TCP_NODELAY by default in incoming and outgoing connections by @sungming2 (#1763)
-* Ignore stale gossip packets that arrive out of order by @enjoy-binbin (#1777)
-* Remove unicode optimization in Lua cjson library by @rjd15372 (#1785)
-* Save config file and broadcast PONG message on configEpoch change by @enjoy-binbin (#1813)
-* Fix engine crash on module client blocking during keyspace events by @yairgott (#1819)
-* Fix bug where invalidation messages were getting sent to closing clients by @madolson (#1823)
-* Fix ACL LOAD crash on replica since the primary client don't has a user by @bogdanp05 (#1842)
-* Fix RANDOMKEY infinite loop during CLIENT PAUSE by @li-benson (#1850)
-* Improve clarity of errors for GEO commands when member does not exist by @chx9 (#1943)
-* Fix panic in primary when blocking shutdown after previous block with timeout by @murphyjacob4 (#1948)
-* fix cluster slot stats assertion during promotion of replica by @Fusl (#1950)
-* Fix incorrect lag reported in XINFO GROUPS by @nesty92 (#1952)
-* Fix crash during TLS handshake with I/O threads by @uriyage (#1955)
-* Disallow sending REPLY ON / OFF / SKIP inside a multi-exec transaction by @sarthakaggarwal97 (#1966)
-* Fix random element in skewed sparse hash table by @zuiderkwast (#2085)
-* Allow mixing quoted and unquoted inline args by @Fusl (#2098)
-* Only mark the client reprocessing flag when unblocked on keys by @ranshid (#2109)
-* CLIENT UNBLOCK should't be able to unpause paused clients by @enjoy-binbin (#2117)
-* Fix memory corruption in sharded pubsub unsubscribe by @uriyage (#2137)
-* Detect SSL_new() returning NULL in outgoing connections by @zuiderkwast (#2140)
-* Correctly handle large cluster bus extensions which may have resulted in dropped cluster packets by @madolson (#2144)
-* Converge divergent shard-id persisted in nodes.conf to primary's shard ID by @hpatro (#2174)
-* Fix replica can't finish failover when config epoch is outdated by @enjoy-binbin (#2178)
-* Fix CLUSTER SLOTS/NODES showing wrong port after updating port/tls-port by @enjoy-binbin (#2186)
-* Fix use-after-free when active expiration triggers hashtable to shrink by @gusakovy (#2257)
-* Redact user data when a module crashes for not handling I/O errors enabled by @YueTang-Vanessa (#2274)
-* Generate a new shard_id when the replica executes CLUSTER RESET SOFT by @enjoy-binbin (#2283)
-* Fix missing response when AUTH returns an error inside a transaction by @enjoy-binbin (#2287)
-* Fix memory leak when shrinking a hashtable without entries by @yzc-yzc (#2288)
-* Fix MEMORY USAGE to consider embedded keys by @yulazariy (#2290)
-* Fix replicas claiming to still have slots after manual failover by @enjoy-binbin (#2301)
-* Prevent bad memory access when NOTOUCH client gets unblocked by @uriyage (#2347)
-* Fix large allocations crashing Valkey during active defrag by @Fusl (#2353)
+### CLI and Tools
+* Make `valkey-check-rdb` report invalid slot import ranges in an RDB file instead of silently passing them by @enjoy-binbin (#4470)
+* Add p99.9 latency to the `valkey-benchmark` summary, `--rps` report and CSV output by @lucasyonge (#5377)
+* Fix `valkey-cli --cluster reshard` and `rebalance` exiting with a success status when slot migration fails by @imasahiro (#4853)
+* valkey-check-aof now recognizes RDB base files with the `VALKEY` signature instead of misreporting a valid multipart AOF as invalid by @sarthakaggarwal97 (#4739)
+* Increase the `valkey-benchmark` maximum latency histogram value from 3 to 60 seconds so slow requests are reported accurately by @gabiganam (#3157)
+* Fix valkey-benchmark spinning on would-block writes, which could starve reply processing and the `--duration` timer by @thweetkomputer (#4567)
+* Support bracketed IPv6 addresses such as `[::1]:7000` in `valkey-cli --cluster` commands by @chenshi5012 (#4800)
+* Fix an unbalanced `]` in valkey-cli command hints for commands with repeated optional arguments such as BITFIELD_RO by @ShubhamTaple (#3974)
+* valkey-cli no longer prints the command line password warning when the password comes only from `VALKEYCLI_AUTH` or `REDISCLI_AUTH` by @madolson (#4886)
+* valkey-cli now rejects a zero or negative `--hotkeys-count` instead of attempting a huge allocation and aborting by @madolson (#5173)
+* valkey-cli now skips RESP3 attributes instead of exiting with an unknown reply type error by @madolson (#5186)
+* valkey-check-rdb now prints usage when `--output` is given without a file name instead of crashing by @madolson (#5135)
+* valkey-benchmark no longer aborts loading a CSV dataset whose last field in a row is a lone quote; the quote is kept literally by @madolson (#5168)
+* valkey-cli reads the `VALKEYCLI_HOST` and `VALKEYCLI_PORT` environment variables to set the default host and port by @Dietr1ch (#3402)
+* valkey-benchmark can load CSV/TSV datasets and inject their fields into commands via `__field:name__` placeholders by @VoletiRam (#2823)
+* valkey-cli supports the VALKEYCLI_USER environment variable as an alternative to the --user option by @jdheyburn (#4126)
+* `valkey-cli --rdb` now exits with an error instead of reporting success when trimming the RDB EOF marker fails, avoiding a silently corrupt file by @gluxier (#3945)
+* Fix valkey-benchmark crash (out-of-bounds read) when a repeat count is given with no command following it by @lightsigma96 (#4142)
+* valkey-benchmark -r now accepts keyspace sizes above INT_MAX (up to 999,999,999,999) with proper input validation by @michellee-10 (#4252)
+* valkey-benchmark now rejects a repeat count with no command after it with a clear error instead of hanging forever sending zero requests by @dhruv2x (#4215)
+* valkey-benchmark multi-threaded mode scales further by removing cross-thread contention in key generation, latency recording, and counters by @rainsupreme (#4332)
 
 ### Build and Tooling
-* Support for RDB analysis reports by @artikell (#1743)
-* Implement RPS control for valkey-benchmark by @artikell (#1761)
-* valkey-cli: ensure output ends with a newline if missing when printing reply by @xbasel (#1782)
-* Drop lua object files on clean by @secwall (#1812)
-* Check both arm64 and aarch64 for ARM based system architecture by @eifrah-aws (#1829)
-* Add --sequential option to valkey-benchmark to support populating entire keyspace by @SoftlyRaining (#1839)
-* Support environment variable VALKEYCLI_AUTH alongside REDISCLI_AUTH in valkey-cli by @HiranmoyChowdhury (#1995)
-* Add MGET test to valkey-benchmark by @zuiderkwast (#2015)
-* Add support to send multiple arbitrary commands to valkey-benchmark by @zuiderkwast (#2057)
-* Support RDMA for valkey-cli and benchmark by @pizhenwei (#2059)
-* Support MPTCP for valkey-cli and benchmark by @pizhenwei (#2067)
-* Allow valkey-benchmark to support multiple random (or sequential) placeholders  by @SoftlyRaining (#2102)
-* Change default values of valkey-cli to use valkey naming, and added fallback to old values by @avifenesh (#2334)
-* Fix duplicate Acks for RDMA events and fix extremely large max latency for RDMA benchmark (#2430)
-
-### Behavior Change
-* Move auth check to the front, before command exist/arity/protected check by @enjoy-binbin (#1475)
-* Include command fullname in error message when returning errors in multi-execs by @enjoy-binbin (#2286)
-* Add STALE command flag to SCRIPT-EXISTS, SCRIPT-SHOW and SCRIPT-FLUSH by @enjoy-binbin (#2419)
+* Fix a compile error in the select event loop backend on platforms that fall back to it, such as Emscripten (WebAssembly) by @notjiya-dev (#5299)
+* Link macOS example and test modules through the compiler driver so builds no longer fail on newer SDKs' libSystem stubs by @avifenesh (#4927)
+* Rebuild the Lua scripting module during incremental builds when its sources change, so edits are no longer silently left out of `valkey-server` by @madolson (#5242)
+* Add REUSE-compliant machine-readable licensing with per-file license clarity, enabling SPDX SBOM generation and correct license detection by @zuiderkwast (#3968)
+* Fix clean or highly parallel builds failing with a missing release.h for valkey-cli, valkey-benchmark, and unit tests by @poiuj (#3683)
+* Use PRIVATE link dependencies in CMake so Valkey's CMake files can be safely integrated into other projects by @eifrah-aws (#3658)
+* Pass `CPPFLAGS` to bundled dependencies and the src Makefile so packaging hardening flags apply to the whole build by @Vonng (#4318)
+* Raise the minimum required CMake version to 3.24 to match features already used by the build by @Baraa-Hasheesh (#4232)
 
 ### Contributors
-* Ran Shidlansik @ranshid
-* Binbin @enjoy-binbin
-* Jacob Murphy @murphyjacob4
-* Madelyn Olson @madolson
-* YueTang-Vanessa  @YueTang-Vanessa
-* cxljs @cxljs
-* Sarthak Aggarwal @sarthakaggarwal97
-* amanosme @amanosme
-* Hanxi Zhang @hanxizh9910
-* Seungmin Lee @sungming2
-* uriyage @uriyage
-* Katie Holly @Fusl
-* Nicky-2000 @Nicky-2000
-* Allen Samuels @allenss-amazon
-* yzc-yzc @yzc-yzc
-* zhaozhao.zz @soloestoy
-* asagegeLiu @asagege
-* nitaicaro @nitaicaro
-* Matthew @utdrmac
-* Omkar Mestry @omanges
-* Viktor Söderqvist @zuiderkwast
-* kukey @kukey
-* Harkrishn Patro @hpatro
+* Abhishek Kumar @dubey02
+* abmathur-ie @abmathur-ie
+* Adam Fowler @adam-fowler
+* Aditya Mukesh @adityamukesh
+* Aditya Teltia @AdityaTeltia
+* Ahmad Belbeisi @ahmadbelb
+* Ahmet Alıç @ahmetalicc
+* Akanksha Trehun @magic-peach
+* akash kumar @akashkgit
+* AkshaThakkar1812 @Aksha1812
+* Alina Liu @asagege
+* Alisina Karimi @AlisinaDevelo
+* Alon Arenberg @alon-arenberg
+* Amariah Abishai @AmariahAK
+* Arshid @arshidkv12
+* Asuka @akasakariko
 * Avi Fenesh @avifenesh
-* Amit Nagler @naglera
-* Josh Soref @jsoref
-* youngmore1024 @youngmore1024
-* Rain Valentine @SoftlyRaining
-* skyfirelee @artikell
-* Wen Hui @hwware
-* yulazariy @yulazariy
-* Yakov Gusakov @gusakovy
-* charsyam @charsyam
-* Simon Baatz @gmbnomis
-* Thalia Archibald @thaliaarchi
-* chzhoo @chzhoo
-* xbasel @xbasel
-* Stav Ben-Tov @stav-bentov
-* wuranxx @wuranxx
-* Ayush Sharma @ayush933
-* chx9 @chx9
-* KarthikSubbarao @KarthikSubbarao
-* Hüseyin Açacak @huseyinacacak-janea
-* アンドリー・アンドリ @odaysec
-* Ping Xie @PingXie
-* Lipeng Zhu @zhulipeng
-* Linus Unnebäck @LinusU
-* Vitah Lin @vitahlin
-* kronwerk @kronwerk
-* Vadym Khoptynets @poiuj
-* muelstefamzn @muelstefamzn
-* zhenwei pi @pizhenwei
-* George Padron @DoozkuV
-* Björn Svensson @bjosv
-* aradz44 @aradz44
-* Hiranmoy Das Chowdhury @HiranmoyChowdhury
-* Yair Gottdenker @yairgott
-* Roshan Khatri @roshkhatri
-* nesty92 @nesty92
-* carlosfu @carlosfu
-* Arthur Lee @arthurkiller
-* Shai Zarka @zarkash-aws
-* Sergey Kolosov @skolosov-snap
-* Nathan Scott @natoscott
-* lucasyonge @lucasyonge
-* WelongZuo @WelongZuo
-* Jim Brunner @JimB123
-* jeon1226 @jeon1226
+* bandalgomsu @bandalgomsu
+* Bara' Hasheesh @Baraa-Hasheesh
 * Benson-li @li-benson
-* Meinhard Zhou @MeinhardZhou
-* Nikhil Manglore @Nikhil-Manglore
-* Bogdan Petre @bogdanp05
+* Bhuvan Prakash @bhuvanprakash
+* Binbin @enjoy-binbin
+* Björn Svensson @bjosv
+* bodong.ybd @yangbodong22011
+* Bonnie Chan @BChan-0
+* Brad Bebee @beebs-systap
+* charsyam @charsyam
+* chenshi @chenshi5012
+* Christopher Lim @christopherlim98
+* chzhoo @chzhoo
+* cjx-zar @cjx-zar
+* cxljs @cxljs
+* Daejun Kim @djk1027
+* Daniel Frankcom @danielfrankcom
+* Daniil Kashapov @dvkashapov
+* Dante Knowles @xdk-amz
+* Deepak Nandihalli @deepakrn
+* dgershko @dgershko
+* Dhruv Chauhan (chdh) @dhruv2x
+* Dietrich Daroch @Dietr1ch
+* Dragos Andriciuc @Andriciuc
 * eifrah-aws @eifrah-aws
+* FAN PEI @fanpei91
+* Feng Ruohang @Vonng
+* Gabi Ganam @gabiganam
+* Gavin D'Mello @GavinDmello
+* gluxier @gluxier
+* Hanxi Zhang @hanxizh9910
+* Harkrishn Patro @hpatro
+* Harry Lin @harrylin98
+* hieu2102 @hieu2102
+* Himangshu Deka @KewangZhili
+* Jacob Murphy @murphyjacob4
+* Jeff Duffy @jaduffy
+* Jerry Zhao @thweetkomputer
+* Jim Brunner @JimB123
+* Jinghao Lei @rayjinghaolei
+* jjuleslasarte @jjuleslasarte
+* Joe Heyburn @jdheyburn
+* Joseph Heck @heckj
+* Josh Soref @jsoref
+* Jun Yeong Kim @junyeong0619
+* justinfung @justinfung
+* jzy1688 @jzy1688
+* KarthikSubbarao @KarthikSubbarao
+* KimHuiSu @Tarte12
+* Kristiyan Ivanov @KIvanow
+* lcxn123 @lcxn123
+* Leo Murillo @leomurillo
+* lovelypiska @chx9
+* Lucas Yang @lucasyonge
+* Luke Palmer @lukepalmer
+* Madelyn Olson @madolson
+* Mark Atwood @MarkAtwood
+* martinrvisser @martinrvisser
+* Masahiro Ide @imasahiro
+* Md Aakib Alam Ansari @0xAakibAlam
+* michellee-10 @michellee-10
+* mqudah @mohammedgqudah
+* Muhammad Taha @taham0
+* Nadav Levanoni @nadav-levanoni
+* nanyan @nanyan0312
+* Nick Iaquinto @nickiaq
+* Nikhil Manglore @Nikhil-Manglore
+* nitaicaro @nitaicaro
+* notjiya-dev @notjiya-dev
+* Omer Rubinstein @omerrubi-amzn
+* Ping Xie @PingXie
+* pirate329 @pirate329
+* pkhartsk @pkhartsk
+* poisongodv @PoisonGodv
+* Prithvi S Rao @prithvirao13
+* Quanye Yang @quanyeyang
+* Raghav Muddur @nmvk
+* Rain Valentine @rainsupreme
+* Ran Shidlansik @ranshid
+* Recoordinate @latent-9
 * Ricardo Dias @rjd15372
+* Rick Ramsay @rickrams
+* Roshan Khatri @roshkhatri
+* Roy Chen @chky1386
+* Rusty Raven @kakiuwang-ui
+* Sakshi Yadav @ydsakshi
+* sananes @yaronsananes
+* Sarthak Aggarwal @sarthakaggarwal97
+* Sasidharan Gopal @Sasidharan3094
+* Satheesha CH Gowda @satheeshaGowda
+* Saurabh K @smkher
+* Sebastian Turner @sebxt
 * secwall @secwall
-* Anastasia Alexandrova @nastena1606
-* Marek Zoremba @zori-janea
+* shanezx-sc @shanezx-sc
+* Shubham S Taple @ShubhamTaple
+* Shun Takahashi @moko-poi
+* SHUVA JYOTI KAR @shuvajyotikar13
+* Silvio Gissi @sgissi
+* Simonas Rupšys @simonasr
+* SiYeon Hwang @lowgiant
+* skyfirelee @artikell
+* Smail KOURTA @skourta
+* Sourav Singh Rawat @frostzt
+* Stav Ben Shahar @stavBenShahar
+* Stefan Wang @1fanwang
+* Sumit Sharma @sumitk163
+* sunliqiang @Pyolar
+* sushil paneru @sushilpaneru1
+* Taeknology @Taeknology
+* Tanmay Mohan @tanmayBeginsJourney
+* Tarik Ermis @tarikermis
+* Tjaden Hess @tjade273
+* tomhanks @xiejing-dev
+* Tristan Su @foobar
+* Vadym Khoptynets @poiuj
+* Vaibhav Gupta @webbsssss
+* Vasiliy Koshkin @melancholictheory
+* Vasily Nemtsov @nemtsv
+* Viktor Söderqvist @zuiderkwast
+* Vishal Chand @vish-chan
 * VoletiRam @VoletiRam
+* WooSeung Kim @beyondwin
+* xiaocj @xiaocj
+* Yair Gottdenker @yairgott
+* Yana Molodetsky @yanamolo
+* Yang Zhao @yang-z-o
+* Yash Jadhav @lightsigma96
+* youngmore1024 @youngmore1024
+* yulazariy @yulazariy
+* yzc-yzc @yzc-yzc
+* zackcam @zackcam
+* zhenwei pi @pizhenwei
+* Zhijun Liao @zhijun42
+* 皇心 @royenheart

@@ -1,10 +1,10 @@
 ---
 applyTo:
-  - "src/**/*.{c,h}"
-  - "kv.conf"
+  - "src/**/*.{c,h,cpp,hpp}"
+  - "valkey.conf"
 ---
 
-# KV Core Engine Review Standards
+# Valkey Core Engine Review Standards
 
 Apply these standards to core engine C code. Do NOT apply to `deps/` (vendored dependencies).
 
@@ -37,11 +37,12 @@ Apply these standards to core engine C code. Do NOT apply to `deps/` (vendored d
 
 ## 5. Testing & Documentation
 - **Unit Tests:** Required for data structures in `src/unit/`. Test files should follow `test_*.cpp` naming.
+- **Unit Test Style:** Write tests in minimal C++ — no STL, no `auto`, no lambdas, no templates. Tests must be readable to C developers. See `src/unit/README.md` for guidelines.
 - **Integration Tests:** Required for commands in `tests/`.
 - **Command Changes:** New/modified commands need corresponding updates in `src/commands/*.json`.
 - **New C Files:** Remind to update `CMakeLists.txt` when adding new `.c` source files.
 - **License:** New files need BSD-3-Clause header. Material changes (>100 lines) also require it.
-- **Documentation:** User-facing changes need docs at [kv-doc](https://github.com/hanzoai/kv-doc).
+- **Documentation:** User-facing changes need docs at [valkey-doc](https://github.com/valkey-io/valkey-doc).
 
 ## 6. Critical Escalation
 - **Trigger:** Changes to `cluster*.c`, `replication.c`, `rdb.c`, `aof.c`.

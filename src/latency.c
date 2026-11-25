@@ -37,21 +37,19 @@
 #include "hdr_histogram.h"
 
 /* Dictionary type for latency events. */
-int dictStringKeyCompare(const void *key1, const void *key2) {
-    return strcmp(key1, key2) == 0;
-}
 
-uint64_t dictStringHash(const void *key) {
-    return dictGenHashFunction(key, strlen(key));
+static void dictEntryDestructorHeapKeyValue(void *entry) {
+    dictEntry *de = entry;
+    zfree(dictGetKey(de));
+    zfree(dictGetVal(de));
+    zfree(de);
 }
 
 dictType latencyTimeSeriesDictType = {
-    dictStringHash,       /* hash function */
-    NULL,                 /* key dup */
-    dictStringKeyCompare, /* key compare */
-    dictVanillaFree,      /* key destructor */
-    dictVanillaFree,      /* val destructor */
-    NULL                  /* allow to expand */
+    .entryGetKey = dictEntryGetKey,
+    .hashFunction = dictCStrHash,
+    .keyCompare = dictCStrKeyCompare,
+    .entryDestructor = dictEntryDestructorHeapKeyValue,
 };
 
 /* ------------------------- Utility functions ------------------------------ */
@@ -220,7 +218,7 @@ sds createLatencyReport(void) {
      * was never enabled so far. */
     if (dictSize(server.latency_events) == 0 && server.latency_monitor_threshold == 0) {
         report = sdscat(
-            report, "I'm sorry, Dave, I can't do that. Latency monitoring is disabled in this KV instance. You may "
+            report, "I'm sorry, Dave, I can't do that. Latency monitoring is disabled in this Valkey instance. You may "
                     "use \"CONFIG SET latency-monitor-threshold <milliseconds>.\" in order to enable it.\n");
         return report;
     }
@@ -240,7 +238,7 @@ sds createLatencyReport(void) {
         if (ts == NULL) continue;
         eventnum++;
         if (eventnum == 1) {
-            report = sdscat(report, "Latency spikes are observed in this KV instance.\n\n");
+            report = sdscat(report, "Latency spikes are observed in this Valkey instance.\n\n");
         }
         analyzeLatencyForEvent(event, &ls);
 
@@ -360,11 +358,11 @@ sds createLatencyReport(void) {
     }
 
     if (eventnum == 0 && advices == 0) {
-        report = sdscat(report, "No latency spike was observed during the lifetime of this KV instance, not "
+        report = sdscat(report, "No latency spike was observed during the lifetime of this Valkey instance, not "
                                 "in the slightest bit.\n");
     } else if (eventnum > 0 && advices == 0) {
         report = sdscat(report, "\nThere are latency events logged that are not easy to fix. Please get some "
-                                "help from KV community, providing this report in your help request.\n");
+                                "help from Valkey community, providing this report in your help request.\n");
     } else {
         /* Add all the suggestions accumulated so far. */
 
@@ -382,8 +380,8 @@ sds createLatencyReport(void) {
             report =
                 sdscatprintf(report,
                              "- There are latency issues with potentially slow commands you are using. Try to enable "
-                             "the Slow Log KV feature using the command 'CONFIG SET slowlog-log-slower-than %llu'. "
-                             "If the Slow log is disabled KV is not able to log slow commands execution for you.\n",
+                             "the Slow Log Valkey feature using the command 'CONFIG SET slowlog-log-slower-than %llu'. "
+                             "If the Slow log is disabled Valkey is not able to log slow commands execution for you.\n",
                              (unsigned long long)server.latency_monitor_threshold * 1000);
         }
 
@@ -398,20 +396,20 @@ sds createLatencyReport(void) {
         if (advise_slowlog_inspect) {
             report = sdscat(report,
                             "- Check your Slow Log to understand what are the commands you are running which are too "
-                            "slow to execute. Please check https://kv.io/commands/slowlog for more information.\n");
+                            "slow to execute. Please check https://valkey.io/commands/slowlog for more information.\n");
         }
 
         /* Intrinsic latency. */
         if (advise_scheduler) {
             report = sdscat(
                 report,
-                "- The system is slow to execute KV code paths not containing system calls. This usually means the "
-                "system does not provide KV CPU time to run for long periods. You should try to:\n"
+                "- The system is slow to execute Valkey code paths not containing system calls. This usually means the "
+                "system does not provide Valkey CPU time to run for long periods. You should try to:\n"
                 "  1) Lower the system load.\n"
-                "  2) Use a computer / VM just for KV if you are running other software in the same system.\n"
+                "  2) Use a computer / VM just for Valkey if you are running other software in the same system.\n"
                 "  3) Check if you have a \"noisy neighbour\" problem.\n"
-                "  4) Check with 'kv-cli --intrinsic-latency 100' what is the intrinsic latency in your system.\n"
-                "  5) Check if the problem is allocator-related by recompiling KV with MALLOC=libc, if you are "
+                "  4) Check with 'valkey-cli --intrinsic-latency 100' what is the intrinsic latency in your system.\n"
+                "  5) Check if the problem is allocator-related by recompiling Valkey with MALLOC=libc, if you are "
                 "using Jemalloc. However this may create fragmentation problems.\n");
         }
 
@@ -426,7 +424,7 @@ sds createLatencyReport(void) {
             report = sdscat(report,
                             "- SSD disks are able to reduce fsync latency, and total time needed for snapshotting "
                             "and AOF log rewriting (resulting in smaller memory usage). With extremely high write "
-                            "load SSD disks can be a good option. However KV should perform reasonably with high "
+                            "load SSD disks can be a good option. However Valkey should perform reasonably with high "
                             "load using normal disks. Use this advice as a last resort.\n");
         }
 
@@ -435,12 +433,12 @@ sds createLatencyReport(void) {
                 sdscat(report, "- Mounting ext3/4 filesystems with data=writeback can provide a performance boost "
                                "compared to data=ordered, however this mode of operation provides less guarantees, and "
                                "sometimes it can happen that after a hard crash the AOF file will have a half-written "
-                               "command at the end and will require to be repaired before KV restarts.\n");
+                               "command at the end and will require to be repaired before Valkey restarts.\n");
         }
 
         if (advise_disk_contention) {
             report = sdscat(report, "- Try to lower the disk contention. This is often caused by other disk intensive "
-                                    "processes running in the same computer (including other KV instances).\n");
+                                    "processes running in the same computer (including other Valkey instances).\n");
         }
 
         if (advise_no_appendfsync) {
@@ -464,7 +462,7 @@ sds createLatencyReport(void) {
         }
 
         if (advise_hz && server.hz < 100) {
-            report = sdscat(report, "- In order to make the KV keys expiring process more incremental, try to set "
+            report = sdscat(report, "- In order to make the Valkey keys expiring process more incremental, try to set "
                                     "the 'hz' configuration parameter to 100 using 'CONFIG SET hz 100'.\n");
         }
 
@@ -477,7 +475,7 @@ sds createLatencyReport(void) {
 
         if (advise_mass_eviction) {
             report = sdscat(report, "- Sudden changes to the 'maxmemory' setting via 'CONFIG SET', or allocation of "
-                                    "large objects via sets or sorted sets intersections, STORE option of SORT, KV "
+                                    "large objects via sets or sorted sets intersections, STORE option of SORT, Valkey "
                                     "Cluster large keys migrations (RESTORE command), may create sudden memory "
                                     "pressure forcing the server to block trying to evict keys. \n");
         }
@@ -486,11 +484,11 @@ sds createLatencyReport(void) {
             report =
                 sdscat(report, "- I detected a non zero amount of anonymous huge pages used by your process. This "
                                "creates very serious latency events in different conditions, especially when "
-                               "KV is persisting on disk. To disable THP support use the command 'echo never > "
+                               "Valkey is persisting on disk. To disable THP support use the command 'echo madvise > "
                                "/sys/kernel/mm/transparent_hugepage/enabled', make sure to also add it into "
                                "/etc/rc.local so that the command will be executed again after a reboot. Note "
-                               "that even if you have already disabled THP, you still need to restart the KV "
-                               "process to get rid of the huge pages already created.\n");
+                               "that even if you have already disabled THP (set to 'madvise' or 'never'), you still "
+                               "need to restart the Valkey process to get rid of the huge pages already created.\n");
         }
     }
 
@@ -629,7 +627,7 @@ void latencyCommandReplyWithLatestEvents(client *c) {
 }
 
 #define LATENCY_GRAPH_COLS 80
-sds latencyCommandGenSparkeline(char *event, struct latencyTimeSeries *ts) {
+sds latencyCommandGenSparkline(char *event, struct latencyTimeSeries *ts) {
     int j;
     struct sequence *seq = createSparklineSequence();
     sds graph = sdsempty();
@@ -678,7 +676,7 @@ sds latencyCommandGenSparkeline(char *event, struct latencyTimeSeries *ts) {
  * LATENCY DOCTOR: returns a human readable analysis of instance latency.
  * LATENCY GRAPH: provide an ASCII graph of the latency of the specified event.
  * LATENCY RESET: reset data of a specified event or all the data if no event provided.
- * LATENCY HISTOGRAM: return a cumulative distribution of latencies in the format of an histogram for the specified
+ * LATENCY HISTOGRAM: return a cumulative distribution of latencies in the format of a histogram for the specified
  * command names.
  */
 void latencyCommand(client *c) {
@@ -703,7 +701,7 @@ void latencyCommand(client *c) {
         ts = dictGetVal(de);
         event = dictGetKey(de);
 
-        graph = latencyCommandGenSparkeline(event, ts);
+        graph = latencyCommandGenSparkline(event, ts);
         addReplyVerbatim(c, graph, sdslen(graph), "txt");
         sdsfree(graph);
     } else if (!strcasecmp(objectGetVal(c->argv[1]), "latest") && c->argc == 2) {

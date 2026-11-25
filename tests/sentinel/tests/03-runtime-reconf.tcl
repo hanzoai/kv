@@ -6,7 +6,7 @@ set ::user "testuser"
 set ::password "secret"
 
 proc server_set_password {} {
-    foreach_kv_id id {
+    foreach_valkey_id id {
         assert_equal {OK} [R $id CONFIG SET requirepass $::password]
         assert_equal {OK} [R $id AUTH $::password]
         assert_equal {OK} [R $id CONFIG SET primaryauth $::password]
@@ -14,7 +14,7 @@ proc server_set_password {} {
 }
 
 proc server_reset_password {} {
-    foreach_kv_id id {
+    foreach_valkey_id id {
         assert_equal {OK} [R $id CONFIG SET requirepass ""]
         assert_equal {OK} [R $id CONFIG SET primaryauth ""]
     }
@@ -91,7 +91,7 @@ test "Sentinels (re)connection following primary ACL change" {
     assert_equal {OK} [S $sent2up SENTINEL SET mymaster auth-user $::user]
     assert_equal {OK} [S $sent2up SENTINEL SET mymaster auth-pass $::password]
 
-    foreach_kv_id id {
+    foreach_valkey_id id {
         server_set_acl $id
     }
 
@@ -128,7 +128,7 @@ test "Sentinels (re)connection following primary ACL change" {
     wait_for_sentinels_connect_servers
 
     # remove requirepass and verify sentinels manage to connect servers
-    foreach_kv_id id {
+    foreach_valkey_id id {
         server_reset_acl $id
     }
 
@@ -197,4 +197,73 @@ test "Sentinel Set with other error situations" {
    file rename $configfilename_bak $configfilename
 
    assert_match "ERR Failed to save config file*" $err
+}
+
+test "SENTINEL SET rejects values containing control characters" {
+    # CRLF injection into auth-pass
+    assert_error "ERR Invalid argument*" {S 0 SENTINEL SET mymaster auth-pass "pass\r\nsentinel notification-script mymaster /tmp/evil.sh"}
+    # Newline in auth-user
+    assert_error "ERR Invalid argument*" {S 0 SENTINEL SET mymaster auth-user "user\ninjected"}
+    # Carriage return alone
+    assert_error "ERR Invalid argument*" {S 0 SENTINEL SET mymaster auth-pass "has\rcr"}
+    # Null byte
+    assert_error "ERR Invalid argument*" {S 0 SENTINEL SET mymaster auth-user "has\x00null"}
+    # Tab character (0x09)
+    assert_error "ERR Invalid argument*" {S 0 SENTINEL SET mymaster auth-pass "has\ttab"}
+    # DEL character (0x7F)
+    assert_error "ERR Invalid argument*" {S 0 SENTINEL SET mymaster auth-pass "has\x7F"}
+    # Control char in option name is also rejected
+    assert_error "ERR Invalid argument*" {S 0 SENTINEL SET mymaster "bad\noption" value}
+}
+
+test "SENTINEL MONITOR rejects values containing control characters" {
+    # CRLF in name
+    assert_error "ERR Invalid argument*" {S 0 SENTINEL MONITOR "bad\r\nname" 127.0.0.1 6379 2}
+    # Newline in hostname
+    assert_error "ERR Invalid argument*" {S 0 SENTINEL MONITOR testprimary "127.0.0.1\ninjected" 6379 2}
+    # Null byte in name
+    assert_error "ERR Invalid argument*" {S 0 SENTINEL MONITOR "has\x00null" 127.0.0.1 6379 2}
+    # Tab in name
+    assert_error "ERR Invalid argument*" {S 0 SENTINEL MONITOR "has\ttab" 127.0.0.1 6379 2}
+    # DEL in hostname
+    assert_error "ERR Invalid argument*" {S 0 SENTINEL MONITOR testprimary "host\x7F" 6379 2}
+}
+
+test "SENTINEL CONFIG SET rejects values containing control characters" {
+    # CRLF in announce-ip
+    assert_error "ERR Invalid argument*" {S 0 SENTINEL CONFIG SET announce-ip "1.2.3.4\r\ninjected"}
+    # Newline in sentinel-user
+    assert_error "ERR Invalid argument*" {S 0 SENTINEL CONFIG SET sentinel-user "user\ninjected"}
+    # Null byte in sentinel-pass
+    assert_error "ERR Invalid argument*" {S 0 SENTINEL CONFIG SET sentinel-pass "pass\x00word"}
+    # Tab in announce-ip
+    assert_error "ERR Invalid argument*" {S 0 SENTINEL CONFIG SET announce-ip "1.2\t.3.4"}
+    # DEL in sentinel-pass
+    assert_error "ERR Invalid argument*" {S 0 SENTINEL CONFIG SET sentinel-pass "pass\x7F"}
+}
+
+test "Config rewrite escapes special characters via sdscatrepr" {
+    set special_pass "my\"pass\\word with spaces"
+    S 0 SENTINEL SET mymaster auth-pass $special_pass
+
+    S 0 SENTINEL FLUSHCONFIG
+
+    # Verify the config file has the value properly quoted
+    set configfile [file join "sentinel_0" "sentinel.conf"]
+    set content [exec cat $configfile]
+    set expected {sentinel auth-pass mymaster "my\"pass\\word with spaces"}
+    assert {[string first $expected $content] >= 0}
+
+    # Restart sentinel and verify it reloads without error
+    restart_instance sentinel 0
+    wait_for_condition 200 50 {
+        [catch {S 0 PING}] == 0
+    } else {
+        fail "Sentinel 0 did not come back after restart"
+    }
+
+    assert_match {*} [S 0 SENTINEL GET-PRIMARY-ADDR-BY-NAME mymaster]
+
+    S 0 SENTINEL SET mymaster auth-pass ""
+    S 0 SENTINEL FLUSHCONFIG
 }

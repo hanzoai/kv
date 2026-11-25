@@ -6,10 +6,10 @@ test {CONFIG SET port number} {
 
         # available port
         set avail_port [find_available_port $::baseport $::portcount]
-        set rd [kv [srv 0 host] [srv 0 port] 0 $::tls]
+        set rd [valkey [srv 0 host] [srv 0 port] 0 $::tls]
         $rd CONFIG SET $port_cfg $avail_port
         $rd close
-        set rd [kv [srv 0 host] $avail_port 0 $::tls]
+        set rd [valkey [srv 0 host] $avail_port 0 $::tls]
         $rd PING
 
         # already inuse port
@@ -18,7 +18,7 @@ test {CONFIG SET port number} {
         $rd close
 
         # make sure server still listening on the previous port
-        set rd [kv [srv 0 host] $avail_port 0 $::tls]
+        set rd [valkey [srv 0 host] $avail_port 0 $::tls]
         $rd PING
         $rd close
     }
@@ -31,7 +31,7 @@ test {CONFIG SET bind address} {
         assert_match {*Failed to bind to specified addresses*} $e
 
         # make sure server still bound to the previous address
-        set rd [kv [srv 0 host] [srv 0 port] 0 $::tls]
+        set rd [valkey [srv 0 host] [srv 0 port] 0 $::tls]
         $rd PING
         $rd close
     }
@@ -109,7 +109,7 @@ start_server {config "minimal.conf" tags {"external:skip"}} {
         assert_equal "" [lindex [r CONFIG GET bind] 1]
 
         # No additional clients can connect
-        catch {kv_client} err
+        catch {valkey_client} err
         assert_match {*connection refused*} $err
 
         # CONFIG REWRITE handles empty bindaddr
@@ -121,18 +121,18 @@ start_server {config "minimal.conf" tags {"external:skip"}} {
 
         # Make sure bind parameter is as expected and server handles binding
         # accordingly.
-        # (it seems that kvcli_exec behaves differently in RESP3, possibly
-        # because CONFIG GET returns a dict instead of a list so kv-cli emits
+        # (it seems that valkeycli_exec behaves differently in RESP3, possibly
+        # because CONFIG GET returns a dict instead of a list so valkey-cli emits
         # it in a single line)
         if {$::force_resp3} {
-            assert_equal {{bind }} [kvcli_exec 0 config get bind]
+            assert_equal {{bind }} [valkeycli_exec 0 config get bind]
         } else {
-            assert_equal {bind {}} [kvcli_exec 0 config get bind]
+            assert_equal {bind {}} [valkeycli_exec 0 config get bind]
         }
         catch {reconnect 0} err
         assert_match {*connection refused*} $err
 
-        assert_equal {OK} [kvcli_exec 0 config set bind *]
+        assert_equal {OK} [valkeycli_exec 0 config set bind *]
         reconnect 0
         r ping
     } {PONG}
@@ -156,20 +156,21 @@ start_server {config "minimal.conf" tags {"external:skip"}} {
 
             # Setting a password should disable protected mode
             assert_equal {OK} [r config set requirepass "secret"]
-            set r2 [kv $myaddr [srv 0 "port"] 0 $::tls]
+            set r2 [get_nonloopback_client]
             assert_equal {OK} [$r2 auth secret]
             assert_equal {PONG} [$r2 ping]
             $r2 close
 
             # Clearing the password re-enables protected mode
             assert_equal {OK} [r config set requirepass ""]
-            set r2 [kv $myaddr [srv 0 "port"] 0 $::tls]
+            set r2 [get_nonloopback_client]
+            catch {$r2 ping} err
             assert_match {*DENIED*} $err
             $r2 close
 
             # Explicitly disabling protected-mode works
             assert_equal {OK} [r config set protected-mode no]
-            set r2 [kv $myaddr [srv 0 "port"] 0 $::tls]
+            set r2 [get_nonloopback_client]
             assert_equal {PONG} [$r2 ping]
             $r2 close
         }
@@ -183,7 +184,7 @@ start_server {config "minimal.conf" tags {"external:skip"} overrides {enable-deb
         test {prefetch works as expected when killing a client from the middle of prefetch commands batch} {
             # Create 16 (prefetch batch size) +1 clients
             for {set i 0} {$i < 16} {incr i} {
-                set rd$i [kv_deferring_client]
+                set rd$i [valkey_deferring_client]
             }
 
             # set a key that will be later be prefetch
@@ -230,7 +231,7 @@ start_server {config "minimal.conf" tags {"external:skip"} overrides {enable-deb
         test {prefetch works as expected when changing the batch size while executing the commands batch} {
             # Create 16 (default prefetch batch size) clients
             for {set i 0} {$i < 16} {incr i} {
-                set rd$i [kv_deferring_client]
+                set rd$i [valkey_deferring_client]
             }
 
             # Create a batch of commands by suspending the server for a while
@@ -265,7 +266,7 @@ start_server {config "minimal.conf" tags {"external:skip"} overrides {enable-deb
             
             # Create 16 (default prefetch batch size) clients
             for {set i 0} {$i < 16} {incr i} {
-                set rd$i [kv_deferring_client]
+                set rd$i [valkey_deferring_client]
             }
 
             # Create a batch of commands by suspending the server for a while
@@ -330,6 +331,44 @@ start_server {config "minimal.conf" tags {"external:skip"} overrides {enable-deb
                 # Verify the write was propagated to the replica
                 assert_equal {1} [$replica get a]
             }
+        }
+    }
+}
+
+# logreqres:skip because enabling copy avoidance encodes the reply buffers,
+# which breaks the req-res logging mechanism (same as obuf-limits.tcl).
+start_server {tags {"logreqres:skip"}} {
+    test {MGET with 343+ empty RAW strings does not overflow the iov prefix buffer} {
+        # writevToClient sizes its per-call prefix array as iovmax/3+1,
+        # assuming each bulk string costs 3 iov entries (prefix, data, CRLF).
+        # An empty RAW string costs only 2: addPlainBufferToReplyIOV skips
+        # the zero-length data iov, so 343 or more empty strings overflow
+        # the array and corrupt the adjacent iov_arr on the stack.
+        #
+        # Setting min-io-threads-avoid-copy-reply to 1 enables copy avoidance
+        # on the default single-threaded server so the test does not need
+        # io-threads 7. SET creates an EMBSTR object; APPEND on the existing
+        # key calls dbUnshareStringValue which converts it to RAW encoding.
+        set orig [lindex [r config get min-io-threads-avoid-copy-reply] 1]
+        r config set min-io-threads-avoid-copy-reply 1
+
+        set keys {}
+        for {set i 0} {$i < 343} {incr i} {
+            r set "{k:iov}:$i" ""
+            r append "{k:iov}:$i" ""
+            lappend keys "{k:iov}:$i"
+        }
+
+        # Before the fix, the overflow writes past the prefix array into
+        # adjacent stack data. Under ASAN this is caught directly; on a
+        # plain build the corrupted iov entries typically cause writev to
+        # return EFAULT and drop this connection.
+        set results [r mget {*}$keys]
+        r config set min-io-threads-avoid-copy-reply $orig
+
+        assert_equal 343 [llength $results]
+        foreach val $results {
+            assert_equal {} $val
         }
     }
 }

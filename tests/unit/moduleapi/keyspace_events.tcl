@@ -76,7 +76,7 @@ tags "modules" {
         test "Keyspace notifications: module events test" {
             r config set notify-keyspace-events Kd
             r del x
-            set rd1 [kv_deferring_client]
+            set rd1 [valkey_deferring_client]
             assert_equal {1} [psubscribe $rd1 *]
             r keyspace.notify x
             assert_equal {pmessage * __keyspace@9__:x notify} [$rd1 read]
@@ -93,6 +93,42 @@ tags "modules" {
             }
             assert_equal [r get testkeyspace:expired] 1
         }
+
+        test {MOVE restores client DB after module keyspace notification} {
+            # MOVE fires move_from/move_to notifications on the source and
+            # destination DBs. The module subscribes to NOTIFY_GENERIC, and
+            # the bug left the client selected on the destination DB.
+            r flushall
+            r select 0
+            r set movekey value
+
+            # The client must stay on its original DB (c->db unchanged).
+            assert_equal 1 [r move movekey 10]
+            assert_match {*db=0*} [r client info]
+
+            # If the client was still on db10, this would fail with
+            # "source and destination objects are the same" instead of 0.
+            assert_equal 0 [r move movekey 10]
+            assert_match {*db=0*} [r client info]
+        } {} {singledb:skip}
+
+        test {COPY restores client DB after module keyspace notification} {
+            # COPY fires a copy_to notification on the destination DB. The
+            # module subscribes to NOTIFY_GENERIC, and the bug left the client
+            # selected on the destination DB.
+            r flushall
+            r select 0
+            r set copykey value
+
+            # The client must stay on its original DB (c->db unchanged).
+            assert_equal 1 [r copy copykey copykey DB 10]
+            assert_match {*db=0*} [r client info]
+
+            # If the client was still on db10, this would fail with
+            # "source and destination objects are the same" instead of 0
+            assert_equal 0 [r copy copykey copykey DB 10]
+            assert_match {*db=0*} [r client info]
+        } {} {singledb:skip}
 
         test "Unload the module - testkeyspace" {
             assert_equal {OK} [r module unload testkeyspace]
