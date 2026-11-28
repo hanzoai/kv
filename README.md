@@ -57,10 +57,10 @@ Any RESP client also works out of the box.
 ### Build from Source
 
 On Debian or Ubuntu, install `build-essential` for the compiler and Make,
-and `tcl` for the test runner:
+`tcl` for the test runner, and `procps` for the tests that use `ps`:
 
 ```bash
-sudo apt-get install build-essential tcl
+sudo apt-get install build-essential tcl procps
 ```
 
 On macOS, install the Xcode Command Line Tools (`xcode-select --install`).
