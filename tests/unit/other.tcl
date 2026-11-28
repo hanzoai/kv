@@ -511,7 +511,7 @@ start_server {tags {"other"}} {
             # exists but have no effect.
             r config set extended-redis-compatibility yes
             set hello [r hello 3]
-            assert_equal valkey [dict get $hello server]
+            assert_equal $::VALKEY_BIN_PREFIX [dict get $hello server]
             assert_equal $version [dict get $hello version]
             r config set extended-redis-compatibility no
         } elseif {[string match "8.*" $version] || [string match "9.*" $version] || ($version eq "255.255.255")} {
@@ -533,7 +533,7 @@ start_server {tags {"other"}} {
             assert_match {*Redis ver.*} $lolwut_output
             r config set extended-redis-compatibility no
             set hello [r hello 3]
-            assert_equal "valkey" [dict get $hello server]
+            assert_equal $::VALKEY_BIN_PREFIX [dict get $hello server]
             assert_equal $version [dict get $hello version]
             set info [r info server]
             assert_no_match "*redis_mode:*" $info
@@ -608,7 +608,7 @@ start_server {tags {"other external:skip"}} {
             set cmdline [read_proc_title [srv 0 pid]]
 
             assert_equal "TEST" [lindex $cmdline 0]
-            assert_match "*/valkey-server" [lindex $cmdline 1]
+            assert_equal $::VALKEY_SERVER_BIN [lindex $cmdline 1]
 
             if {$::tls} {
                 set expect_port [srv 0 pport]

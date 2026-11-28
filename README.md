@@ -56,11 +56,33 @@ Any RESP client also works out of the box.
 
 ### Build from Source
 
+On Debian or Ubuntu, install `build-essential` for the compiler and Make,
+`tcl` for the test runner, and `procps` for the tests that use `ps`:
+
+```bash
+sudo apt-get install build-essential tcl procps
+```
+
+On macOS, install the Xcode Command Line Tools (`xcode-select --install`).
+For tests, make sure a versioned Tcl executable supported by `runtest`
+(`tclsh8.5`, `tclsh8.6`, or `tclsh9.0`) is on your PATH.
+
 ```bash
 make
 make test
 make install
 ```
+
+To run just the suites covering core Redis protocol commands, use:
+
+```bash
+./runtest --single unit/type/string --single unit/type/hash \
+  --single unit/type/list --single unit/expire --single unit/pubsub
+```
+
+For a quick throughput baseline against a disposable local server, run
+`src/kv-benchmark -h 127.0.0.1 -p 6379 -n 100000 -c 50 -t set,get`.
+Record the build, hardware, and client settings alongside the result.
 
 ## CLI Tools
 

@@ -7701,10 +7701,9 @@ void dismissMemoryInChild(void) {
 
 void memtest(size_t megabytes, int passes);
 
-/* Returns 1 if there is --sentinel among the arguments or if
- * executable name contains "valkey-sentinel". */
+/* Returns 1 when invoked as a sentinel binary or with --sentinel. */
 int checkForSentinelMode(int argc, char **argv, char *exec_name) {
-    if (strstr(exec_name, "valkey-sentinel") != NULL) return 1;
+    if (strstr(exec_name, "kv-sentinel") != NULL || strstr(exec_name, "valkey-sentinel") != NULL) return 1;
 
     /* valkey may install symlinks like redis-sentinel -> valkey-sentinel. */
     if (strstr(exec_name, "redis-sentinel") != NULL) return 1;
@@ -8001,20 +8000,13 @@ __attribute__((weak)) int main(int argc, char **argv) {
         initSentinel();
     }
 
-    /* Check if we need to start in valkey-check-rdb/aof mode. We just execute
-     * the program main. However the program is part of the server executable
-     * so that we can easily execute an RDB check on loading errors. */
-    if (strstr(exec_name, "valkey-check-rdb") != NULL)
+    /* The check tools share the server binary so RDB validation is also
+     * available on load errors. Recognize the Hanzo and compatibility names. */
+    if (strstr(exec_name, "kv-check-rdb") != NULL || strstr(exec_name, "valkey-check-rdb") != NULL ||
+        strstr(exec_name, "redis-check-rdb") != NULL)
         redis_check_rdb_main(argc, argv, NULL);
-    else if (strstr(exec_name, "valkey-check-aof") != NULL)
-        redis_check_aof_main(argc, argv);
-
-    /* valkey may install symlinks like
-     * redis-server -> valkey-server, redis-check-rdb -> valkey-check-rdb,
-     * redis-check-aof -> valkey-check-aof, etc. */
-    if (strstr(exec_name, "redis-check-rdb") != NULL)
-        redis_check_rdb_main(argc, argv, NULL);
-    else if (strstr(exec_name, "redis-check-aof") != NULL)
+    else if (strstr(exec_name, "kv-check-aof") != NULL || strstr(exec_name, "valkey-check-aof") != NULL ||
+             strstr(exec_name, "redis-check-aof") != NULL)
         redis_check_aof_main(argc, argv);
 
     if (argc >= 2) {
