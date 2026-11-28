@@ -14,18 +14,24 @@ set ::VALKEY_PROG_SUFFIX [expr {
     [info exists ::env(VALKEY_PROG_SUFFIX)] ? $::env(VALKEY_PROG_SUFFIX) : ""
 }]
 
+# Prefer the Hanzo binary names, while supporting upstream Valkey builds.
+set ::VALKEY_BIN_PREFIX "valkey"
+if {[file executable [file join $::VALKEY_BIN_DIR "kv-server${::VALKEY_PROG_SUFFIX}"]]} {
+    set ::VALKEY_BIN_PREFIX "kv"
+}
+
 # Helper to build absolute paths
 proc valkey_bin_absolute_path {name} {
     set full_name "${name}${::VALKEY_PROG_SUFFIX}"
     return [file join $::VALKEY_BIN_DIR $full_name]
 }
 
-set ::VALKEY_SERVER_BIN    [valkey_bin_absolute_path "valkey-server"]
-set ::VALKEY_CLI_BIN       [valkey_bin_absolute_path "valkey-cli"]
-set ::VALKEY_BENCHMARK_BIN [valkey_bin_absolute_path "valkey-benchmark"]
-set ::VALKEY_CHECK_AOF_BIN [valkey_bin_absolute_path "valkey-check-aof"]
-set ::VALKEY_CHECK_RDB_BIN [valkey_bin_absolute_path "valkey-check-rdb"]
-set ::VALKEY_SENTINEL_BIN  [valkey_bin_absolute_path "valkey-sentinel"]
+set ::VALKEY_SERVER_BIN    [valkey_bin_absolute_path "${::VALKEY_BIN_PREFIX}-server"]
+set ::VALKEY_CLI_BIN       [valkey_bin_absolute_path "${::VALKEY_BIN_PREFIX}-cli"]
+set ::VALKEY_BENCHMARK_BIN [valkey_bin_absolute_path "${::VALKEY_BIN_PREFIX}-benchmark"]
+set ::VALKEY_CHECK_AOF_BIN [valkey_bin_absolute_path "${::VALKEY_BIN_PREFIX}-check-aof"]
+set ::VALKEY_CHECK_RDB_BIN [valkey_bin_absolute_path "${::VALKEY_BIN_PREFIX}-check-rdb"]
+set ::VALKEY_SENTINEL_BIN  [valkey_bin_absolute_path "${::VALKEY_BIN_PREFIX}-sentinel"]
 
 # TLS module path: in CMake builds it's in lib/, in Make builds it's in src/
 if {[info exists ::env(VALKEY_BIN_DIR)]} {
