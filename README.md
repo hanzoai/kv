@@ -54,12 +54,25 @@ OK
 
 Any RESP client also works out of the box.
 
-### Build from Source
+### Build from Source (Linux / macOS)
 
 ```bash
-make
-make test
+git clone https://github.com/hanzoai/kv.git
+cd kv
+make -j"$(nproc)"    # Linux (use sysctl -n hw.ncpu on macOS)
+make test            # requires tclsh (e.g. apt install tcl)
 make install
+```
+
+Built binaries live under `src/` (`kv-server`, `kv-cli`, `kv-benchmark`).
+
+### Protocol Smoke Suite & Throughput Benchmark
+
+Run the self-contained RESP smoke matrix (`PING`, `SET`/`GET`/`INCR`, `HSET`/`HGET`/`HGETALL`, `LPUSH`/`RPUSH`/`LLEN`/`LRANGE`, `EXPIRE`/`TTL`/`PEXPIRE`, `PUBLISH`/`SUBSCRIBE`) and baseline throughput benchmark (`kv-benchmark`) against an ephemeral loopback instance:
+
+```bash
+./scripts/smoke-protocol.sh            # smoke tests + 50k req / 50 clients benchmark
+./scripts/smoke-protocol.sh --no-bench # protocol smoke matrix only
 ```
 
 ## CLI Tools
