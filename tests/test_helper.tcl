@@ -1126,10 +1126,10 @@ proc is_ipv6_available {} {
 
 # MPTCP detection
 proc is_mptcp_available {} {
-    # Typical error output from valkey-cli --mptcp:
-    # Could not connect to Valkey at 127.0.0.1:6379: MPTCP is not supported on this platform
-    if {[catch {exec $::VALKEY_CLI_BIN --mptcp ping} e] &&
-        [string match "*MPTCP is not supported on this platform*" $e]} {
+    # Headers may support MPTCP while the running kernel rejects the socket.
+    if {[catch {exec env LC_ALL=C $::VALKEY_CLI_BIN --mptcp ping} e] &&
+        ([string match "*MPTCP is not supported on this platform*" $e] ||
+         [string match "*: Protocol not supported" $e])} {
         return 0
     }
     return 1
